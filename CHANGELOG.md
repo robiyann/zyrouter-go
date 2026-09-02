@@ -2495,6 +2495,11 @@
 - **File Diubah**: `[NEW] zyrouter/ecosystem.config.cjs`
 - **Deskripsi Perubahan**: Menambahkan konfigurasi PM2 untuk menjalankan binary Go native tanpa Docker, dengan auto-restart, memory guard, frontend optional, dan data directory lokal.
 
+### [2026-09-02] - [Codex] - PM2 Memakai Database 9router Bersama
+- **Modul**: `Deployment / Compatibility`
+- **File Diubah**: `[MOD] zyrouter/ecosystem.config.cjs`
+- **Deskripsi Perubahan**: Menghapus override `DATA_DIR=./data` dari PM2. Zyrouter sekarang memakai default `~/.9router` di Linux sehingga database, provider, API key, proxy pool, dan password tetap kompatibel dengan 9router original. `DATA_DIR` hanya perlu diisi jika instalasi original memakai lokasi custom.
+
 ### [2026-09-02] - [Codex] - Menutup Loopback API-Key Bypass
 - **Modul**: `Auth / Security`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[NEW] regression test di zyrouter/backend/internal/middleware/auth_test.go`

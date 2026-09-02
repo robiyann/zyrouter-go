@@ -12,8 +12,7 @@ module.exports = {
       max_memory_restart: '512M',
       env: {
         PORT: '20128',
-        FRONTEND_DIR: './frontend',
-        DATA_DIR: './data'
+        FRONTEND_DIR: './frontend'
       }
     }
   ]
