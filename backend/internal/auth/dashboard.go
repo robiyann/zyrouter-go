@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -43,8 +45,14 @@ func InitSessionStore(store SessionStore) {
 	}
 }
 
-// HashPassword hashes a plain text password with a random 16-byte salt using SHA-256.
+// HashPassword uses bcrypt so passwords remain compatible with the original
+// 9router dashboard. CheckPassword still accepts the legacy SHA-256 format.
 func HashPassword(password string) string {
+	if hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost); err == nil {
+		return string(hash)
+	}
+
+	// Keep a fallback for an unlikely bcrypt failure, preserving local login.
 	salt := make([]byte, 16)
 	rand.Read(salt)
 	saltHex := hex.EncodeToString(salt)
@@ -62,7 +70,12 @@ func CheckPassword(password, storedHash string) bool {
 		return false
 	}
 
-	// 1. Check SHA-256 Salted Hash
+	// 1. Check bcrypt hashes produced by the original dashboard.
+	if bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)) == nil {
+		return true
+	}
+
+	// 2. Check legacy SHA-256 salted hashes.
 	parts := strings.Split(storedHash, "$")
 	if len(parts) == 3 && parts[0] == "sha256" {
 		saltHex := parts[1]
@@ -75,7 +88,7 @@ func CheckPassword(password, storedHash string) bool {
 		}
 	}
 
-	// 2. Plain text comparison
+	// 3. Plain text comparison for old development databases.
 	if subtle.ConstantTimeCompare([]byte(password), []byte(storedHash)) == 1 {
 		return true
 	}
