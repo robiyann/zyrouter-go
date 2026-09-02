@@ -11,6 +11,7 @@ module.exports = {
       watch: false,
       max_memory_restart: '512M',
       env: {
+        HOST: '127.0.0.1',
         PORT: '20128',
         FRONTEND_DIR: './frontend'
       }

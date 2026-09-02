@@ -2670,6 +2670,12 @@
 - **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/gemini_handler.go`
 - **Deskripsi Perubahan**: Menambahkan log aman `client_model`, `upstream_model`, `thinking_level`, dan endpoint logical `v1internal` tanpa mencatat OAuth token. Ini membuat verifikasi manual membedakan alias 3.7 dari model upstream yang benar-benar dikirim.
 
+### [2026-09-03] - [Codex] - Bind Native Engine ke Localhost untuk Nginx
+- **Modul**: `Config / Deployment Security`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/config/config.go`, `[MOD] zyrouter/backend/cmd/zyrouter/main.go`, `[MOD] zyrouter/ecosystem.config.cjs`, `[MOD] zyrouter/backend/.env.example`
+- **Deskripsi Perubahan**: Menambahkan environment `HOST`; PM2 kini mengikat Zyrouter ke `127.0.0.1` sehingga port `20128` tidak terekspos langsung ketika Nginx menjadi public entrypoint. Default dev tetap `0.0.0.0` untuk kompatibilitas.
+- **Validasi**: Config, router, middleware tests, Go vet, dan PM2 config syntax berhasil.
+
 ### [2026-09-02] - [Codex] - Revert Model Antigravity 3.8 yang Tidak Tersedia
 - **Modul**: `Provider Catalog / Translator`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/providers/catalog.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/backend/internal/translator/antigravity.go`, `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`

@@ -49,6 +49,7 @@ func loadDotenv(path string) {
 
 // Config holds the proxy gateway configuration.
 type Config struct {
+	Host             string
 	Port             int
 	DatabasePath     string
 	JWTSecret        string
@@ -87,6 +88,10 @@ func LoadConfig() *Config {
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 {
 		port = 20128 // Default port
+	}
+	host := strings.TrimSpace(os.Getenv("HOST"))
+	if host == "" {
+		host = "0.0.0.0"
 	}
 
 	dataDir := ResolveDataDir()
@@ -127,6 +132,7 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
+		Host:             host,
 		Port:             port,
 		DatabasePath:     dbPath,
 		JWTSecret:        loadJWTSecret(dataDir),

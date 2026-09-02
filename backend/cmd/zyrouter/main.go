@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -177,7 +178,7 @@ func runServer(cCtx *cli.Context) error {
 	handlers.SetupServerRouter(r, repo, ts)
 	mountFrontend(r)
 
-	addr := fmt.Sprintf(":%d", cfg.Port)
+	addr := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port))
 	log.Printf("Zyrouter Engine (%s) starting on port %d", updater.CurrentVersion, cfg.Port)
 
 	signals := make(chan os.Signal, 2)
