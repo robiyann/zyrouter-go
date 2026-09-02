@@ -1,5 +1,15 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-03 04:43 WIB] - [Antigravity] - Fix API Key Restrictions Deadlock Detection & Alias Harmonization
+- **Modul**: `Frontend / Backend / API Key Restrictions / Model Resolution`
+- **File Diubah**: `frontend/app.js`, `backend/internal/handlers/chat/chat.go`
+- **Deskripsi Perubahan**:
+  - **Frontend**: Memperbaiki `getActiveProviderModels` agar menggunakan active alias prefix (`oc/`, `ag/`, `oa/`, `ds/`) dari katalog/mapping, bukan canonical provider ID (`opencode/`, `antigravity/`).
+  - **Frontend**: Menambahkan detektor konflik real-time (**Policy Deadlock Warning**) pada visual builder API Key policy yang langsung memperingatkan user jika memilih model dari provider yang tidak diizinkan di `Allowed Providers`, lengkap dengan tombol aksi 1-klik `[Auto-Add Missing Providers]` dan `[Unlock All Providers]`.
+  - **Frontend**: Memperbaiki `openCreateKeyModal` agar turut mem-fetch provider nodes dan custom models tanpa memicu ReferenceError.
+  - **Backend**: Menyelaraskan `HandleModels` (`chat.go`) dan `validateRequestPolicy` agar memeriksa nama canonical dan alias aktif untuk model dan provider target secara simetris, mencegah API key mengalami kegagalan akses hanya karena perbedaan format prefix alias.
+- **Status Task**: Selesai / Terverifikasi Test Suite
+
 ### [2026-09-03] - [Codex] - Perbaiki provider custom pada policy API key
 - **Modul**: `Frontend / API Key Restrictions`
 - **File Diubah**: `frontend/app.js`

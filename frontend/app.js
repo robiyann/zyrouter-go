@@ -5171,37 +5171,42 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
   const nodeMap = new Map((providerNodes || []).map((node) => [String(node.id || '').toLowerCase(), node]));
 
   const ensureProviderGroup = (provId) => {
-    if (!provId || activeProviderMap.has(provId)) return activeProviderMap.get(provId);
-    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
-    const node = nodeMap.get(provId);
+    if (!provId) return null;
+    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
+    const canonicalId = cat?.id || provId;
+    if (activeProviderMap.has(canonicalId)) return activeProviderMap.get(canonicalId);
+    const node = nodeMap.get(canonicalId) || nodeMap.get(provId);
     // Public/no-auth providers have no providerConnections row, but they are
     // still active routing targets and must appear in policy restrictions.
     if (!cat || (cat.category !== 'free' && cat.authType !== 'noauth')) return null;
+    const defaultPrefix = cat?.alias || canonicalId;
     const entry = {
-      provId,
-      providerName: node?.name || cat?.name || provId.toUpperCase(),
+      provId: canonicalId,
+      providerName: node?.name || cat?.name || canonicalId.toUpperCase(),
       conns: [],
       modelSet: new Set(cat?.defaultModels || []),
-      routePrefix: node?.prefix || provId
+      routePrefix: node?.prefix || defaultPrefix
     };
-    activeProviderMap.set(provId, entry);
+    activeProviderMap.set(canonicalId, entry);
     return entry;
   };
 
   // 1. Group active connections by unique Provider Type
   activeConns.forEach((conn) => {
-    const provId = (conn.provider || '').toLowerCase();
-    if (!provId) return;
+    const rawProv = (conn.provider || '').toLowerCase();
+    if (!rawProv) return;
+    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === rawProv || (p.alias && p.alias === rawProv));
+    const provId = cat?.id || rawProv;
 
     if (!activeProviderMap.has(provId)) {
-      const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
-      const node = nodeMap.get(provId);
+      const node = nodeMap.get(provId) || nodeMap.get(rawProv);
+      const defaultPrefix = cat?.alias || provId;
       activeProviderMap.set(provId, {
         provId,
         providerName: node?.name || cat?.name || provId.toUpperCase(),
         conns: [],
         modelSet: new Set(cat?.defaultModels || []),
-        routePrefix: node?.prefix || provId
+        routePrefix: node?.prefix || defaultPrefix
       });
     }
 
@@ -5243,7 +5248,9 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
     const mid = typeof m === 'string' ? m : m.id;
     const owner = typeof m === 'object' ? (m.owned_by || '').toLowerCase() : '';
     if (owner) {
-      const entry = activeProviderMap.get(owner) || ensureProviderGroup(owner);
+      const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === owner || (p.alias && p.alias === owner));
+      const canonicalOwner = cat?.id || owner;
+      const entry = activeProviderMap.get(canonicalOwner) || ensureProviderGroup(canonicalOwner);
       if (entry) entry.modelSet.add(mid);
     }
   });
@@ -5256,7 +5263,18 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
         const normalized = String(model || '').trim();
         if (!normalized) return '';
         const prefix = entry.routePrefix || provId;
-        return normalized.startsWith(`${prefix}/`) ? normalized : `${prefix}/${normalized}`;
+        if (normalized.includes('/')) {
+          const parts = normalized.split('/');
+          const curPrefix = parts[0];
+          const curModel = parts[1];
+          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
+          if (curPrefix.toLowerCase() === prefix.toLowerCase() ||
+              (cat && (curPrefix.toLowerCase() === cat.id.toLowerCase() || (cat.alias && curPrefix.toLowerCase() === cat.alias.toLowerCase())))) {
+            return `${prefix}/${curModel}`;
+          }
+          return normalized;
+        }
+        return `${prefix}/${normalized}`;
       })
       .filter(Boolean);
     rawModels.forEach((m) => allActiveModels.push(m));
@@ -5312,7 +5330,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
   });
 
   return `
-    <form class="inline-form policy-builder-form" id="key-policy-form" data-key-id="${escapeHtml(item.id || '')}">
+    <form class="inline-form policy-builder-form" id="key-policy-form" data-key-id="${escapeHtml(item.id || '')}" data-provider-groups="${escapeHtml(JSON.stringify(groups.map((g) => ({ provider: g.provider, providerName: g.providerName }))))}">
       <div class="form-head">
         <div>
           <span class="kicker">RESTRICTIONS</span>
@@ -5340,6 +5358,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
 
       <!-- VISUAL BUILDER SURFACE -->
       <div id="visual-builder-surface">
+        <div id="policy-conflict-warning" class="hidden"></div>
         <div class="builder-section">
           <div class="section-title">
             <strong>1. Allowed Models Whitelist</strong>
@@ -5507,6 +5526,98 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   if (!form) return;
 
   const state = parseRestrictionsObject(item.restrictions);
+  let groups = [];
+  try {
+    groups = JSON.parse(form.dataset.providerGroups || '[]');
+  } catch {}
+
+  function checkPolicyDeadlocks() {
+    const warningBox = form.querySelector('#policy-conflict-warning');
+    if (!warningBox) return;
+
+    const checkedProvs = Array.from(form.querySelectorAll('input[name="allowedProviders"]:checked')).map((cb) => cb.value.toLowerCase());
+    if (checkedProvs.length === 0 || state.allowedModels.length === 0) {
+      warningBox.classList.add('hidden');
+      warningBox.innerHTML = '';
+      return;
+    }
+
+    const conflicts = [];
+    state.allowedModels.forEach((model) => {
+      const parts = String(model || '').split('/');
+      if (parts.length === 2) {
+        const prefix = parts[0].toLowerCase();
+        // find matching provider for this prefix
+        const matchingGroup = (groups || []).find((g) => {
+          const provId = String(g.provider || '').toLowerCase();
+          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
+          return provId === prefix || (cat && (cat.id.toLowerCase() === prefix || (cat.alias && cat.alias.toLowerCase() === prefix)));
+        });
+        if (matchingGroup) {
+          const provId = String(matchingGroup.provider || '').toLowerCase();
+          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
+          const alias = cat?.alias ? String(cat.alias).toLowerCase() : null;
+          const isAllowed = checkedProvs.includes(provId) || (alias && checkedProvs.includes(alias));
+          if (!isAllowed) {
+            conflicts.push({ model, providerName: matchingGroup.providerName, provId: matchingGroup.provider });
+          }
+        }
+      }
+    });
+
+    if (conflicts.length > 0) {
+      warningBox.classList.remove('hidden');
+      warningBox.innerHTML = `
+        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #f87171; font-weight: 600; font-size: 11.5px;">
+            <span class="material-symbols-outlined" style="font-size: 16px;">warning</span>
+            <span>Policy Conflict / Deadlock Detected!</span>
+          </div>
+          <p style="font-size: 11px; color: #fca5a5; margin: 0; line-height: 1.4;">
+            Allowed Providers is locked to <code>${escapeHtml(checkedProvs.join(', '))}</code>, but Allowed Models contains models from other providers:
+            <br>
+            ${conflicts.map((c) => `• <code>${escapeHtml(c.model)}</code> (Belongs to: <strong>${escapeHtml(c.providerName)}</strong>)`).join('<br>')}
+          </p>
+          <small style="font-size: 10px; color: #cbd5e1;">With this configuration, clients with this key will receive <strong>0 models</strong> or <strong>HTTP 403 Forbidden</strong>.</small>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
+            <button type="button" id="btn-fix-conflict-add-providers" class="secondary-button" style="font-size: 10px; padding: 4px 8px; color: #38bdf8; border-color: #38bdf8;">
+              + Auto-Add Missing Providers (${escapeHtml(Array.from(new Set(conflicts.map((c) => c.provId))).join(', '))})
+            </button>
+            <button type="button" id="btn-fix-conflict-unlock" class="secondary-button" style="font-size: 10px; padding: 4px 8px;">
+              Unlock All Providers (Allow All)
+            </button>
+          </div>
+        </div>
+      `;
+
+      const btnAddMissing = warningBox.querySelector('#btn-fix-conflict-add-providers');
+      if (btnAddMissing) {
+        btnAddMissing.onclick = () => {
+          conflicts.forEach((c) => {
+            const cb = form.querySelector(`input[name="allowedProviders"][value="${c.provId}"]`);
+            if (cb) {
+              cb.checked = true;
+              cb.closest('.provider-check-card')?.classList.add('checked');
+            }
+          });
+          syncToRawJson();
+        };
+      }
+      const btnUnlock = warningBox.querySelector('#btn-fix-conflict-unlock');
+      if (btnUnlock) {
+        btnUnlock.onclick = () => {
+          form.querySelectorAll('input[name="allowedProviders"]').forEach((cb) => {
+            cb.checked = false;
+            cb.closest('.provider-check-card')?.classList.remove('checked');
+          });
+          syncToRawJson();
+        };
+      }
+    } else {
+      warningBox.classList.add('hidden');
+      warningBox.innerHTML = '';
+    }
+  }
 
   function updateProvLockBadge() {
     const checked = form.querySelectorAll('input[name="allowedProviders"]:checked');
@@ -5529,6 +5640,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
     state.allowedProviders = Array.from(new Set(checkedProv));
     form.querySelector('#policy-raw-json').value = JSON.stringify(state, null, 2);
     updateProvLockBadge();
+    checkPolicyDeadlocks();
   }
 
   function renderModelChips() {
@@ -5651,6 +5763,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   });
 
   updateProvLockBadge();
+  checkPolicyDeadlocks();
 
   // Limits
   form.querySelector('#limit-rpm').oninput = syncToRawJson;
@@ -6367,10 +6480,12 @@ function bindAliasDeckActions() {
 function openCreateKeyModal() {
   Promise.all([
     request('/api/providers').catch(() => ({ connections: [] })),
-    request('/models').catch(() => ({ data: [] }))
-  ]).then(([provPayload, modelPayload]) => {
+    request('/models').catch(() => ({ data: [] })),
+    request('/api/provider-nodes').catch(() => ({ nodes: [] })),
+    request('/api/custom-models').catch(() => ({ customModels: [] }))
+  ]).then(([provPayload, modelPayload, nodesPayload, customPayload]) => {
     const providers = provPayload.connections || [];
-    const models = (modelPayload.data || []).map((m) => m.id);
+    const models = modelPayload.data || [];
     const existingForm = document.querySelector('#key-policy-form');
     if (existingForm) existingForm.remove();
     content.insertAdjacentHTML('afterbegin', keyPolicyForm({ name: '', isActive: 1, restrictions: '{}' }, true, providers, models, nodesPayload.nodes || [], customPayload.customModels || []));

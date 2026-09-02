@@ -228,6 +228,18 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 		}
 		providerAllowed := providerTarget == "" || key.IsProviderAllowed(providerTarget) || key.IsProviderAllowed(modelInfo.Provider)
 		if !providerAllowed {
+			activePrefix := h.GetActiveProviderPrefix(modelInfo.Provider, nil)
+			if activePrefix != "" && key.IsProviderAllowed(activePrefix) {
+				providerAllowed = true
+			}
+		}
+		if !providerAllowed {
+			canon := h.resolveProviderPrefix(providerTarget)
+			if canon != "" && key.IsProviderAllowed(canon) {
+				providerAllowed = true
+			}
+		}
+		if !providerAllowed {
 			return fmt.Errorf("%w: '%s'", auth.ErrProviderNotAllowed, providerTarget)
 		}
 		return nil
@@ -376,7 +388,46 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 					providerAllowed = providerAllowed || apiKey.IsProviderAllowed(connectionProvider)
 				}
 			}
-			if !apiKey.IsModelAllowed(id) || !providerAllowed {
+			// If owner is an alias (e.g. "oc", "ag"), also check its canonical provider name
+			if !providerAllowed {
+				canonOwner := h.resolveProviderPrefix(owner)
+				if canonOwner != "" && canonOwner != owner && apiKey.IsProviderAllowed(canonOwner) {
+					providerAllowed = true
+				}
+			}
+			// If owner is canonical (e.g. "opencode"), check its active alias prefix
+			if !providerAllowed {
+				activeAlias := h.GetActiveProviderPrefix(owner, nil)
+				if activeAlias != "" && activeAlias != owner && apiKey.IsProviderAllowed(activeAlias) {
+					providerAllowed = true
+				}
+			}
+
+			// Check model permission with alias and canonical normalization
+			modelAllowed := apiKey.IsModelAllowed(id)
+			if !modelAllowed && strings.Contains(id, "/") {
+				parts := strings.SplitN(id, "/", 2)
+				prefix := parts[0]
+				leafModel := parts[1]
+				// 1. Check bare leaf model
+				modelAllowed = apiKey.IsModelAllowed(leafModel)
+				// 2. Check canonical model (e.g. if id is "oc/mimo-v2.5-free", check "opencode/mimo-v2.5-free")
+				if !modelAllowed {
+					canon := h.resolveProviderPrefix(prefix)
+					if canon != "" && canon != prefix {
+						modelAllowed = apiKey.IsModelAllowed(canon + "/" + leafModel)
+					}
+				}
+				// 3. Check active alias model (e.g. if id is "opencode/mimo-v2.5-free", check "oc/mimo-v2.5-free")
+				if !modelAllowed {
+					alias := h.GetActiveProviderPrefix(prefix, nil)
+					if alias != "" && alias != prefix {
+						modelAllowed = apiKey.IsModelAllowed(alias + "/" + leafModel)
+					}
+				}
+			}
+
+			if !modelAllowed || !providerAllowed {
 				return
 			}
 		}
