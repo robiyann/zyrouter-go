@@ -9,6 +9,14 @@
   - Perbaikan berlaku untuk semua provider custom, bukan hanya provider `bai`.
 - **Status Task**: Selesai / Terhubung ke TASK-014
 
+### [2026-09-03] - [Codex] - Sinkronisasi model custom berdasarkan seluruh alias provider
+- **Modul**: `Frontend / API Key Restrictions`
+- **File Diubah**: `frontend/app.js`
+- **Deskripsi Perubahan**:
+  - Pencocokan custom model sekarang menerima provider ID, routing prefix, alias, dan nama provider node.
+  - Model manual tidak lagi hilang ketika `providerAlias` berbeda dari ID internal provider custom.
+- **Status Task**: Selesai / Terhubung ke TASK-014
+
 ### [2026-09-03] - [Codex] - Auto-generate nama dan priority akun provider
 - **Modul**: `Backend / Frontend / Provider Accounts`
 - **File Diubah**: `backend/internal/handlers/admin/admin.go`, `frontend/app.js`

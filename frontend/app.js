@@ -5225,7 +5225,14 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
     const alias = String(model.providerAlias || '').toLowerCase();
     const entry = activeProviderMap.get(provider) || Array.from(activeProviderMap.values()).find((candidate) => {
       const node = nodeMap.get(candidate.provId);
-      return candidate.provId === provider || String(node?.prefix || '').toLowerCase() === alias || candidate.routePrefix.toLowerCase() === alias;
+      const candidateAliases = [
+        candidate.provId,
+        candidate.routePrefix,
+        node?.prefix,
+        node?.providerAlias,
+        node?.name
+      ].map((value) => String(value || '').toLowerCase()).filter(Boolean);
+      return candidateAliases.includes(provider) || candidateAliases.includes(alias);
     });
     if (!entry || !model.id) return;
     entry.modelSet.add(String(model.id).trim());
