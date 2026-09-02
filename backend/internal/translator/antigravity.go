@@ -237,6 +237,9 @@ func NormalizeAntigravityModel(model string) (backendModel string, thinkingLevel
 
 	// Keep the client-facing tier aliases separate: Antigravity's 3.7 and 3.6
 	// tiers are distinct upstream model IDs.
+	if strings.HasPrefix(m, "gemini-3.8-flash") {
+		return "gemini-3.8-flash-tiered", thinkingLevel
+	}
 	if strings.HasPrefix(m, "gemini-3.7-flash") {
 		return "gemini-3.7-flash-tiered", thinkingLevel
 	}

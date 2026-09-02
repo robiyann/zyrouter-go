@@ -129,6 +129,7 @@ func TestNormalizeAntigravityModel(t *testing.T) {
 		{"gemini-3.7-flash-high", "gemini-3.7-flash-tiered", "high"},
 		{"gemini-3.7-flash-medium", "gemini-3.7-flash-tiered", "medium"},
 		{"gemini-3.7-flash-low", "gemini-3.7-flash-tiered", "low"},
+		{"gemini-3.8-flash-medium", "gemini-3.8-flash-tiered", "medium"},
 		{"claude-opus-4-6-thinking", "claude-opus-4-6-thinking", "high"},
 	}
 
@@ -245,12 +246,13 @@ func TestStripCompetitivePrompts(t *testing.T) {
 }
 func TestNormalizeAntigravityModel_TieredResolution(t *testing.T) {
 	models := []string{
+		"gemini-3.8-flash-high",
 		"gemini-3.7-flash-high",
 		"gemini-3.6-flash-high",
 		"gemini-3.5-flash-high",
 	}
 
-	want := []string{"gemini-3.7-flash-tiered", "gemini-3.6-flash-tiered", "gemini-3.6-flash-tiered"}
+	want := []string{"gemini-3.8-flash-tiered", "gemini-3.7-flash-tiered", "gemini-3.6-flash-tiered", "gemini-3.6-flash-tiered"}
 	for i, m := range models {
 		got, lvl := translator.NormalizeAntigravityModel(m)
 		if got != want[i] || lvl != "high" {
