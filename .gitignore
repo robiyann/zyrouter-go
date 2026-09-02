@@ -1,0 +1,21 @@
+# Local build artifacts
+*.exe
+*.exe~
+*.test
+*.out
+
+# Local databases and SQLite sidecars
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local runtime data and environment overrides
+.env
+.9router/
+data/
+backend/data/
+
+# Generated logs and temporary output
+*.log
+tmp/
+graphify-out/

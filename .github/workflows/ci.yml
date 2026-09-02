@@ -1,0 +1,48 @@
+name: Zyrouter CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Go tests
+        run: go test ./... -count=1
+
+      - name: Go race tests
+        run: CGO_ENABLED=1 go test -race ./...
+
+      - name: Go vet and build
+        run: |
+          go vet ./...
+          go build -trimpath ./cmd/zyrouter
+
+      - name: Frontend checks
+        working-directory: .
+        run: |
+          node --check frontend/app.js
+          node tests/frontend_contract.test.mjs
+
+      - name: Benchmark script syntax
+        run: |
+          bash -n benchmark/run_benchmark.sh
+          bash -n benchmark/run_comparison.sh
+
+      - name: Docker build
+        working-directory: .
+        run: docker build -f backend/Dockerfile -t zyrouter-ci .

@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07090e" />
+    <title>Zyrouter / Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    <link rel="stylesheet" href="./styles.css?v=2.5.0" />
+  </head>
+  <body>
+    <div class="room-shell">
+      <!-- SIDEBAR -->
+      <aside class="dock" aria-label="Navigasi utama">
+        <div class="sidebar-brand">
+          <a class="logo" href="#overview" aria-label="Zyrouter overview">
+            <span class="logo-symbol">Z</span>
+          </a>
+          <div class="brand-text">
+            <div class="brand-title">Zyrouter <span class="brand-badge">CORE</span></div>
+            <div class="brand-sub">AI Routing Gateway</div>
+          </div>
+        </div>
+
+        <div class="sidebar-scroll">
+          <div class="nav-group">
+            <div class="nav-group-title">ROUTING</div>
+            <nav class="dock-nav">
+              <button class="dock-item active" data-view="overview">
+                <span class="material-symbols-outlined nav-icon">dashboard</span>
+                <span class="dock-label">Overview</span>
+              </button>
+              <button class="dock-item" data-view="providers">
+                <span class="material-symbols-outlined nav-icon">hub</span>
+                <span class="dock-label">Providers</span>
+                <span class="nav-badge" id="nav-badge-providers">--</span>
+              </button>
+              <button class="dock-item" data-view="orchestrator">
+                <span class="material-symbols-outlined nav-icon">alt_route</span>
+                <span class="dock-label">Combos &amp; Flows</span>
+              </button>
+              <button class="dock-item" data-view="keys">
+                <span class="material-symbols-outlined nav-icon">key</span>
+                <span class="dock-label">API Keys</span>
+              </button>
+            </nav>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-group-title">OBSERVABILITY</div>
+            <nav class="dock-nav">
+              <button class="dock-item" data-view="usage">
+                <span class="material-symbols-outlined nav-icon">analytics</span>
+                <span class="dock-label">Usage Ledger</span>
+              </button>
+              <button class="dock-item" data-view="logs">
+                <span class="material-symbols-outlined nav-icon">terminal</span>
+                <span class="dock-label">Console Stream</span>
+              </button>
+            </nav>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-group-title">CONFIG</div>
+            <nav class="dock-nav">
+              <button class="dock-item" data-view="pools">
+                <span class="material-symbols-outlined nav-icon">language</span>
+                <span class="dock-label">Proxy Pools</span>
+              </button>
+              <button class="dock-item" data-view="aliases">
+                <span class="material-symbols-outlined nav-icon">label</span>
+                <span class="dock-label">Model Aliases</span>
+              </button>
+              <button class="dock-item" data-view="settings">
+                <span class="material-symbols-outlined nav-icon">settings</span>
+                <span class="dock-label">Settings</span>
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="engine-status-card">
+            <div class="status-indicator-row">
+              <span class="pulse-ring"></span>
+              <span class="status-label">Engine Online</span>
+            </div>
+            <span class="engine-port-badge">:3840</span>
+          </div>
+          <button class="avatar" title="Manage authentication key" aria-label="Account">
+            <span class="material-symbols-outlined" style="font-size:16px;">admin_panel_settings</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- MAIN APP WORKSPACE -->
+      <main class="room-main">
+        <header class="room-header">
+          <div class="header-context">
+            <span class="material-symbols-outlined" style="font-size:14px; color:var(--lime);">radio_button_checked</span>
+            <span>Zyrouter</span>
+            <b>/</b>
+            <strong id="breadcrumb">OVERVIEW</strong>
+          </div>
+          <div class="header-tools">
+            <button class="command-button" aria-label="Open command menu">
+              <span style="font-size:9px; opacity:0.6;">⌘</span> K
+            </button>
+            <button class="secondary-button" id="refresh-button">
+              <span class="material-symbols-outlined" style="font-size:13px;">refresh</span> Sync
+            </button>
+          </div>
+        </header>
+
+        <!-- VIEW 1: OVERVIEW -->
+        <section class="view" id="view-overview">
+          <div class="hero-line">
+            <div>
+              <h1>Overview</h1>
+              <p class="hero-subtext">Real-time routing metrics, active nodes, and token telemetry.</p>
+            </div>
+            <div class="hero-actions">
+              <button class="solid-button" data-view="providers">
+                <span class="material-symbols-outlined" style="font-size:14px;">add</span> Add Provider
+              </button>
+              <button class="secondary-button" data-view="orchestrator">
+                <span class="material-symbols-outlined" style="font-size:14px;">alt_route</span> Manage Combos
+              </button>
+            </div>
+          </div>
+
+          <!-- 4-COLUMN STATS (High-Density Metric Cards) -->
+          <div class="stats-matrix-grid">
+            <!-- 1. REALTIME THROUGHPUT -->
+            <article class="card stat-card-v2">
+              <div class="stat-card-top">
+                <span class="stat-kicker">REALTIME THROUGHPUT</span>
+                <div class="stat-chip-pill emerald">
+                  <span class="pulse-dot emerald" style="width:6px; height:6px;"></span>
+                  <span>LIVE</span>
+                  <span class="material-symbols-outlined" style="font-size:12px;">memory</span>
+                </div>
+              </div>
+              <div class="stat-main-metric">
+                <span class="stat-value" id="realtime-tok-rate">0</span>
+                <span class="stat-unit">tok/s</span>
+                <div class="stat-mini-spark emerald" id="spark-throughput"></div>
+              </div>
+              <div class="stat-bottom-meta">
+                <span class="trend-badge green" id="throughput-trend-badge">&bull; Real-time</span>
+                <span class="trend-sub" id="throughput-trend-sub">Live token output</span>
+                <span class="stat-desc">Aggregated streaming throughput</span>
+              </div>
+            </article>
+
+            <!-- 2. TOTAL TOKEN USAGE -->
+            <article class="card stat-card-v2">
+              <div class="stat-card-top">
+                <span class="stat-kicker">TOTAL TOKEN USAGE</span>
+                <div class="stat-chip-pill emerald">
+                  <span>Tokens</span>
+                  <span class="material-symbols-outlined" style="font-size:12px;">memory</span>
+                </div>
+              </div>
+              <div class="stat-main-metric">
+                <span class="stat-value" id="cost-saved-value">0</span>
+                <span class="stat-unit">Total</span>
+                <div class="stat-mini-spark emerald" id="spark-cost"></div>
+              </div>
+              <div class="stat-bottom-meta">
+                <span class="trend-badge green" id="tokens-in-out-ratio">&bull; Prompt + Comp</span>
+                <span class="trend-sub" id="total-tokens-sub">In SQLite ledger</span>
+                <span class="stat-desc">Historical usage from usageHistory</span>
+              </div>
+            </article>
+
+            <!-- 3. ACTIVE UPSTREAM NODES -->
+            <article class="card stat-card-v2">
+              <div class="stat-card-top">
+                <span class="stat-kicker">ACTIVE UPSTREAM NODES</span>
+                <div class="stat-chip-pill purple">
+                  <span>Topology</span>
+                  <span class="material-symbols-outlined" style="font-size:12px;">show_chart</span>
+                </div>
+              </div>
+              <div class="stat-main-metric">
+                <span class="stat-value" id="providers-count-v2">0/0</span>
+                <span class="stat-unit">Nodes</span>
+              </div>
+              <div class="stat-bottom-meta">
+                <div class="nodes-sub-stat">
+                  <span class="cooldown-txt" id="cooldown-nodes-txt">&bull; 0 in Cooldown</span>
+                  <span class="degraded-txt" id="active-accounts-txt">0 Accounts Active</span>
+                </div>
+                <span class="stat-desc">Authenticated upstream endpoints</span>
+              </div>
+            </article>
+
+            <!-- 4. ROUTING SUCCESS RATE -->
+            <article class="card stat-card-v2">
+              <div class="stat-card-top">
+                <span class="stat-kicker">ROUTING SUCCESS RATE</span>
+                <div class="stat-chip-pill cyan">
+                  <span id="slo-total-reqs">0 Reqs</span>
+                  <span class="material-symbols-outlined" style="font-size:12px;">layers</span>
+                </div>
+              </div>
+              <div class="stat-main-metric">
+                <span class="stat-value" id="slo-rate-value">100.00%</span>
+                <span class="stat-unit" style="color:#71717a; font-weight:600;">SLO</span>
+              </div>
+              <div class="stat-bottom-meta">
+                <div class="slo-sub-stat">
+                  <span class="trend-badge green" id="slo-avg-latency">&bull; 0.00s avg</span>
+                  <span class="trend-sub" id="slo-total-sub">0 Total</span>
+                </div>
+                <span class="stat-desc">Success rate across request traces</span>
+              </div>
+            </article>
+          </div>
+
+          <!-- TOPOLOGY (LEFT) & LIVE TRACE (RIGHT) -->
+          <div class="main-matrix-grid">
+            <article class="card route-matrix-card" id="route-matrix-card">
+              <div class="card-top">
+                <div>
+                  <span class="kicker">REAL-TIME TRAFFIC MATRIX</span>
+                  <h2>Dynamic Mesh Topology</h2>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span class="live-chip" id="mesh-live-status">STANDBY &bull; LISTENING</span>
+                  <!-- ZOOM & VIEWPORT CONTROLS -->
+                  <div class="mesh-zoom-controls" style="display:flex; align-items:center; gap:4px; background:#05070a; border:1px solid var(--line); border-radius:5px; padding:2px 4px;">
+                    <button type="button" class="alias-page-btn" id="btn-mesh-zoom-out" title="Zoom Out" style="padding:2px 6px; font-size:11px; font-weight:bold;">&minus;</button>
+                    <span id="mesh-zoom-level-badge" style="font-size:9.5px; font-family:var(--mono); color:var(--muted); min-width:34px; text-align:center;">100%</span>
+                    <button type="button" class="alias-page-btn" id="btn-mesh-zoom-in" title="Zoom In" style="padding:2px 6px; font-size:11px; font-weight:bold;">+</button>
+                    <button type="button" class="alias-page-btn" id="btn-mesh-zoom-reset" title="Reset Zoom" style="padding:2px 5px; font-size:9px;">1:1</button>
+                    <button type="button" class="alias-page-btn" id="btn-mesh-fullscreen" title="Toggle Focus Mode" style="padding:2px 5px; font-size:9.5px;">⛶</button>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- INTERACTIVE CYBER MESH CANVAS -->
+              <div class="mesh-viewport-wrapper" id="mesh-viewport-wrapper">
+                <div class="cyber-mesh-container" id="cyber-mesh-container">
+                <svg class="mesh-svg-layer" id="mesh-svg-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+
+                <!-- LEFT: CLIENT NODES -->
+                <div class="mesh-clients-col" id="mesh-clients-col">
+                  <div class="mesh-node client-node" data-client-id="claude">
+                    <img src="./providers/claude.png" class="mesh-icon" alt="Claude Code" />
+                    <div class="mesh-node-info">
+                      <strong>Claude Code</strong>
+                      <small>CLI / Agent</small>
+                    </div>
+                  </div>
+                  <div class="mesh-node client-node" data-client-id="cursor">
+                    <img src="./providers/cursor.png" class="mesh-icon" alt="Cursor IDE" />
+                    <div class="mesh-node-info">
+                      <strong>Cursor IDE</strong>
+                      <small>Editor</small>
+                    </div>
+                  </div>
+                  <div class="mesh-node client-node" data-client-id="cline">
+                    <img src="./providers/cline.png" class="mesh-icon" alt="Cline" />
+                    <div class="mesh-node-info">
+                      <strong>Cline / Roo</strong>
+                      <small>Extension</small>
+                    </div>
+                  </div>
+                  <div class="mesh-node client-node" data-client-id="opencode">
+                    <img src="./providers/opencode.png" class="mesh-icon" alt="OpenCode" />
+                    <div class="mesh-node-info">
+                      <strong>OpenCode / SDK</strong>
+                      <small>CLI / API Client</small>
+                    </div>
+                  </div>
+                  <div class="mesh-node client-node" data-client-id="copilot">
+                    <img src="./providers/copilot.png" class="mesh-icon" alt="Copilot" />
+                    <div class="mesh-node-info">
+                      <strong>GitHub Copilot</strong>
+                      <small>VSCode / IDE</small>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CENTER: ZYROUTER GATEWAY HUB -->
+                <div class="mesh-center-hub" id="mesh-center-hub">
+                  <div class="mesh-hub-core">
+                    <div class="mesh-hub-pulse-ring"></div>
+                    <div class="mesh-hub-dashed-orbit"></div>
+                    <span class="material-symbols-outlined mesh-core-icon">hub</span>
+                    <strong class="mesh-core-title">Zyrouter Core</strong>
+                    <span class="mesh-core-latency" id="mesh-core-latency">&bull; Idle Gateway</span>
+                  </div>
+                </div>
+
+                <!-- RIGHT: ACTIVE UPSTREAM PROVIDERS (Populated Dynamically in loadOverview) -->
+                <div class="mesh-providers-col" id="mesh-providers-col"></div>
+                </div>
+              </div>
+              <div class="topo-footer">
+                <span class="card-note">Live request routing mesh with dynamic laser line animations &amp; active failover.</span>
+                <button class="text-link" data-view="providers">Manage Providers &rarr;</button>
+              </div>
+            </article>
+
+            <article class="card activity-matrix-card" style="display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:hidden;">
+              <div class="card-top" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:10px;">
+                <div>
+                  <span class="stat-kicker">LIVE TELEMETRY STREAM</span>
+                  <h2 style="font-size:13.5px; margin:2px 0 0; font-weight:700;">Event Activity</h2>
+                </div>
+                <button class="text-link" data-view="logs" style="font-size:11px; font-weight:600;">Full Stream &rarr;</button>
+              </div>
+
+              <!-- Real-time Activity Ticker -->
+              <div id="overview-recent-stream-box" style="display:flex; flex-direction:column; gap:6px; flex:1; overflow-y:auto; max-height:270px; padding-right:4px;">
+                <!-- Populated dynamically via SSE stream & loadOverview -->
+                <div class="console-log-row" style="color:var(--muted); font-style:italic; padding:12px 0;">
+                  <span class="console-log-time">[LIVE]</span>
+                  <span>Listening to gateway stream...</span>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.05); padding-top:8px; margin-top:8px; font-size:10px; color:#52525b; font-family:var(--mono);">
+                <span id="overview-stream-status-pill"><span class="pulse-dot emerald" style="display:inline-block; width:6px; height:6px; margin-right:4px;"></span> SSE CONNECTED</span>
+                <button class="text-link" data-view="usage" style="font-size:10px;">Usage Ledger &rarr;</button>
+              </div>
+            </article>
+          </div>
+
+          <!-- QUICK SHORTCUTS -->
+          <div class="actions-matrix-grid">
+            <article class="card launch-matrix-card">
+              <div class="card-top">
+                <span class="kicker">QUICK SHORTCUTS</span>
+              </div>
+              <div class="launchpad-grid">
+                <button class="launchpad-tile" data-view="providers">
+                  <div class="tile-icon-wrapper"><span class="material-symbols-outlined">add_circle</span></div>
+                  <div class="tile-content">
+                    <strong>Add AI Provider</strong>
+                    <p>Connect OAuth or API key credentials.</p>
+                  </div>
+                  <span class="tile-arrow">&rarr;</span>
+                </button>
+                <button class="launchpad-tile" data-view="keys">
+                  <div class="tile-icon-wrapper"><span class="material-symbols-outlined">vpn_key</span></div>
+                  <div class="tile-content">
+                    <strong>Issue API Key</strong>
+                    <p>Create client keys with model &amp; provider policy.</p>
+                  </div>
+                  <span class="tile-arrow">&rarr;</span>
+                </button>
+                <button class="launchpad-tile" data-view="orchestrator">
+                  <div class="tile-icon-wrapper"><span class="material-symbols-outlined">shuffle</span></div>
+                  <div class="tile-content">
+                    <strong>Create Route Combo</strong>
+                    <p>Fallback, round-robin, or fusion routes.</p>
+                  </div>
+                  <span class="tile-arrow">&rarr;</span>
+                </button>
+                <button class="launchpad-tile" data-view="usage">
+                  <div class="tile-icon-wrapper"><span class="material-symbols-outlined">analytics</span></div>
+                  <div class="tile-content">
+                    <strong>Usage Analytics</strong>
+                    <p>Inspect token volume &amp; cost ledger.</p>
+                  </div>
+                  <span class="tile-arrow">&rarr;</span>
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- VIEW 2: GENERIC SURFACE -->
+        <section class="view hidden" id="view-generic">
+          <div class="generic-head">
+            <div>
+              <h1 id="generic-title">Provider nodes</h1>
+              <p id="generic-subtitle">Manage live connections to your routing fabric.</p>
+            </div>
+            <button class="solid-button" id="generic-action-button">
+              <span class="material-symbols-outlined" style="font-size:14px;">add</span>
+              <span id="generic-action">Add connection</span>
+            </button>
+          </div>
+          <div id="generic-content"></div>
+        </section>
+      </main>
+    </div>
+    <script src="./app.js?v=2.5.0"></script>
+  </body>
+</html>
