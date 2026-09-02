@@ -17,6 +17,10 @@ const breadcrumb = document.querySelector('#breadcrumb');
 const content = document.querySelector('#generic-content');
 const apiBase = window.ZYROUTER_API_BASE || '';
 let activeStream = null;
+let dashboardAuthenticated = false;
+function hasDashboardAccess() {
+  return dashboardAuthenticated || Boolean(getAuthToken());
+}
 function getAuthToken() {
   return window.localStorage.getItem('zyrouter.sessionToken') || window.localStorage.getItem('zyrouter.apiKey') || '';
 }
@@ -176,6 +180,7 @@ function renderFullLoginGate() {
     try {
       const res = await fetch(`${apiBase}/api/auth/login`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pwd })
       });
@@ -184,7 +189,10 @@ function renderFullLoginGate() {
       try { data = JSON.parse(resText); } catch {}
       if (!res.ok) throw new Error(data.error?.message || data.error || data.message || resText || 'Authentication failed');
 
-      setAuthToken(data.token);
+      dashboardAuthenticated = true;
+      // Session is held by the HttpOnly cookie, not JavaScript storage.
+      window.localStorage.removeItem('zyrouter.sessionToken');
+      window.localStorage.removeItem('zyrouter.apiKey');
       showToast('Welcome back! Dashboard unlocked.', 'success');
       overlay.remove();
 
@@ -4858,7 +4866,7 @@ async function renderView(name) {
   } catch (error) {
     const isAuthErr = error.status === 401 ||
       (error.message && (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized') || error.message.toLowerCase().includes('token') || error.message.toLowerCase().includes('expired'))) ||
-      !getAuthToken();
+      !hasDashboardAccess();
     if (isAuthErr) {
       renderFullLoginGate();
     } else {
@@ -7232,7 +7240,7 @@ let meshProviderSignature = '';
 let meshProviderSyncTimer = null;
 async function loadOverview() {
   if (isLoadingOverview) return;
-  if (!getAuthToken()) {
+  if (!hasDashboardAccess()) {
     renderFullLoginGate();
     return;
   }
@@ -7805,8 +7813,7 @@ let streamReconnectTimer = null;
 
 function ensureGlobalStream() {
   if (globalStreamController) return;
-  const token = getAuthToken();
-  if (!token) return;
+  if (!hasDashboardAccess()) return;
 
   globalStreamController = new AbortController();
   const streamPath = `${apiBase}/api/usage/stream`;
@@ -7872,6 +7879,7 @@ document.querySelector('.avatar')?.addEventListener('click', async () => {
   });
   if (confirmed) {
     await fetch(`${apiBase}/api/auth/logout`, { method: 'POST', headers: getHeaders() }).catch(() => {});
+    dashboardAuthenticated = false;
     setAuthToken(null);
     // Lock the current view immediately. The delayed reload is only a
     // secondary reset; it must not leave private dashboard data visible while
@@ -7892,7 +7900,7 @@ document.querySelector('.avatar')?.addEventListener('click', async () => {
 });
 
 startStream('/api/usage/stream', (payload) => {
-  if (!getAuthToken() || !payload) return;
+  if (!hasDashboardAccess() || !payload) return;
 
   const active = Array.isArray(payload.activeRequests) ? payload.activeRequests.reduce((sum, item) => sum + (item.count || 0), 0) : 0;
   const reqVal = document.querySelector('#requests-value');
@@ -8025,12 +8033,26 @@ startStream('/api/usage/stream', (payload) => {
   }
 });
 
+async function bootstrapDashboardAuth() {
+  try {
+    const response = await fetch(`${apiBase}/api/auth/status`, { credentials: 'same-origin' });
+    const status = await response.json().catch(() => ({}));
+    dashboardAuthenticated = response.ok && status.authenticated === true;
+  } catch {
+    dashboardAuthenticated = false;
+  }
+
+  if (dashboardAuthenticated) {
+    document.querySelector('#full-login-overlay')?.remove();
+    setView(window.location.hash.slice(1) || 'overview');
+  } else {
+    renderFullLoginGate();
+  }
+}
+
 const initialView = window.location.hash.slice(1);
 initMeshZoomPanControls();
-setView(initialView ? initialView : 'overview');
-if (!initialView || initialView === 'overview') {
-  loadOverview();
-}
+bootstrapDashboardAuth();
 window.addEventListener('load', () => {
   initMeshZoomPanControls();
   if (!window.location.hash || window.location.hash === '#overview') {
@@ -8044,7 +8066,7 @@ function startMeshProviderSync() {
   if (meshProviderSyncTimer) return;
   meshProviderSyncTimer = window.setInterval(() => {
     const currentView = window.location.hash.slice(1).split('/')[0] || 'overview';
-    if (currentView === 'overview' && getAuthToken()) loadOverview();
+    if (currentView === 'overview' && hasDashboardAccess()) loadOverview();
   }, 2500);
 }
 

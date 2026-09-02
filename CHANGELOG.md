@@ -2674,6 +2674,7 @@
 - **Modul**: `Security / Reverse Proxy`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[NEW] regression test di zyrouter/backend/internal/middleware/auth_test.go`
 - **Deskripsi Perubahan**: Request publik melalui Nginx sebelumnya terlihat berasal dari `127.0.0.1` karena backend hanya membaca header internal `X-9r-Real-IP`. Akibatnya local loopback grant dapat melewati auth pada API/admin route. Backend sekarang membaca `X-Real-IP` yang ditulis ulang Nginx dan menolak token invalid dari public proxy.
+- **Catatan Keamanan**: Login rate limit, session 24 jam, cookie HttpOnly/Secure, dan invalidasi seluruh session saat password diganti kini aktif.
 - **Validasi**: Middleware, auth, handler tests, Go vet, dan frontend contract test berhasil.
 
 ### [2026-09-03] - [Codex] - Menutup Loopback Grant untuk Public Host

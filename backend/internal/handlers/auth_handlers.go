@@ -2,7 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"zyrouter/backend/internal/auth"
@@ -11,9 +15,79 @@ import (
 	"zyrouter/backend/internal/middleware"
 )
 
+const (
+	loginFailureWindow = 5 * time.Minute
+	loginFailureLimit  = 5
+	loginLockDuration  = 5 * time.Minute
+)
+
+type loginFailureState struct {
+	firstFailure time.Time
+	lastFailure  time.Time
+	count        int
+	lockedUntil  time.Time
+}
+
+var loginLimiter = struct {
+	sync.Mutex
+	entries map[string]loginFailureState
+}{entries: make(map[string]loginFailureState)}
+
+func loginClientIP(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+		return value
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func loginLocked(ip string, now time.Time) (time.Duration, bool) {
+	loginLimiter.Lock()
+	defer loginLimiter.Unlock()
+	state, ok := loginLimiter.entries[ip]
+	if !ok || now.After(state.lockedUntil) {
+		return 0, false
+	}
+	return time.Until(state.lockedUntil), true
+}
+
+func recordLoginFailure(ip string, now time.Time) (time.Duration, bool) {
+	loginLimiter.Lock()
+	defer loginLimiter.Unlock()
+	state := loginLimiter.entries[ip]
+	if state.firstFailure.IsZero() || now.Sub(state.firstFailure) > loginFailureWindow {
+		state = loginFailureState{firstFailure: now}
+	}
+	state.count++
+	state.lastFailure = now
+	if state.count >= loginFailureLimit {
+		state.lockedUntil = now.Add(loginLockDuration)
+	}
+	loginLimiter.entries[ip] = state
+	if state.lockedUntil.After(now) {
+		return time.Until(state.lockedUntil), true
+	}
+	return 0, false
+}
+
+func clearLoginFailures(ip string) {
+	loginLimiter.Lock()
+	delete(loginLimiter.entries, ip)
+	loginLimiter.Unlock()
+}
+
 // HandleAuthLogin handles dashboard password login and sets the auth_token cookie.
 func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ip := loginClientIP(r)
+		if retryAfter, locked := loginLocked(ip, time.Now()); locked {
+			w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds())+1, 10))
+			handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "Too many failed login attempts. Try again later.")
+			return
+		}
 		var req struct {
 			Password string `json:"password"`
 		}
@@ -29,6 +103,12 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 		}
 
 		if !auth.CheckPassword(req.Password, storedHash) {
+			retryAfter, locked := recordLoginFailure(ip, time.Now())
+			if locked {
+				w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds())+1, 10))
+				handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "Too many failed login attempts. Try again later.")
+				return
+			}
 			message := "Invalid password."
 			if storedHash == "" {
 				message = "Dashboard password is not configured. Set INITIAL_PASSWORD and restart Zyrouter."
@@ -36,6 +116,7 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			handlerutil.WriteJSONError(w, http.StatusUnauthorized, message)
 			return
 		}
+		clearLoginFailures(ip)
 
 		token := auth.CreateSession()
 
@@ -44,14 +125,14 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			Name:     "auth_token",
 			Value:    token,
 			Path:     "/",
-			HttpOnly: false,
+			HttpOnly: true,
+			Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
 			SameSite: http.SameSiteLaxMode,
-			MaxAge:   int((30 * 24 * time.Hour).Seconds()),
+			MaxAge:   int(auth.SessionDuration.Seconds()),
 		})
 
 		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
 			"status":  "ok",
-			"token":   token,
 			"message": "Authenticated successfully",
 		})
 	}
@@ -135,6 +216,7 @@ func HandleAuthChangePassword(repo *db.Repo) http.HandlerFunc {
 			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to update password: "+err.Error())
 			return
 		}
+		auth.InvalidateAllSessions()
 
 		handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "Password updated successfully"})
 	}

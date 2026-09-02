@@ -15,7 +15,7 @@ import (
 
 const (
 	// SessionDuration is the lifetime of a dashboard web login session.
-	SessionDuration = 30 * 24 * time.Hour
+	SessionDuration = 24 * time.Hour
 )
 
 type SessionStore interface {
@@ -169,5 +169,23 @@ func InvalidateSession(token string) {
 
 	if store != nil {
 		_ = store.DeleteSession(token)
+	}
+}
+
+// InvalidateAllSessions revokes every dashboard session, for example after a
+// password change or a suspected credential leak.
+func InvalidateAllSessions() {
+	sessionMu.Lock()
+	tokens := make([]string, 0, len(activeSessions))
+	for token := range activeSessions {
+		tokens = append(tokens, token)
+	}
+	activeSessions = make(map[string]time.Time)
+	store := globalStore
+	sessionMu.Unlock()
+	if store != nil {
+		for _, token := range tokens {
+			_ = store.DeleteSession(token)
+		}
 	}
 }
