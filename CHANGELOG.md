@@ -2516,6 +2516,12 @@
 - **Deskripsi Perubahan**: Model catalog di Policy Builder sekarang selalu ditampilkan dalam bentuk canonical `provider/model`. Model catalog provider yang sebelumnya tampil tanpa prefix tidak lagi bercampur dengan route-prefixed models; provider no-auth ditandai sebagai `public / no-auth`.
 - **Validasi**: `node --check frontend/app.js`, frontend contract test, chat handler tests, dan Go vet berhasil.
 
+### [2026-09-02] - [Codex] - Preservasi Prefix Custom Provider Bertingkat
+- **Modul**: `Frontend / API Key Restrictions`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`
+- **Deskripsi Perubahan**: Model custom seperti `f/mimo-v2.5-free` kini diberi prefix provider node (`jr/f/mimo-v2.5-free`) saat ditampilkan di Policy Builder. Prefix model internal tidak lagi disalahartikan sebagai provider prefix atau disimpan tanpa route canonical.
+- **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
+
 ### [2026-09-02] - [Codex] - Clipboard Fallback untuk HTTP VPS
 - **Modul**: `Frontend / UX`
 - **File Diubah**: `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/tests/frontend_contract.test.mjs`

@@ -5052,7 +5052,8 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
       provId,
       providerName: cat.name || provId.toUpperCase(),
       conns: [],
-      modelSet: new Set(cat.defaultModels || [])
+      modelSet: new Set(cat.defaultModels || []),
+      routePrefix: provId
     };
     activeProviderMap.set(provId, entry);
     return entry;
@@ -5069,7 +5070,8 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
         provId,
         providerName: cat.name || provId.toUpperCase(),
         conns: [],
-        modelSet: new Set(cat.defaultModels || [])
+        modelSet: new Set(cat.defaultModels || []),
+        routePrefix: provId
       });
     }
 
@@ -5079,6 +5081,8 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
     // Add custom models from connection data
     try {
       const d = typeof conn.data === 'string' ? JSON.parse(conn.data) : (conn.data || {});
+      const connectionPrefix = String(d.prefix || d.providerSpecificData?.prefix || '').trim().toLowerCase();
+      if (connectionPrefix) entry.routePrefix = connectionPrefix;
       if (d.defaultModel) entry.modelSet.add(d.defaultModel);
       if (Array.isArray(d.customModels)) d.customModels.forEach((cm) => entry.modelSet.add(cm));
     } catch {}
@@ -5100,7 +5104,9 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
     const rawModels = Array.from(entry.modelSet)
       .map((model) => {
         const normalized = String(model || '').trim();
-        return normalized && normalized.includes('/') ? normalized : `${provId}/${normalized}`;
+        if (!normalized) return '';
+        const prefix = entry.routePrefix || provId;
+        return normalized.startsWith(`${prefix}/`) ? normalized : `${prefix}/${normalized}`;
       })
       .filter(Boolean);
     rawModels.forEach((m) => allActiveModels.push(m));
