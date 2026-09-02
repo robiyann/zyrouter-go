@@ -2548,6 +2548,12 @@
 - **Deskripsi Perubahan**: 9router original menyimpan password dashboard dengan bcrypt, sedangkan Zyrouter sebelumnya hanya memeriksa SHA-256/plaintext. Zyrouter sekarang membaca bcrypt dan tetap mempertahankan kompatibilitas hash legacy; password baru juga disimpan dalam format bcrypt.
 - **Validasi**: Test bcrypt/legacy hash dan seluruh `go test ./... -count=1` berhasil.
 
+### [2026-09-02] - [Codex] - Responsive Provider Detail Breakpoint
+- **Modul**: `Frontend / Responsive UI`
+- **File Diubah**: `[MOD] zyrouter/frontend/styles.css`
+- **Deskripsi Perubahan**: Layout provider detail dan navigasi kini beralih ke mode satu kolom/horizontal pada viewport hingga 1100px. Sebelumnya breakpoint 860px terlalu rendah, sehingga viewport responsive 1014px masih memaksa sidebar dan panel dua kolom lalu tampak terpotong.
+- **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
+
 ### [2026-09-02] - [Codex] - Kompatibilitas go.mod dengan VPS
 - **Modul**: `Build / Deployment`
 - **File Diubah**: `[MOD] zyrouter/backend/go.mod`
