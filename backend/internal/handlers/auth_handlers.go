@@ -88,10 +88,18 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "Too many failed login attempts. Try again later.")
 			return
 		}
-		var req struct {
-			Password string `json:"password"`
+		var raw map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil || raw == nil {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		passwordRaw, ok := raw["password"]
+		if !ok {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		var password string
+		if err := json.Unmarshal(passwordRaw, &password); err != nil {
 			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
@@ -102,7 +110,7 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			storedHash = *settings.Password
 		}
 
-		if !auth.CheckPassword(req.Password, storedHash) {
+		if !auth.CheckPassword(password, storedHash) {
 			retryAfter, locked := recordLoginFailure(ip, time.Now())
 			if locked {
 				w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds())+1, 10))

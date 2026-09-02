@@ -2689,6 +2689,12 @@
 - **Deskripsi Perubahan**: Menambahkan environment `HOST`; PM2 kini mengikat Zyrouter ke `127.0.0.1` sehingga port `20128` tidak terekspos langsung ketika Nginx menjadi public entrypoint. Default dev tetap `0.0.0.0` untuk kompatibilitas.
 - **Validasi**: Config, router, middleware tests, Go vet, dan PM2 config syntax berhasil.
 
+### [2026-09-03] - [Codex] - Normalisasi Body Login
+- **Modul**: `Auth / Input Validation`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/auth_handlers.go`, `[MOD] zyrouter/backend/internal/handlers/router_test.go`
+- **Deskripsi Perubahan**: Body login `null`, array, string, atau object tanpa field `password` sekarang ditolak konsisten dengan `400 invalid request body`; parser tidak lagi menerima top-level JSON null sebagai struct kosong.
+- **Validasi**: Auth/handler/middleware tests dan Go vet berhasil.
+
 ### [2026-09-02] - [Codex] - Revert Model Antigravity 3.8 yang Tidak Tersedia
 - **Modul**: `Provider Catalog / Translator`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/providers/catalog.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/backend/internal/translator/antigravity.go`, `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`

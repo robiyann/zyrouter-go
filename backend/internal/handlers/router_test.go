@@ -173,3 +173,17 @@ func TestLoginRequiresExplicitDashboardPassword(t *testing.T) {
 		t.Fatalf("login error should not disclose a default password: %s", rec.Body.String())
 	}
 }
+
+func TestLoginRejectsNonObjectOrMissingPasswordBody(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	handler := HandleAuthLogin(db.NewRepo(database))
+	for _, body := range []string{"null", `"string"`, "[]", `{"wrong":""}`} {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: expected 400, got %d", body, rec.Code)
+		}
+	}
+}
