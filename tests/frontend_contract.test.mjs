@@ -15,5 +15,7 @@ for (const endpoint of [
 assert.match(app, /Authorization: `Bearer \$\{apiKey\}`/);
 assert.match(app, /const values = Object\.fromEntries\(new FormData\(form\)\.entries\(\)\);[\s\S]*?submitBtn\.disabled = true;/,
   'deployment form values must be captured before controls are disabled');
+assert.match(app, /Public\/no-auth providers have no providerConnections row/,
+  'policy builder must include active public providers without connection rows');
 assert.match(html, /id="generic-content"/);
 console.log('frontend backend contract checks passed');

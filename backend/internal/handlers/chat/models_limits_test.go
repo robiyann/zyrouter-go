@@ -88,3 +88,18 @@ func TestHandleModels_AllowsModelsForAllowedConnectionID(t *testing.T) {
 		t.Fatalf("allowed connection model missing: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleModels_IncludesActiveNoAuthProviderWithoutConnection(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	NewChatHandler(db.NewRepo(database)).HandleModels(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"opencode/mimo-v2.5-free"`) {
+		t.Fatal("expected active OpenCode no-auth model without a connection row")
+	}
+}

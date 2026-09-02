@@ -2504,6 +2504,12 @@
   - Semua aksi menampilkan status spinner/progress sampai request selesai, termasuk penyimpanan custom proxy pool.
 - **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
 
+### [2026-09-02] - [Codex] - OpenCode No-Auth di Policy Builder
+- **Modul**: `Frontend / Model Discovery`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`, `[MOD] zyrouter/backend/internal/handlers/chat/models_limits_test.go`, `[MOD] zyrouter/tests/frontend_contract.test.mjs`
+- **Deskripsi Perubahan**: Provider publik/no-auth seperti OpenCode kini tetap ditampilkan pada allowlist provider dan `/v1/models` meskipun tidak memiliki baris `providerConnections`. Model aktif OpenCode dapat dipilih untuk restriction API key.
+- **Validasi**: Regression test model no-auth, chat handler tests, Go vet, dan frontend contract test berhasil.
+
 ### [2026-09-02] - [Codex] - Bulk Vercel Background Jobs dan Audit Ringkas
 - **Modul**: `Deployment / Telemetry`
 - **File Diubah**: `[NEW] zyrouter/backend/internal/handlers/deployment/jobs.go`, `[MOD] zyrouter/backend/internal/handlers/deployment/deploy.go`, `[MOD] zyrouter/backend/internal/handlers/router.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/frontend/styles.css`, `[MOD] zyrouter/backend/internal/auditlog/auditlog.go`, `[MOD] zyrouter/docs/API_SPEC.md`

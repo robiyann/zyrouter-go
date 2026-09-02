@@ -5016,6 +5016,22 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
   const allActiveModels = [];
   const suggestedPrefixes = new Set();
 
+  const ensureProviderGroup = (provId) => {
+    if (!provId || activeProviderMap.has(provId)) return activeProviderMap.get(provId);
+    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
+    // Public/no-auth providers have no providerConnections row, but they are
+    // still active routing targets and must appear in policy restrictions.
+    if (!cat || (cat.category !== 'free' && cat.authType !== 'noauth')) return null;
+    const entry = {
+      provId,
+      providerName: cat.name || provId.toUpperCase(),
+      conns: [],
+      modelSet: new Set(cat.defaultModels || [])
+    };
+    activeProviderMap.set(provId, entry);
+    return entry;
+  };
+
   // 1. Group active connections by unique Provider Type
   activeConns.forEach((conn) => {
     const provId = (conn.provider || '').toLowerCase();
@@ -5046,8 +5062,9 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
   (allBackendModels || []).forEach((m) => {
     const mid = typeof m === 'string' ? m : m.id;
     const owner = typeof m === 'object' ? (m.owned_by || '').toLowerCase() : '';
-    if (owner && activeProviderMap.has(owner)) {
-      activeProviderMap.get(owner).modelSet.add(mid);
+    if (owner) {
+      const entry = activeProviderMap.get(owner) || ensureProviderGroup(owner);
+      if (entry) entry.modelSet.add(mid);
     }
   });
 

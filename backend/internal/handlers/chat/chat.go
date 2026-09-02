@@ -515,6 +515,25 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Public/no-auth providers do not require a providerConnections row. Keep
+	// their official models visible to the dashboard and API policy builder so
+	// active OpenCode Zen models can be explicitly allowlisted.
+	for provider, cfg := range providers.KnownProviders {
+		if !cfg.NoAuth && cfg.DefaultAPIKey == "" || !providers.IsProviderEnabled(provider) {
+			continue
+		}
+		outputAlias := getOutputAlias(provider, nil)
+		activeProviders[provider] = true
+		activePrefixes[outputAlias] = true
+		for _, model := range providers.GetOfficialModels(provider) {
+			cleanModel := model
+			if strings.HasPrefix(cleanModel, outputAlias+"/") {
+				cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
+			}
+			addModel(outputAlias+"/"+cleanModel, outputAlias)
+		}
+	}
+
 	// 4. Custom Provider Nodes (OpenAI-compatible / Anthropic-compatible endpoints)
 	for _, node := range nodeMap {
 		prefix := nodePrefixMap[node.ID]
