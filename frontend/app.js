@@ -4517,7 +4517,7 @@ function renderUsage(payload) {
                 const proxyName = item.proxy || 'Direct';
                 const isRelay = proxyName !== 'Direct' && proxyName !== '--';
                 return `
-                  <tr>
+                  <tr data-request-key="${escapeHtml(item.id || `${item.timestamp}|${item.provider}|${item.model}|${item.account || ''}`)}">
                     <td>
                       <div style="font-family:var(--mono); line-height:1.2;">
                         <span style="font-size:10px; color:var(--text-bright); font-weight:500;">${escapeHtml(timeStr)}</span>
@@ -4673,7 +4673,7 @@ function renderLogs(payload = {}) {
                 const costSavings = req.savings ? `$${req.savings.toFixed(2)}` : '$0.00';
 
                 return `
-                  <tr class="console-row" data-status="${escapeHtml(String(statusCode))}" data-provider="${escapeHtml(provName)}" data-query="${escapeHtml(`${reqId} ${provName} ${req.model || ''} ${statusCode}`.toLowerCase())}" data-req='${escapeHtml(JSON.stringify(req))}'>
+                  <tr class="console-row" data-request-key="${escapeHtml(req.id || `${req.timestamp}|${req.provider}|${req.model}|${req.account || ''}`)}" data-status="${escapeHtml(String(statusCode))}" data-provider="${escapeHtml(provName)}" data-query="${escapeHtml(`${reqId} ${provName} ${req.model || ''} ${statusCode}`.toLowerCase())}" data-req='${escapeHtml(JSON.stringify(req))}'>
                     <td>
                       <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:${statusDotColor};">
                         <span style="font-size:9px;">●</span> ${escapeHtml(String(statusCode))}
@@ -7255,72 +7255,13 @@ function bindLogStream() {
       inflightBadge.className = `table-badge ${totalActive > 0 ? 'active' : ''}`;
     }
 
-    // 2. Append completed requests to stream table & live Usage Ledger
+    // 2. Append completed requests to the console table.
     if (!consoleIsPaused && Array.isArray(payload.recentRequests) && payload.recentRequests.length > 0) {
       const topReq = payload.recentRequests[0];
-
-      // Real-time incremental update for Usage Ledger (#usage)
-      if (topReq) {
-        if (!cachedUsagePayload) cachedUsagePayload = {};
-        if (!Array.isArray(cachedUsagePayload.recentRequests)) cachedUsagePayload.recentRequests = [];
-
-        cachedUsagePayload.recentRequests.unshift(topReq);
-        cachedUsagePayload.totalRequests = (cachedUsagePayload.totalRequests || 0) + 1;
-        const pToks = Number(topReq.promptTokens || 0);
-        const cToks = Number(topReq.completionTokens || 0);
-        cachedUsagePayload.totalTokens = (cachedUsagePayload.totalTokens || 0) + pToks + cToks;
-        if (topReq.cost) cachedUsagePayload.totalCost = (cachedUsagePayload.totalCost || 0) + topReq.cost;
-
-        // Targeted DOM updates if user is looking at #usage
-        const totalReqEl = document.querySelector('#usage-total-requests');
-        if (totalReqEl) totalReqEl.textContent = Number(cachedUsagePayload.totalRequests).toLocaleString();
-
-        const totalTokEl = document.querySelector('#usage-total-tokens');
-        if (totalTokEl) {
-          const tt = cachedUsagePayload.totalTokens;
-          totalTokEl.textContent = formatTokenCount(tt);
-          totalTokEl.title = `${Number(tt).toLocaleString('en-US')} tokens`;
-        }
-
-        const totalCostEl = document.querySelector('#usage-total-cost');
-        if (totalCostEl) totalCostEl.textContent = `$${Number(cachedUsagePayload.totalCost || 0).toFixed(4)}`;
-
-        const countBadge = document.querySelector('#usage-recent-count-badge');
-        if (countBadge) countBadge.textContent = `${cachedUsagePayload.recentRequests.length} RECENT`;
-
-        const tbody = document.querySelector('#usage-recent-tbody');
-        if (tbody) {
-          const emptyTr = tbody.querySelector('td[colspan]');
-          if (emptyTr) emptyTr.closest('tr').remove();
-
-          const timeStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          const dateStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Sep 1';
-          const toks = pToks + cToks;
-          const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
-          const statusText = isErr ? String(topReq.status || 'error') : 'success';
-
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>
-              <div style="font-family:var(--mono); line-height:1.2;">
-                <span style="font-size:10px; color:var(--text-bright); font-weight:500;">${escapeHtml(timeStr)}</span>
-                <small style="display:block; font-size:8px; color:var(--muted);">${escapeHtml(dateStr)}</small>
-              </div>
-            </td>
-            <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(topReq.model || '--')}</code></td>
-            <td><span style="color:var(--muted); font-size:10.5px;">${escapeHtml(topReq.provider || '--')}</span></td>
-            <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
-            <td style="text-align: right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(statusText)}</span></td>
-          `;
-          tbody.insertBefore(tr, tbody.firstChild);
-
-          // Keep table view capped at page size
-          while (tbody.children.length > usageRecentPageSize) {
-            tbody.removeChild(tbody.lastChild);
-          }
-        }
-      }
+      const requestKey = String(topReq.id || `${topReq.timestamp}|${topReq.provider}|${topReq.model}|${topReq.account || ''}`);
+      if (terminalBody && Array.from(terminalBody.querySelectorAll('tr[data-request-key]')).some((row) => row.dataset.requestKey === requestKey)) return;
       if (terminalBody) {
+        const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
         const statusCode = topReq.status || 200;
         const statusDotColor = isErr ? '#ef4444' : '#22c55e';
           const totalTokens = (topReq.promptTokens || 0) + (topReq.completionTokens || 0);
@@ -7333,6 +7274,7 @@ function bindLogStream() {
 
           const row = document.createElement('tr');
           row.className = 'console-row';
+          row.dataset.requestKey = requestKey;
           row.dataset.status = String(statusCode);
           row.dataset.provider = provName;
           row.dataset.query = `${reqId} ${provName} ${topReq.model || ''} ${statusCode}`.toLowerCase();
@@ -8195,58 +8137,39 @@ startStream('/api/usage/stream', (payload) => {
       countBadge.textContent = `${cachedUsagePayload.recentRequests.length} RECENT`;
     }
 
-    // Prepend new row to table live
-    const tbody = document.querySelector('#usage-recent-tbody');
-    if (tbody && topReq && topReq.model) {
-      const emptyTr = tbody.querySelector('td[colspan]');
-      if (emptyTr) emptyTr.closest('tr').remove();
-
-      const timeStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const dateStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Sep 1';
-      const pToks = Number(topReq.promptTokens || 0);
-      const cToks = Number(topReq.completionTokens || 0);
-      const toks = pToks + cToks;
-      const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
-      const statusCode = topReq.status || 200;
-
-      const pName = (topReq.provider || 'gateway').toLowerCase();
-      const accName = topReq.account || topReq.connectionId || '--';
-      const proxyName = topReq.proxy || 'Direct';
-      const isRelay = proxyName !== 'Direct' && proxyName !== '--';
-
-      const tr = document.createElement('tr');
-      tr.className = 'recent-entry-highlight';
-      tr.innerHTML = `
-        <td>
-          <div style="font-family:var(--mono); line-height:1.2;">
-            <span style="font-size:10px; color:var(--text-bright); font-weight:500;">${escapeHtml(timeStr)}</span>
-            <small style="display:block; font-size:8px; color:var(--muted);">${escapeHtml(dateStr)}</small>
-          </div>
-        </td>
-        <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(topReq.model || '--')}</code></td>
-        <td>
-          <div style="line-height:1.25;">
-            <strong style="color:var(--text-bright); font-size:11px;">${escapeHtml(pName)}</strong>
-            <small style="display:block; font-size:8.5px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">${escapeHtml(accName)}</small>
-          </div>
-        </td>
-        <td>
-          <div style="line-height:1.25;">
-            <span class="table-badge ${isRelay ? 'purple' : ''}" style="font-size:8px; padding:1px 5px;">${escapeHtml(proxyName)}</span>
-            ${topReq.strategy ? `<small style="display:block; font-size:7.5px; font-family:var(--mono); color:#71717a; text-transform:uppercase; margin-top:2px;">${escapeHtml(topReq.strategy)}</small>` : ''}
-          </div>
-        </td>
-        <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
-        <td style="text-align: right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(String(statusCode))}</span></td>
-      `;
-
-      tbody.insertBefore(tr, tbody.firstChild);
-      while (tbody.children.length > usageRecentPageSize) {
-        tbody.removeChild(tbody.lastChild);
+    // The global stream is the single owner of live Usage Ledger rows. The
+    // logs view has its own callback for the console table, so deduplicate by
+    // request ID before touching the ledger DOM.
+    const usageTbody = document.querySelector('#usage-recent-tbody');
+    if (usageTbody && topReq && topReq.model) {
+      const requestKey = String(topReq.id || `${topReq.timestamp}|${topReq.provider}|${topReq.model}|${topReq.account || ''}`);
+      const alreadyRendered = Array.from(usageTbody.querySelectorAll('tr[data-request-key]')).some((row) => row.dataset.requestKey === requestKey);
+      if (!alreadyRendered) {
+        const emptyTr = usageTbody.querySelector('td[colspan]');
+        if (emptyTr) emptyTr.closest('tr').remove();
+        const timeStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const dateStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+        const pToks = Number(topReq.promptTokens || 0);
+        const cToks = Number(topReq.completionTokens || 0);
+        const toks = pToks + cToks;
+        const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
+        const proxyName = topReq.proxy || 'Direct';
+        const tr = document.createElement('tr');
+        tr.dataset.requestKey = requestKey;
+        tr.innerHTML = `
+          <td><div style="font-family:var(--mono); line-height:1.2;"><span style="font-size:10px; color:var(--text-bright); font-weight:500;">${escapeHtml(timeStr)}</span><small style="display:block; font-size:8px; color:var(--muted);">${escapeHtml(dateStr)}</small></div></td>
+          <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(topReq.model || '--')}</code></td>
+          <td><div style="line-height:1.25;"><strong style="color:var(--text-bright); font-size:11px;">${escapeHtml(topReq.provider || '--')}</strong><small style="display:block; font-size:8.5px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">${escapeHtml(topReq.account || topReq.connectionId || '--')}</small></div></td>
+          <td><div style="line-height:1.25;"><span class="table-badge ${proxyName !== 'Direct' && proxyName !== '--' ? 'purple' : ''}" style="font-size:8px; padding:1px 5px;">${escapeHtml(proxyName)}</span>${topReq.strategy ? `<small style="display:block; font-size:7.5px; font-family:var(--mono); color:#71717a; text-transform:uppercase; margin-top:2px;">${escapeHtml(topReq.strategy)}</small>` : ''}</div></td>
+          <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
+          <td style="text-align:right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(String(topReq.status || 200))}</span></td>
+        `;
+        usageTbody.insertBefore(tr, usageTbody.firstChild);
+        while (usageTbody.children.length > usageRecentPageSize) usageTbody.removeChild(usageTbody.lastChild);
       }
     }
 
-    // 3. Live prepend to Overview Event Activity Box
+    // 2. Live prepend to Overview Event Activity Box
     const overviewStreamBox = document.querySelector('#overview-recent-stream-box');
     if (overviewStreamBox && topReq && topReq.model) {
       const timeStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--';
