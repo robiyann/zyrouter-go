@@ -120,3 +120,17 @@ func TestHandleModels_IncludesActiveNoAuthProviderWithoutConnection(t *testing.T
 		t.Fatal("expected active OpenCode no-auth model without a connection row")
 	}
 }
+
+func TestValidateRequestPolicy_AllowsProviderAliasForCanonicalModel(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	restrictions := `{"allowedModels":["opencode/mimo-v2.5-free"],"allowedProviders":["opencode"]}`
+	key := &models.APIKey{ID: "alias-key", Key: "sk-alias-key", IsActive: 1, Restrictions: &restrictions}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
+	h := NewChatHandler(db.NewRepo(database))
+	info := &ModelInfo{Provider: "opencode", Model: "mimo-v2.5-free"}
+	if err := h.validateRequestPolicy(req, "oc/mimo-v2.5-free", info); err != nil {
+		t.Fatalf("canonical model should allow provider alias: %v", err)
+	}
+}

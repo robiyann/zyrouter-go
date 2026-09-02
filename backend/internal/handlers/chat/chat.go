@@ -214,7 +214,14 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	}
 
 	validateOne := func(requestedModel string, modelInfo *ModelInfo) error {
-		modelAllowed := key.IsModelAllowed(modelInfo.Model)
+		// Evaluate the canonical provider/model route first. This keeps an
+		// allowlist such as opencode/mimo-v2.5-free compatible with the client
+		// alias oc/mimo-v2.5-free without weakening provider restrictions.
+		canonicalModel := modelInfo.Provider + "/" + modelInfo.Model
+		modelAllowed := key.IsModelAllowed(canonicalModel)
+		if !modelAllowed {
+			modelAllowed = key.IsModelAllowed(modelInfo.Model)
+		}
 		if !modelAllowed && requestedModel != modelInfo.Model {
 			modelAllowed = key.IsModelAllowed(requestedModel)
 		}

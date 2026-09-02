@@ -2599,3 +2599,9 @@
 - **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`, `[NEW] regression test di zyrouter/backend/internal/handlers/chat/models_limits_test.go`
 - **Deskripsi Perubahan**: Model discovery dan request policy sekarang menerima allowlist provider berdasarkan canonical provider, output prefix, atau connection ID. Sebelumnya API key dengan `allowedProviders:["opencode"]` dapat kehilangan model karena resolver memeriksa `noauth`/connection ID saja.
 - **Validasi**: Regression test provider policy, chat tests, Go vet, dan frontend contract test berhasil.
+
+### [2026-09-02] - [Codex] - Alias Model terhadap Allowlist Canonical
+- **Modul**: `Auth / Model Policy`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`, `[MOD] zyrouter/backend/internal/handlers/chat/models_limits_test.go`
+- **Deskripsi Perubahan**: API key yang mengizinkan `opencode/mimo-v2.5-free` sekarang juga dapat memakai request alias `oc/mimo-v2.5-free`. Validasi mencoba route canonical provider/model terlebih dahulu sebelum bentuk alias/request mentah.
+- **Validasi**: Regression test alias canonical, chat handler tests, dan Go vet berhasil.
