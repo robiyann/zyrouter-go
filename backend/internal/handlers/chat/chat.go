@@ -225,7 +225,8 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 		if providerTarget == "" {
 			providerTarget = modelInfo.Provider
 		}
-		if providerTarget != "" && !key.IsProviderAllowed(providerTarget) {
+		providerAllowed := providerTarget == "" || key.IsProviderAllowed(providerTarget) || key.IsProviderAllowed(modelInfo.Provider)
+		if !providerAllowed {
 			return fmt.Errorf("%w: '%s'", auth.ErrProviderNotAllowed, providerTarget)
 		}
 		return nil
@@ -351,6 +352,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apiKey := middleware.GetAuthenticatedApiKey(r)
+	connectionProviderMap := make(map[string]string)
 
 	seen := make(map[string]bool)
 	var data []modelObj
@@ -366,7 +368,14 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 			if len(connectionID) > 0 && connectionID[0] != "" {
 				providerTarget = connectionID[0]
 			}
-			if !apiKey.IsModelAllowed(id) || !apiKey.IsProviderAllowed(providerTarget) {
+			providerAllowed := apiKey.IsProviderAllowed(providerTarget)
+			if len(connectionID) > 0 && connectionID[0] != "" {
+				providerAllowed = providerAllowed || apiKey.IsProviderAllowed(owner)
+				if connectionProvider, ok := connectionProviderMap[connectionID[0]]; ok {
+					providerAllowed = providerAllowed || apiKey.IsProviderAllowed(connectionProvider)
+				}
+			}
+			if !apiKey.IsModelAllowed(id) || !providerAllowed {
 				return
 			}
 		}
@@ -443,6 +452,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 
 	conns, _ := h.Repo.GetProviderConnections("", true)
 	for _, conn := range conns {
+		connectionProviderMap[conn.ID] = conn.Provider
 		provLower := strings.ToLower(conn.Provider)
 		if !providers.IsProviderEnabled(provLower) {
 			continue

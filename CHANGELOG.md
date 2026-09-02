@@ -2587,3 +2587,9 @@
 - **Modul**: `Runtime / Deployment`
 - **Validasi**: Menjalankan binary pada port `20129` dengan `FRONTEND_DIR` yang tidak tersedia; server tetap start, `/health` merespons `200`, lalu shutdown graceful.
 - **Deskripsi Perubahan**: Acceptance criterion bahwa Go proxy dapat berjalan tanpa frontend sekarang terverifikasi di runtime Windows.
+
+### [2026-09-02] - [Codex] - Provider Restriction Tidak Lagi Terkunci ke Connection ID
+- **Modul**: `Auth / Model Discovery`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`, `[NEW] regression test di zyrouter/backend/internal/handlers/chat/models_limits_test.go`
+- **Deskripsi Perubahan**: Model discovery dan request policy sekarang menerima allowlist provider berdasarkan canonical provider, output prefix, atau connection ID. Sebelumnya API key dengan `allowedProviders:["opencode"]` dapat kehilangan model karena resolver memeriksa `noauth`/connection ID saja.
+- **Validasi**: Regression test provider policy, chat tests, Go vet, dan frontend contract test berhasil.

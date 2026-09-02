@@ -89,6 +89,23 @@ func TestHandleModels_AllowsModelsForAllowedConnectionID(t *testing.T) {
 	}
 }
 
+func TestHandleModels_AllowsProviderPolicyForConnectionModel(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	restrictions := `{"allowedProviders":["deepseek"]}`
+	if _, err := database.Exec(`INSERT INTO apiKeys (id, key, name, isActive, restrictions, createdAt) VALUES ('provider-key', 'sk-provider-key', 'Provider Key', 1, ?, '2026-07-18T00:00:00Z')`, restrictions); err != nil {
+		t.Fatal(err)
+	}
+	key := &models.APIKey{ID: "provider-key", Key: "sk-provider-key", IsActive: 1, Restrictions: &restrictions}
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
+	rec := httptest.NewRecorder()
+	NewChatHandler(db.NewRepo(database)).HandleModels(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"deepseek/deepseek-chat"`) {
+		t.Fatalf("provider allowlist should include connection model: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleModels_IncludesActiveNoAuthProviderWithoutConnection(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
