@@ -2500,6 +2500,12 @@
 - **File Diubah**: `[MOD] zyrouter/ecosystem.config.cjs`
 - **Deskripsi Perubahan**: Menghapus override `DATA_DIR=./data` dari PM2. Zyrouter sekarang memakai default `~/.9router` di Linux sehingga database, provider, API key, proxy pool, dan password tetap kompatibel dengan 9router original. `DATA_DIR` hanya perlu diisi jika instalasi original memakai lokasi custom.
 
+### [2026-09-02] - [Codex] - Kompatibilitas Password bcrypt 9router
+- **Modul**: `Auth / Compatibility`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/auth/dashboard.go`, `[NEW] zyrouter/backend/internal/auth/dashboard_password_test.go`, `[MOD] zyrouter/backend/go.mod`, `[MOD] zyrouter/backend/go.sum`
+- **Deskripsi Perubahan**: 9router original menyimpan password dashboard dengan bcrypt, sedangkan Zyrouter sebelumnya hanya memeriksa SHA-256/plaintext. Zyrouter sekarang membaca bcrypt dan tetap mempertahankan kompatibilitas hash legacy; password baru juga disimpan dalam format bcrypt.
+- **Validasi**: Test bcrypt/legacy hash dan seluruh `go test ./... -count=1` berhasil.
+
 ### [2026-09-02] - [Codex] - Menutup Loopback API-Key Bypass
 - **Modul**: `Auth / Security`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[NEW] regression test di zyrouter/backend/internal/middleware/auth_test.go`
