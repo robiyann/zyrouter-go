@@ -198,9 +198,13 @@ func (h *AdminHandler) HandleCreateProvider(w http.ResponseWriter, r *http.Reque
 	if conn.AuthType == "" {
 		conn.AuthType = "apikey"
 	}
-	if conn.Priority == nil {
-		p := 10
-		conn.Priority = &p
+	if conn.Name == nil || strings.TrimSpace(*conn.Name) == "" {
+		name := generatedConnectionName(conn.Provider, conn.Email, conn.Data)
+		conn.Name = &name
+	}
+	if conn.Priority == nil || *conn.Priority <= 0 {
+		priority := h.nextProviderPriority(conn.Provider)
+		conn.Priority = &priority
 	}
 	conn.IsActive = 1
 
@@ -209,6 +213,42 @@ func (h *AdminHandler) HandleCreateProvider(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusCreated, conn)
+}
+
+func generatedConnectionName(provider string, email *string, rawData string) string {
+	if email != nil && strings.TrimSpace(*email) != "" {
+		return strings.TrimSpace(*email)
+	}
+	var data map[string]any
+	_ = json.Unmarshal([]byte(rawData), &data)
+	for _, field := range []string{"apiKey", "accessToken", "token", "sessionCookie"} {
+		if value, ok := data[field].(string); ok && strings.TrimSpace(value) != "" {
+			value = strings.TrimSpace(value)
+			suffix := value
+			if len(suffix) > 6 {
+				suffix = suffix[len(suffix)-6:]
+			}
+			return fmt.Sprintf("%s account (%s)", provider, suffix)
+		}
+	}
+	if strings.TrimSpace(provider) != "" {
+		return fmt.Sprintf("%s account", provider)
+	}
+	return "provider account"
+}
+
+func (h *AdminHandler) nextProviderPriority(provider string) int {
+	connections, err := h.repo.GetProviderConnections(provider, false)
+	if err != nil {
+		return 1
+	}
+	next := 1
+	for _, connection := range connections {
+		if connection.Priority != nil && *connection.Priority >= next {
+			next = *connection.Priority + 1
+		}
+	}
+	return next
 }
 
 func (h *AdminHandler) HandleGetProvider(w http.ResponseWriter, r *http.Request) {

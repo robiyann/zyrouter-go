@@ -1,5 +1,15 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-03] - [Codex] - Auto-generate nama dan priority akun provider
+- **Modul**: `Backend / Frontend / Provider Accounts`
+- **File Diubah**: `backend/internal/handlers/admin/admin.go`, `frontend/app.js`
+- **Deskripsi Perubahan**:
+  - Field nama dan priority pada form provider sekarang kosong secara default.
+  - Backend otomatis memakai email sebagai nama; jika tidak ada, nama dibentuk dari provider dan suffix credential yang dimask.
+  - Priority otomatis menjadi angka berikutnya dalam provider yang sama.
+  - Bulk import tidak lagi membuat nama/priority palsu berbasis nomor baris.
+- **Status Task**: Selesai / Terhubung ke TASK-014
+
 ### [2026-09-03] - [Codex] - Pagination akun provider dan strategi proxy universal
 - **Modul**: `Frontend / Proxy Routing`
 - **File Diubah**: `frontend/app.js`, `TASK_BOARD.md`
