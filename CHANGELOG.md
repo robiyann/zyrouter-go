@@ -2595,6 +2595,11 @@
 - **Upstream**: `https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent` atau `streamGenerateContent?alt=sse`, dengan onboarding di `v1internal:loadCodeAssist` dan `v1internal:onboardUser`.
 - **Validasi**: chat handler tests dan Go vet berhasil.
 
+### [2026-09-02] - [Codex] - Observability Upstream Antigravity
+- **Modul**: `Telemetry / Antigravity`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/gemini_handler.go`
+- **Deskripsi Perubahan**: Menambahkan log aman `client_model`, `upstream_model`, `thinking_level`, dan endpoint logical `v1internal` tanpa mencatat OAuth token. Ini membuat verifikasi manual membedakan alias 3.7 dari model upstream yang benar-benar dikirim.
+
 ### [2026-09-02] - [Codex] - Antigravity 3.7 Tiered Upstream Mapping
 - **Modul**: `Translator / Antigravity`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/translator/antigravity.go`, `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`
