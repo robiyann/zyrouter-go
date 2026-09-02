@@ -28,6 +28,20 @@ func (h *ChatHandler) forwardRequest(
 	translateResponse bool,
 	metrics *streamMetrics,
 ) error {
+	return h.forwardRequestWithClient(ctx, w, cfg, apiKey, body, isStream, translateResponse, metrics, h.Client)
+}
+
+func (h *ChatHandler) forwardRequestWithClient(
+	ctx context.Context,
+	w http.ResponseWriter,
+	cfg *providers.ProviderConfig,
+	apiKey string,
+	body []byte,
+	isStream bool,
+	translateResponse bool,
+	metrics *streamMetrics,
+	client *http.Client,
+) error {
 	// OpenAI-compat Gemini endpoints validate tool schemas as strictly as the
 	// native one — sanitize tools so no unsupported JSON-Schema keyword reaches
 	// them ("Invalid tool parameters" fix).
@@ -36,7 +50,7 @@ func (h *ChatHandler) forwardRequest(
 			body = sanitized
 		}
 	}
-	resp, err := internalproxy.ForwardOpenAI(ctx, h.Client, cfg, apiKey, body, isStream)
+	resp, err := internalproxy.ForwardOpenAI(ctx, client, cfg, apiKey, body, isStream)
 	if err != nil {
 		return fmt.Errorf("forward to upstream: %w", err)
 	}

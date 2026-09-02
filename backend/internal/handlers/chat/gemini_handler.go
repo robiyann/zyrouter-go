@@ -30,8 +30,12 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 	body []byte,
 	isStream bool,
 	translateResponse bool,
+	client *http.Client,
 	metrics *streamMetrics,
 ) error {
+	if client == nil {
+		client = h.Client
+	}
 	// Extract model
 	var reqMeta struct {
 		Model string `json:"model"`
@@ -55,7 +59,7 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 	}
 
 	if (provider == "antigravity" || provider == "gemini-cli") && projectID == "" && !projectProbeCached(connectionID) {
-		pid, authFailed, noProject := fetchAntigravityProjectID(ctx, h.Client, apiKey)
+		pid, authFailed, noProject := fetchAntigravityProjectID(ctx, client, apiKey)
 		switch {
 		case pid != "":
 			projectID = pid
@@ -71,7 +75,7 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 				if pid2 != "" {
 					projectID = pid2
 					h.storeAntigravityProjectID(connectionID, pid2)
-				} else if pid2, _, _ := fetchAntigravityProjectID(ctx, h.Client, apiKey); pid2 != "" {
+				} else if pid2, _, _ := fetchAntigravityProjectID(ctx, client, apiKey); pid2 != "" {
 					projectID = pid2
 					h.storeAntigravityProjectID(connectionID, pid2)
 				}
@@ -89,11 +93,11 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 			log.Info("gemini", "generated fallback projectID for antigravity", "conn", connectionID, "projectID", projectID)
 		} else {
 			log.Info("gemini", "no projectID, fallback to OpenAI", "provider", provider)
-			return h.forwardRequest(ctx, w, cfg, apiKey, body, isStream, translateResponse, metrics)
+			return h.forwardRequestWithClient(ctx, w, cfg, apiKey, body, isStream, translateResponse, metrics, client)
 		}
 	}
 	var bodyCloser io.Closer
-	resp, err := proxy.ForwardGemini(ctx, h.Client, cfg, apiKey, string(body), isStream, projectID, modelName)
+	resp, err := proxy.ForwardGemini(ctx, client, cfg, apiKey, string(body), isStream, projectID, modelName)
 	if err != nil {
 		// If upstream returns 401/403 for Antigravity, trigger automatic OAuth refresh and retry once
 		var ue *proxy.UpstreamError
@@ -105,7 +109,7 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 				if pid2 != "" {
 					projectID = pid2
 				}
-				resp2, err2 := proxy.ForwardGemini(ctx, h.Client, cfg, apiKey, string(body), isStream, projectID, modelName)
+				resp2, err2 := proxy.ForwardGemini(ctx, client, cfg, apiKey, string(body), isStream, projectID, modelName)
 				if err2 == nil {
 					resp = resp2
 					err = nil

@@ -2588,6 +2588,13 @@
 - **Validasi**: Menjalankan binary pada port `20129` dengan `FRONTEND_DIR` yang tidak tersedia; server tetap start, `/health` merespons `200`, lalu shutdown graceful.
 - **Deskripsi Perubahan**: Acceptance criterion bahwa Go proxy dapat berjalan tanpa frontend sekarang terverifikasi di runtime Windows.
 
+### [2026-09-02] - [Codex] - Antigravity Mengikuti Proxy Connection
+- **Modul**: `Proxy Routing / Antigravity`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/gemini_handler.go`, `[MOD] zyrouter/backend/internal/handlers/chat/fallback.go`, `[MOD] zyrouter/backend/internal/handlers/chat/forward.go`
+- **Deskripsi Perubahan**: Jalur Gemini-native Antigravity sebelumnya memakai `h.Client` langsung, sehingga proxy pool koneksi diabaikan. Client hasil proxy pool sekarang diteruskan ke onboarding, fallback OpenAI, request `generateContent`, dan retry token.
+- **Upstream**: `https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent` atau `streamGenerateContent?alt=sse`, dengan onboarding di `v1internal:loadCodeAssist` dan `v1internal:onboardUser`.
+- **Validasi**: chat handler tests dan Go vet berhasil.
+
 ### [2026-09-02] - [Codex] - Format Standard Total Token
 - **Modul**: `Frontend / Usage Metrics`
 - **File Diubah**: `[MOD] zyrouter/frontend/app.js`
