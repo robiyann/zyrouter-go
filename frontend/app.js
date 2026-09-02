@@ -5163,24 +5163,26 @@ function parseRestrictionsObject(raw) {
     return { allowedModels: [], allowedPrefixes: [], allowedProviders: [], blockedModels: [], rateLimit: { requestsPerMinute: 0, tokensPerDay: 0 } };
   }
 }
-function getActiveProviderModels(allConnections = [], allBackendModels = []) {
+function getActiveProviderModels(allConnections = [], allBackendModels = [], providerNodes = [], customModels = []) {
   const activeConns = (allConnections || []).filter(isItemActive);
   const activeProviderMap = new Map();
   const allActiveModels = [];
   const suggestedPrefixes = new Set();
+  const nodeMap = new Map((providerNodes || []).map((node) => [String(node.id || '').toLowerCase(), node]));
 
   const ensureProviderGroup = (provId) => {
     if (!provId || activeProviderMap.has(provId)) return activeProviderMap.get(provId);
     const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
+    const node = nodeMap.get(provId);
     // Public/no-auth providers have no providerConnections row, but they are
     // still active routing targets and must appear in policy restrictions.
     if (!cat || (cat.category !== 'free' && cat.authType !== 'noauth')) return null;
     const entry = {
       provId,
-      providerName: cat.name || provId.toUpperCase(),
+      providerName: node?.name || cat?.name || provId.toUpperCase(),
       conns: [],
-      modelSet: new Set(cat.defaultModels || []),
-      routePrefix: provId
+      modelSet: new Set(cat?.defaultModels || []),
+      routePrefix: node?.prefix || provId
     };
     activeProviderMap.set(provId, entry);
     return entry;
@@ -5192,13 +5194,14 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
     if (!provId) return;
 
     if (!activeProviderMap.has(provId)) {
-      const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId) || { id: provId, name: provId.toUpperCase(), defaultModels: [] };
+      const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
+      const node = nodeMap.get(provId);
       activeProviderMap.set(provId, {
         provId,
-        providerName: cat.name || provId.toUpperCase(),
+        providerName: node?.name || cat?.name || provId.toUpperCase(),
         conns: [],
-        modelSet: new Set(cat.defaultModels || []),
-        routePrefix: provId
+        modelSet: new Set(cat?.defaultModels || []),
+        routePrefix: node?.prefix || provId
       });
     }
 
@@ -5213,6 +5216,19 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
       if (d.defaultModel) entry.modelSet.add(d.defaultModel);
       if (Array.isArray(d.customModels)) d.customModels.forEach((cm) => entry.modelSet.add(cm));
     } catch {}
+  });
+
+  // Include models manually registered in the provider detail view. These are
+  // not guaranteed to be returned by the live /models endpoint.
+  (customModels || []).forEach((model) => {
+    const provider = String(model.provider || model.providerId || '').toLowerCase();
+    const alias = String(model.providerAlias || '').toLowerCase();
+    const entry = activeProviderMap.get(provider) || Array.from(activeProviderMap.values()).find((candidate) => {
+      const node = nodeMap.get(candidate.provId);
+      return candidate.provId === provider || String(node?.prefix || '').toLowerCase() === alias || candidate.routePrefix.toLowerCase() === alias;
+    });
+    if (!entry || !model.id) return;
+    entry.modelSet.add(String(model.id).trim());
   });
 
   // 2. Add backend /models matching active providers
@@ -5278,9 +5294,9 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
     suggestedPrefixes: Array.from(suggestedPrefixes)
   };
 }
-function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = []) {
+function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = []) {
   const current = parseRestrictionsObject(item.restrictions);
-  const { activeConnections, groups, allActiveModels, suggestedPrefixes } = getActiveProviderModels(availableProviders, availableModels);
+  const { activeConnections, groups, allActiveModels, suggestedPrefixes } = getActiveProviderModels(availableProviders, availableModels, providerNodes, customModels);
   const uniquePrefixes = Array.from(new Set([...suggestedPrefixes, ...current.allowedPrefixes]));
   const isModelSelected = (model) => current.allowedModels.some((allowed) => {
     const allowedName = String(allowed || '').split('/').pop();
@@ -5454,10 +5470,12 @@ function bindKeyPolicyEditors() {
   document.querySelectorAll('[data-edit-key]').forEach((button) => {
     button.onclick = async () => {
       try {
-        const [keysPayload, provPayload, modelPayload] = await Promise.all([
+        const [keysPayload, provPayload, modelPayload, nodesPayload, customPayload] = await Promise.all([
           request('/api/keys'),
           request('/api/providers').catch(() => ({ connections: [] })),
-          request('/models').catch(() => ({ data: [] }))
+          request('/models').catch(() => ({ data: [] })),
+          request('/api/provider-nodes').catch(() => ({ nodes: [] })),
+          request('/api/custom-models').catch(() => ({ customModels: [] }))
         ]);
         const item = (keysPayload.keys || []).find((k) => k.id === button.dataset.editKey);
         if (!item) throw new Error('API key not found');
@@ -5467,7 +5485,7 @@ function bindKeyPolicyEditors() {
         const existingForm = document.querySelector('#key-policy-form');
         if (existingForm) existingForm.remove();
 
-        content.insertAdjacentHTML('afterbegin', keyPolicyForm(item, false, connections, models));
+        content.insertAdjacentHTML('afterbegin', keyPolicyForm(item, false, connections, models, nodesPayload.nodes || [], customPayload.customModels || []));
         setupPolicyBuilderInteractions(item, false);
       } catch (err) {
         alert(`Failed to open policy editor: ${err.message}`);
@@ -6111,8 +6129,10 @@ function bindComboEditors() {
 function openCreateAliasModal(editAlias = '', editTarget = '') {
   Promise.all([
     request('/api/providers').catch(() => ({ connections: [] })),
-    request('/models').catch(() => ({ data: [] }))
-  ]).then(([provPayload, modelPayload]) => {
+    request('/models').catch(() => ({ data: [] })),
+    request('/api/provider-nodes').catch(() => ({ nodes: [] })),
+    request('/api/custom-models').catch(() => ({ customModels: [] }))
+  ]).then(([provPayload, modelPayload, nodesPayload, customPayload]) => {
     const { allActiveModels } = getActiveProviderModels(provPayload.connections || [], modelPayload.data || []);
     const existing = document.querySelector('[data-create="aliases"]');
     if (existing) existing.remove();
@@ -6346,7 +6366,7 @@ function openCreateKeyModal() {
     const models = (modelPayload.data || []).map((m) => m.id);
     const existingForm = document.querySelector('#key-policy-form');
     if (existingForm) existingForm.remove();
-    content.insertAdjacentHTML('afterbegin', keyPolicyForm({ name: '', isActive: 1, restrictions: '{}' }, true, providers, models));
+    content.insertAdjacentHTML('afterbegin', keyPolicyForm({ name: '', isActive: 1, restrictions: '{}' }, true, providers, models, nodesPayload.nodes || [], customPayload.customModels || []));
     setupPolicyBuilderInteractions({ name: '', isActive: 1, restrictions: '{}' }, true);
   });
 }
