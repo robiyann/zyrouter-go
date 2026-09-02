@@ -47,6 +47,52 @@ func TestGetBestConnection_InheritsProviderProxyStrategy(t *testing.T) {
 	}
 }
 
+func TestGetBestConnection_ProviderProxyOverridesAccountAssignment(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+
+	first, err := repo.InsertProxyPool(db.ProxyPoolData{Name: "provider-proxy-1", ProxyURL: "http://proxy-1.example.com:8080", Type: "http"})
+	if err != nil {
+		t.Fatalf("insert first pool: %v", err)
+	}
+	second, err := repo.InsertProxyPool(db.ProxyPoolData{Name: "provider-proxy-2", ProxyURL: "http://proxy-2.example.com:8080", Type: "http"})
+	if err != nil {
+		t.Fatalf("insert second pool: %v", err)
+	}
+	firstID := first["id"].(string)
+	secondID := second["id"].(string)
+	settings, _ := json.Marshal(map[string]any{"providerStrategies": map[string]any{
+		"opencode": map[string]any{"rotateStrategy": "round-robin"},
+	}})
+	if err := repo.SaveSettings(&models.Setting{ID: 1, Data: string(settings)}); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	if _, err := database.Exec(`INSERT INTO providerConnections (id, provider, authType, name, priority, isActive, data, createdAt, updatedAt) VALUES (?, 'opencode', 'apikey', 'OpenCode', 1, 1, ?, '2026-07-18T00:00:00Z', '2026-07-18T00:00:00Z')`,
+		"opencode-override", `{"apiKey":"test","proxyPoolId":"`+firstID+`"}`); err != nil {
+		t.Fatalf("insert connection: %v", err)
+	}
+
+	h := NewChatHandler(repo)
+	_, firstData, err := h.GetBestConnection("opencode", "opencode-override", nil, "")
+	if err != nil {
+		t.Fatalf("first GetBestConnection failed: %v", err)
+	}
+	_, secondData, err := h.GetBestConnection("opencode", "opencode-override", nil, "")
+	if err != nil {
+		t.Fatalf("second GetBestConnection failed: %v", err)
+	}
+	if firstData.ProxyPoolID == firstID && secondData.ProxyPoolID == firstID {
+		t.Fatalf("provider round-robin did not override account assignment: both requests used %q", firstID)
+	}
+	if firstData.ProxyPoolID != firstID && firstData.ProxyPoolID != secondID {
+		t.Fatalf("unexpected first provider pool: %q", firstData.ProxyPoolID)
+	}
+	if secondData.ProxyPoolID != firstID && secondData.ProxyPoolID != secondID {
+		t.Fatalf("unexpected second provider pool: %q", secondData.ProxyPoolID)
+	}
+}
+
 func TestLogUsage_ReportsResolvedProxyPoolForNoAuth(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()

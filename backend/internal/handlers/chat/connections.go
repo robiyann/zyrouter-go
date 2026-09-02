@@ -160,7 +160,7 @@ func (h *ChatHandler) getBestConnection(provider string, connectionID string, ex
 }
 
 func (h *ChatHandler) applyProviderProxyStrategy(provider string, connData *ConnectionData) {
-	if h.Repo == nil || connData == nil || connData.ProxyPoolID != "" {
+	if h.Repo == nil || connData == nil {
 		return
 	}
 	settings, err := h.Repo.GetSettings()
@@ -179,6 +179,8 @@ func (h *ChatHandler) applyProviderProxyStrategy(provider string, connData *Conn
 		return
 	}
 
+	// A configured provider proxy is authoritative. Account-level assignments
+	// are only used when the provider proxy mode is Direct (no proxy fields).
 	if strategy.RotateStrategy != "" && strategy.RotateStrategy != "none" {
 		pools, err := h.Repo.GetProxyPools()
 		if err != nil {
