@@ -3931,8 +3931,8 @@ function renderKeys(payload) {
               <td><strong>${escapeHtml(item.name || 'Unnamed key')}</strong></td>
               <td>
                 <span class="table-cell-mono" style="display:inline-flex; align-items:center; gap:6px; color:#b3c5a0;">
-                  <span>${escapeHtml(maskKey(item.key))}</span>
-                  ${item.key ? `<button class="model-copy-btn" data-copy-key="${escapeHtml(item.key)}" title="Copy Full API Key">&boxbox;</button>` : ''}
+                  <span>${escapeHtml(item.key || '***')}</span>
+                  ${item.id ? `<button class="model-copy-btn" data-copy-key-id="${escapeHtml(item.id)}" title="Copy Full API Key">&boxbox;</button>` : ''}
                 </span>
               </td>
               <td>
@@ -4869,10 +4869,11 @@ async function renderView(name) {
 }
 
 function bindCopyKeyButtons() {
-  document.querySelectorAll('[data-copy-key]').forEach((btn) => {
+  document.querySelectorAll('[data-copy-key-id]').forEach((btn) => {
     btn.onclick = async () => {
       try {
-        await copyText(btn.dataset.copyKey);
+        const payload = await request(`/api/keys/${encodeURIComponent(btn.dataset.copyKeyId)}/reveal`);
+        await copyText(payload.key);
         const prev = btn.textContent;
         btn.textContent = 'Copied!';
         setTimeout(() => { btn.textContent = prev; }, 1200);

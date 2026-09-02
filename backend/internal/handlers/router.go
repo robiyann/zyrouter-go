@@ -41,6 +41,7 @@ func SetupRoutes(r interface {
 
 	// Admin CRUD & Governance Domain
 	r.Get("/api/keys", adminH.HandleGetKeys)
+	r.Get("/api/keys/{id}/reveal", adminH.HandleRevealKey)
 	r.Post("/api/keys", adminH.HandleCreateKey)
 	r.Put("/api/keys/{id}", adminH.HandleUpdateKey)
 	r.Delete("/api/keys/{id}", adminH.HandleDeleteKey)

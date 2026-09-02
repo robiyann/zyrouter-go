@@ -49,9 +49,36 @@ func (h *AdminHandler) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
 	if keys == nil {
 		keys = []*models.APIKey{}
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-		"keys": keys,
-	})
+	masked := make([]*models.APIKey, 0, len(keys))
+	for _, key := range keys {
+		copy := *key
+		copy.Key = maskAPIKey(key.Key)
+		masked = append(masked, &copy)
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"keys": masked})
+}
+
+// HandleRevealKey returns one full key only when an authenticated admin
+// explicitly requests it for a copy action. List responses never contain it.
+func (h *AdminHandler) HandleRevealKey(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	key, err := h.repo.GetApiKeyByID(id)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if key == nil {
+		handlerutil.WriteJSONError(w, http.StatusNotFound, "API key not found")
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"key": key.Key})
+}
+
+func maskAPIKey(value string) string {
+	if len(value) <= 10 {
+		return "***"
+	}
+	return value[:7] + "..." + value[len(value)-4:]
 }
 
 func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
