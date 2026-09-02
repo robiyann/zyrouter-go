@@ -7,8 +7,8 @@
 
 ## Ringkasan Status
 
-- **Total Tasks**: 14
-- **Done**: 13
+- **Total Tasks**: 15
+- **Done**: 14
 - **In Progress**: 1
 - **Backlog**: 0
 
@@ -48,10 +48,12 @@
 
 ### Fase 4: Testing, Verification & Benchmarking
 - [ ] **[IN PROGRESS - Codex]** `TASK-014`: Pembuatan automated test suite di `zyrouter/tests/` (Unit tests, auth restriction tests, proxy routing E2E test, load test & latency benchmarks).
+- [x] **[DONE - Antigravity]** `TASK-015`: Implementasi Dynamic & Strictly Enforced Single Active Provider Prefix (Option 3), mencegah dual-prefix bypass.
 
 ---
 
 ## 📌 Log Klaim Terkini
+- `2026-09-02`: **Antigravity** menyelesaikan TASK-015: Penegakan single active prefix dinamis (Option 3) di Go engine, mencegah dual-prefix bypass (misal opencode vs oc), menyinkronkan /v1/models, dan menambahkan unit tests.
 - `2026-09-02`: **Codex** memperbaiki `ReferenceError: timeStr is not defined` pada Event Activity Overview yang menghentikan rendering provider nodes Dynamic Mesh Topology.
 - `2026-09-02`: **Codex** menyelaraskan Makefile, Dockerfile, Compose, README, dan task description dengan runtime proxy-first Zyrouter; verifikasi mode tanpa frontend berhasil.
 - `2026-08-31`: **Antigravity** menyelesaikan TASK-001, TASK-002, TASK-003 (Foundation, PRD, Architecture, Database schema, Agent Protocol).

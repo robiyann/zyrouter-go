@@ -47,21 +47,125 @@ func (h *ChatHandler) ResolveModel(modelStr string) (*ModelInfo, error) {
 	return h.resolveModel(modelStr)
 }
 
-// resolveProviderAlias resolves a provider alias/prefix to its canonical ID.
-func (h *ChatHandler) resolveProviderPrefix(prefix string) string {
-	prefixLower := strings.ToLower(strings.TrimSpace(prefix))
+// GetActiveProviderPrefix returns the single active prefix for a given provider.
+// Precedence:
+// 1. Custom prefix in kv table (scope 'providerPrefixes')
+// 2. Connection data prefix (if provided)
+// 3. Default provider alias from CanonicalDefaultAliasMap or canonical provider ID.
+func (h *ChatHandler) GetActiveProviderPrefix(provider string, connData map[string]any) string {
+	provLower := strings.ToLower(strings.TrimSpace(provider))
+	if connData != nil {
+		if p, ok := connData["prefix"].(string); ok && strings.TrimSpace(p) != "" {
+			return strings.TrimSpace(strings.ToLower(p))
+		}
+	}
 	if h.Repo != nil {
 		if prefixes, err := h.Repo.GetProviderPrefixes(); err == nil {
-			for prov, customPref := range prefixes {
-				if strings.ToLower(customPref) == prefixLower {
-					return prov
+			if customPref, ok := prefixes[provLower]; ok && strings.TrimSpace(customPref) != "" {
+				return strings.TrimSpace(strings.ToLower(customPref))
+			}
+		}
+	}
+	return providers.GetDefaultProviderAlias(provLower)
+}
+
+// resolveProviderPrefix resolves a user-supplied prefix string to its canonical provider ID.
+// Under Option 3, this enforces that requestedPrefix MUST match the SINGLE active prefix
+// of the provider. If requestedPrefix does not match the active prefix of the provider
+// (e.g. calling "opencode" when the active prefix is "oc", or "oc" when prefix is "opencode"),
+// resolution fails and returns an empty string.
+func (h *ChatHandler) resolveProviderPrefix(prefix string) string {
+	prefixLower := strings.ToLower(strings.TrimSpace(prefix))
+	if prefixLower == "" {
+		return ""
+	}
+
+	var customPrefixes map[string]string
+	if h.Repo != nil {
+		if cp, err := h.Repo.GetProviderPrefixes(); err == nil {
+			customPrefixes = cp
+		}
+	}
+
+	// 1. Check if prefixLower matches any custom prefix configured in KV
+	for prov, customPref := range customPrefixes {
+		if strings.ToLower(strings.TrimSpace(customPref)) == prefixLower {
+			return prov
+		}
+	}
+
+	// If prefixLower is a canonical provider name that has a custom prefix in KV,
+	// but the custom prefix is different from prefixLower, reject!
+	if customPref, hasCustom := customPrefixes[prefixLower]; hasCustom {
+		if strings.ToLower(strings.TrimSpace(customPref)) != prefixLower {
+			return "" // Rejected: must use the configured custom prefix!
+		}
+	}
+
+	// 2. Check active provider connections with connection-level prefix
+	if h.Repo != nil {
+		if conns, err := h.Repo.GetProviderConnections("", true); err == nil {
+			for _, conn := range conns {
+				var d map[string]any
+				if json.Unmarshal([]byte(conn.Data), &d) == nil {
+					if p, ok := d["prefix"].(string); ok && strings.TrimSpace(p) != "" {
+						if strings.ToLower(strings.TrimSpace(p)) == prefixLower {
+							return conn.Provider
+						}
+					}
 				}
 			}
 		}
 	}
-	if canonical, ok := providers.ProviderAliasMap[prefixLower]; ok {
-		return canonical
+
+	// 3. Check designated default aliases from CanonicalDefaultAliasMap
+	for canon, defaultAlias := range providers.CanonicalDefaultAliasMap {
+		if strings.ToLower(defaultAlias) == prefixLower {
+			// If this provider has an overriding custom prefix in KV, skip
+			if customPref, hasCustom := customPrefixes[canon]; hasCustom {
+				if strings.ToLower(strings.TrimSpace(customPref)) == prefixLower {
+					return canon
+				}
+				continue
+			}
+			return canon
+		}
 	}
+
+	// If prefixLower is a canonical provider with a designated default alias
+	// (e.g. "opencode" with default alias "oc"), but no KV override was set,
+	// reject calling it with the canonical name!
+	if defaultAlias, hasDefault := providers.CanonicalDefaultAliasMap[prefixLower]; hasDefault {
+		if strings.ToLower(defaultAlias) != prefixLower {
+			return "" // Rejected: must use the active alias!
+		}
+	}
+
+	// 4. Check ProviderAliasMap (for other short aliases)
+	if canon, ok := providers.ProviderAliasMap[prefixLower]; ok {
+		if customPref, hasCustom := customPrefixes[canon]; hasCustom {
+			if strings.ToLower(strings.TrimSpace(customPref)) == prefixLower {
+				return canon
+			}
+			return ""
+		}
+		// If canonical provider has a designated default alias that differs, reject
+		if defAlias, hasDef := providers.CanonicalDefaultAliasMap[canon]; hasDef && strings.ToLower(defAlias) != prefixLower {
+			return ""
+		}
+		return canon
+	}
+
+	// 5. Canonical fallback for known providers without default aliases (e.g. "openai", "deepseek", "gemini")
+	if _, ok := providers.KnownProviders[prefixLower]; ok {
+		if customPref, hasCustom := customPrefixes[prefixLower]; hasCustom {
+			if strings.ToLower(strings.TrimSpace(customPref)) != prefixLower {
+				return ""
+			}
+		}
+		return prefixLower
+	}
+
 	return prefixLower
 }
 
@@ -94,6 +198,12 @@ func (h *ChatHandler) resolveModelEntry(entry string) *ModelInfo {
 	}
 	parts := strings.SplitN(entry, "/", 2)
 	provider := h.resolveProviderPrefix(parts[0])
+	if provider == "" {
+		if info := h.resolvePrefixProvider(parts[0], parts[1]); info != nil {
+			return info
+		}
+		return nil
+	}
 	if _, ok := providers.KnownProviders[provider]; !ok {
 		if info := h.resolvePrefixProvider(provider, parts[1]); info != nil {
 			return info
@@ -161,15 +271,20 @@ func (h *ChatHandler) resolveModel(modelStr string) (*ModelInfo, error) {
 		if strings.Contains(aliasTarget, "/") {
 			parts := strings.SplitN(aliasTarget, "/", 2)
 			provider := h.resolveProviderPrefix(parts[0])
-			if _, ok := providers.KnownProviders[provider]; !ok {
-				if info := h.resolvePrefixProvider(provider, parts[1]); info != nil {
-					return info, nil
+			if provider != "" {
+				if _, ok := providers.KnownProviders[provider]; !ok {
+					if info := h.resolvePrefixProvider(provider, parts[1]); info != nil {
+						return info, nil
+					}
 				}
+				return &ModelInfo{
+					Provider: provider,
+					Model:    parts[1],
+				}, nil
 			}
-			return &ModelInfo{
-				Provider: provider,
-				Model:    parts[1],
-			}, nil
+			if info := h.resolvePrefixProvider(parts[0], parts[1]); info != nil {
+				return info, nil
+			}
 		}
 	}
 
@@ -179,12 +294,18 @@ func (h *ChatHandler) resolveModel(modelStr string) (*ModelInfo, error) {
 		providerAlias := parts[0]
 		model := parts[1]
 		provider := h.resolveProviderPrefix(providerAlias)
-		if _, ok := providers.KnownProviders[provider]; !ok {
-			if info := h.resolvePrefixProvider(provider, model); info != nil {
-				return info, nil
+		if provider != "" {
+			if _, ok := providers.KnownProviders[provider]; !ok {
+				if info := h.resolvePrefixProvider(provider, model); info != nil {
+					return info, nil
+				}
 			}
+			return &ModelInfo{Provider: provider, Model: model}, nil
 		}
-		return &ModelInfo{Provider: provider, Model: model}, nil
+		if info := h.resolvePrefixProvider(providerAlias, model); info != nil {
+			return info, nil
+		}
+		return nil, fmt.Errorf("could not resolve model: %s", modelStr)
 	}
 
 	// 2. Check if it's a model alias (e.g., "gpt-4o" -> "openai/gpt-4o")
@@ -193,15 +314,20 @@ func (h *ChatHandler) resolveModel(modelStr string) (*ModelInfo, error) {
 		if strings.Contains(aliasTarget, "/") {
 			parts := strings.SplitN(aliasTarget, "/", 2)
 			provider := h.resolveProviderPrefix(parts[0])
-			if _, ok := providers.KnownProviders[provider]; !ok {
-				if info := h.resolvePrefixProvider(provider, parts[1]); info != nil {
-					return info, nil
+			if provider != "" {
+				if _, ok := providers.KnownProviders[provider]; !ok {
+					if info := h.resolvePrefixProvider(provider, parts[1]); info != nil {
+						return info, nil
+					}
 				}
+				return &ModelInfo{
+					Provider: provider,
+					Model:    parts[1],
+				}, nil
 			}
-			return &ModelInfo{
-				Provider: provider,
-				Model:    parts[1],
-			}, nil
+			if info := h.resolvePrefixProvider(parts[0], parts[1]); info != nil {
+				return info, nil
+			}
 		}
 	}
 
@@ -236,48 +362,6 @@ func (h *ChatHandler) resolveModel(modelStr string) (*ModelInfo, error) {
 		for _, cm := range customList {
 			if cm.ID == modelStr {
 				return &ModelInfo{Provider: cm.ProviderAlias, Model: modelStr}, nil
-			}
-		}
-	}
-
-	// 5. Check active provider connections matching official model catalogs
-	if activeConns, err := h.Repo.GetProviderConnections("", true); err == nil && len(activeConns) > 0 {
-		for _, conn := range activeConns {
-			provLower := strings.ToLower(conn.Provider)
-			if officialList := providers.GetOfficialModels(provLower); len(officialList) > 0 {
-				for _, m := range officialList {
-					if m == modelStr {
-						return &ModelInfo{Provider: conn.Provider, Model: modelStr, ConnectionID: conn.ID}, nil
-					}
-				}
-			}
-		}
-		// Check custom models in connection data
-		for _, conn := range activeConns {
-			var d map[string]any
-			if json.Unmarshal([]byte(conn.Data), &d) == nil {
-				if defModel, ok := d["defaultModel"].(string); ok && defModel == modelStr {
-					return &ModelInfo{Provider: conn.Provider, Model: modelStr, ConnectionID: conn.ID}, nil
-				}
-				if deployment, ok := d["deployment"].(string); ok && deployment == modelStr {
-					return &ModelInfo{Provider: conn.Provider, Model: modelStr, ConnectionID: conn.ID}, nil
-				}
-				if custModels, ok := d["customModels"].([]any); ok {
-					for _, cm := range custModels {
-						if cms, ok := cm.(string); ok && cms == modelStr {
-							return &ModelInfo{Provider: conn.Provider, Model: modelStr, ConnectionID: conn.ID}, nil
-						}
-					}
-				}
-			}
-		}
-
-		// Fallback: Check if primary providers have active connections
-		for _, provider := range []string{"openai", "anthropic", "antigravity", "codex", "deepseek", "opencode", "gemini"} {
-			for _, conn := range activeConns {
-				if strings.ToLower(conn.Provider) == provider {
-					return &ModelInfo{Provider: conn.Provider, Model: modelStr, ConnectionID: conn.ID}, nil
-				}
 			}
 		}
 	}

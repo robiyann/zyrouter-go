@@ -116,15 +116,15 @@ func TestHandleModels_IncludesActiveNoAuthProviderWithoutConnection(t *testing.T
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"id":"opencode/mimo-v2.5-free"`) {
-		t.Fatal("expected active OpenCode no-auth model without a connection row")
+	if !strings.Contains(rec.Body.String(), `"id":"oc/mimo-v2.5-free"`) {
+		t.Fatalf("expected active OpenCode no-auth model with oc prefix, got %s", rec.Body.String())
 	}
 }
 
 func TestValidateRequestPolicy_AllowsProviderAliasForCanonicalModel(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
-	restrictions := `{"allowedModels":["opencode/mimo-v2.5-free"],"allowedProviders":["opencode"]}`
+	restrictions := `{"allowedModels":["oc/mimo-v2.5-free"],"allowedProviders":["opencode"]}`
 	key := &models.APIKey{ID: "alias-key", Key: "sk-alias-key", IsActive: 1, Restrictions: &restrictions}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))

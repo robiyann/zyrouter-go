@@ -108,7 +108,7 @@ func TestChatRequestRateLimitReturns429(t *testing.T) {
 	}
 	restrictions := `{"rateLimit":{"requestsPerMinute":1}}`
 	key := &models.APIKey{Key: "limited-key", IsActive: 1, Restrictions: &restrictions}
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek-chat","messages":[{"role":"user","content":"hello"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}]}`))
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 	rec := httptest.NewRecorder()
 	NewChatHandler(db.NewRepo(database)).HandleChatCompletions(rec, req)

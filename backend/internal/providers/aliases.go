@@ -1,5 +1,7 @@
 package providers
 
+import "strings"
+
 // ProviderAliasMap maps short aliases to canonical provider IDs.
 var ProviderAliasMap = map[string]string{
 	"aai":            "assemblyai",
@@ -93,4 +95,29 @@ func ResolveAlias(alias string) string {
 		return canonical
 	}
 	return alias
+}
+
+// CanonicalDefaultAliasMap maps canonical provider IDs to their primary default alias.
+var CanonicalDefaultAliasMap = map[string]string{
+	"opencode":         "oc",
+	"opencode-go":      "ocg",
+	"antigravity":      "ag",
+	"codex":            "cx",
+	"github":           "gh",
+	"claude":           "cc",
+	"kiro":             "kr",
+	"qoder":            "qd",
+	"mimo-free":        "mmf",
+	"xiaomi-mimo":      "mimo",
+}
+
+// GetDefaultProviderAlias returns the default routing prefix alias for a canonical provider.
+// If the canonical provider has a designated default alias, that alias is returned.
+// Otherwise, it returns the canonical provider ID itself.
+func GetDefaultProviderAlias(canonical string) string {
+	cLower := strings.ToLower(strings.TrimSpace(canonical))
+	if alias, ok := CanonicalDefaultAliasMap[cLower]; ok {
+		return alias
+	}
+	return cLower
 }

@@ -205,11 +205,14 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	}
 
 	validateOne := func(requestedModel string, modelInfo *ModelInfo) error {
-		// Evaluate the canonical provider/model route first. This keeps an
-		// allowlist such as opencode/mimo-v2.5-free compatible with the client
-		// alias oc/mimo-v2.5-free without weakening provider restrictions.
-		canonicalModel := modelInfo.Provider + "/" + modelInfo.Model
-		modelAllowed := key.IsModelAllowed(canonicalModel)
+		// Evaluate the active prefix route first, then canonical model
+		activePrefix := h.GetActiveProviderPrefix(modelInfo.Provider, nil)
+		activeModel := activePrefix + "/" + modelInfo.Model
+		modelAllowed := key.IsModelAllowed(activeModel)
+		if !modelAllowed {
+			canonicalModel := modelInfo.Provider + "/" + modelInfo.Model
+			modelAllowed = key.IsModelAllowed(canonicalModel)
+		}
 		if !modelAllowed {
 			modelAllowed = key.IsModelAllowed(modelInfo.Model)
 		}
@@ -432,16 +435,8 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 		if p, ok := customPrefixes[provLower]; ok && p != "" {
 			return p
 		}
-		// Canonical provider aliases (e.g. github -> copilot)
-		if canonical, ok := providers.ProviderAliasMap[provLower]; ok && canonical != "" {
-			return canonical
-		}
-		switch provLower {
-		case "github":
-			return "copilot"
-		default:
-			return provLower
-		}
+		// Return designated default alias (e.g. opencode -> oc, antigravity -> ag)
+		return providers.GetDefaultProviderAlias(provLower)
 	}
 
 	// 3. Process Active Provider Connections (isActive == 1)
@@ -467,19 +462,19 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 			activeProviders["github"] = true
 			activeProviders["copilot"] = true
 			activeProviders["gh"] = true
-			activePrefixes["copilot"] = true
+			activePrefixes[outputAlias] = true
 		} else if provLower == "antigravity" {
 			activeProviders["antigravity"] = true
 			activeProviders["ag"] = true
-			activePrefixes["antigravity"] = true
+			activePrefixes[outputAlias] = true
 		} else if provLower == "codex" {
 			activeProviders["codex"] = true
 			activeProviders["cx"] = true
-			activePrefixes["codex"] = true
+			activePrefixes[outputAlias] = true
 		} else if provLower == "opencode" {
 			activeProviders["opencode"] = true
 			activeProviders["opencode-go"] = true
-			activePrefixes["opencode"] = true
+			activePrefixes[outputAlias] = true
 		}
 
 		// Add official models for this active provider (strictly with outputAlias prefix)

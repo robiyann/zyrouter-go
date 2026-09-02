@@ -173,19 +173,17 @@ func TestResolvePrefixProvider_UnknownPrefixReturnsNil(t *testing.T) {
 	}
 }
 
-func TestResolveModel_CommonProviderFallback(t *testing.T) {
+func TestResolveModel_BareModelWithoutPrefix_IsRejected(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
 	repo := db.NewRepo(database)
 	h := NewChatHandler(repo)
 
-	// "deepseek-chat" has no slash/alias/combo, but deepseek has a seeded connection.
-	info, err := h.resolveModel("deepseek-chat")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if info.Provider != "deepseek" || info.Model != "deepseek-chat" {
-		t.Errorf("expected deepseek/deepseek-chat via common-provider fallback, got %s/%s", info.Provider, info.Model)
+	// "deepseek-chat" has no slash/alias/combo. Even though deepseek has a seeded connection,
+	// bare models without prefixes must fail closed.
+	_, err := h.resolveModel("deepseek-chat")
+	if err == nil {
+		t.Fatal("expected bare model without prefix to be rejected")
 	}
 }
 
@@ -361,6 +359,82 @@ func TestResolveModel_UnresolvableReturnsError(t *testing.T) {
 	_, err := h.resolveModel("gemini-unknown-model")
 	if err == nil {
 		t.Error("expected error for unresolvable model with no connections")
+	}
+}
+
+func TestOption3_OpenCode_DefaultPrefix_AllowsOc_RejectsOpenCode(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	h := NewChatHandler(repo)
+
+	// Default active prefix for opencode is "oc"
+	info, err := h.resolveModel("oc/mimo-v2.5-free")
+	if err != nil {
+		t.Fatalf("expected oc/mimo-v2.5-free to resolve successfully, got: %v", err)
+	}
+	if info.Provider != "opencode" || info.Model != "mimo-v2.5-free" {
+		t.Errorf("expected opencode/mimo-v2.5-free, got %s/%s", info.Provider, info.Model)
+	}
+
+	// Calling with unconfigured canonical prefix "opencode" MUST fail (no dual-calling)
+	_, err = h.resolveModel("opencode/mimo-v2.5-free")
+	if err == nil {
+		t.Fatalf("expected opencode/mimo-v2.5-free to be rejected when active prefix is 'oc'")
+	}
+}
+
+func TestOption3_DynamicPrefixChange_AllowsConfigured_RejectsOld(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	h := NewChatHandler(repo)
+
+	// Admin dynamically updates opencode prefix in DB to "opencode"
+	if err := repo.SetProviderPrefix("opencode", "opencode"); err != nil {
+		t.Fatalf("failed to set provider prefix: %v", err)
+	}
+
+	// Now "opencode/mimo-v2.5-free" MUST resolve
+	info, err := h.resolveModel("opencode/mimo-v2.5-free")
+	if err != nil {
+		t.Fatalf("expected opencode/mimo-v2.5-free to resolve after setting prefix, got: %v", err)
+	}
+	if info.Provider != "opencode" || info.Model != "mimo-v2.5-free" {
+		t.Errorf("expected opencode/mimo-v2.5-free, got %s/%s", info.Provider, info.Model)
+	}
+
+	// Old default alias "oc" MUST now be rejected
+	_, err = h.resolveModel("oc/mimo-v2.5-free")
+	if err == nil {
+		t.Fatalf("expected oc/mimo-v2.5-free to be rejected when active prefix is changed to 'opencode'")
+	}
+}
+
+func TestOption3_CustomPrefix_AllowsCustom_RejectsOthers(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	h := NewChatHandler(repo)
+
+	// Admin configures custom prefix "oa" for openai in DB
+	if err := repo.SetProviderPrefix("openai", "oa"); err != nil {
+		t.Fatalf("failed to set provider prefix: %v", err)
+	}
+
+	// "oa/gpt-4o" MUST resolve
+	info, err := h.resolveModel("oa/gpt-4o")
+	if err != nil {
+		t.Fatalf("expected oa/gpt-4o to resolve, got: %v", err)
+	}
+	if info.Provider != "openai" || info.Model != "gpt-4o" {
+		t.Errorf("expected openai/gpt-4o, got %s/%s", info.Provider, info.Model)
+	}
+
+	// Canonical "openai/gpt-4o" MUST now be rejected because active prefix is "oa"
+	_, err = h.resolveModel("openai/gpt-4o")
+	if err == nil {
+		t.Fatalf("expected openai/gpt-4o to be rejected when active prefix is 'oa'")
 	}
 }
 

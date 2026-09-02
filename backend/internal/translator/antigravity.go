@@ -235,6 +235,10 @@ func NormalizeAntigravityModel(model string) (backendModel string, thinkingLevel
 		thinkingLevel = "low"
 	}
 
+	// gemini-3.8-flash models: preserve exact model name without masking to -tiered or older versions
+	if strings.HasPrefix(m, "gemini-3.8-flash") {
+		return m, thinkingLevel
+	}
 	// Keep the client-facing tier aliases separate: Antigravity's 3.7 and 3.6
 	// tiers are distinct upstream model IDs.
 	if strings.HasPrefix(m, "gemini-3.7-flash") {
@@ -268,16 +272,20 @@ func WrapForAntigravity(geminiBody []byte, projectID, rawModelName string) ([]by
 			cleanedReq = cloaked
 		}
 
-		// Inject thinkingConfig for tiered models if not already set (100% 9router parity)
-		if backendModel == "gemini-3.6-flash-tiered" || backendModel == "gemini-3.7-flash-tiered" {
+		// Inject thinkingConfig for tiered/thinking models if not already set (100% 9router parity)
+		if backendModel == "gemini-3.6-flash-tiered" || backendModel == "gemini-3.7-flash-tiered" || strings.HasPrefix(backendModel, "gemini-3.8-flash") {
 			var rawMap map[string]any
 			if json.Unmarshal(geminiBody, &rawMap) == nil && rawMap != nil {
 				genConfig, ok := rawMap["generationConfig"].(map[string]any)
 				if !ok || genConfig == nil {
 					genConfig = make(map[string]any)
 				}
+				tLevel := thinkingLevel
+				if strings.HasPrefix(backendModel, "gemini-3.8-flash") {
+					tLevel = strings.ToUpper(thinkingLevel)
+				}
 				genConfig["thinkingConfig"] = map[string]any{
-					"thinkingLevel":   thinkingLevel,
+					"thinkingLevel":   tLevel,
 					"includeThoughts": true,
 				}
 				rawMap["generationConfig"] = genConfig

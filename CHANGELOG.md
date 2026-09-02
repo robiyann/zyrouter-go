@@ -3,6 +3,76 @@
 > **Catatan Riwayat Perubahan Antar-Agent (Antigravity • ZCode • Codex)**  
 > Format: Wajib mencantumkan timestamp, nama agent, file yang diubah/dibuat, deskripsi lengkap, dan catatan untuk agent lain.
 
+### [2026-09-02 23:33 WIB] - [Antigravity] - Upgrade Antigravity Client User-Agent to 2.11.0 (Unlock Gemini 3.8 Flash)
+- **Modul**: `Backend / Proxy / Gemini / Antigravity Upstream Headers`
+- **File Diubah / Dibuat**:
+  - `[MOD] zyrouter/backend/internal/proxy/gemini.go`
+  - `[MOD] zyrouter/CHANGELOG.md`
+- **Deskripsi Perubahan**:
+  - Mengupdate header upstream `User-Agent` dari versi lawas `antigravity/ide/2.1.1 darwin/arm64` menjadi versi IDE terbaru `antigravity/ide/2.11.0 darwin/arm64`.
+  - Mengatasi akar masalah *Client Version Gate* di mana server upstream Google (`cloudcode-pa.googleapis.com` dan `daily-cloudcode-pa.googleapis.com`) menyembunyikan/menolak model `gemini-3.8-flash-*` dengan error HTTP 404 jika client menggunakan User-Agent versi lama.
+  - Diverifikasi dengan live probe bahwa dengan User-Agent `2.11.0`, request `gemini-3.8-flash-medium` langsung berhasil **100% (HTTP 200 OK)** dan mengembalikan token serta thought stream secara utuh di seluruh akun Antigravity aktif.
+- **Status Task**: Selesai / Terverifikasi Live
+- **Catatan untuk Agent Lain**:
+  - Seluruh akun Google Antigravity di SQLite sekarang dapat memanggil `ag/gemini-3.8-flash-medium`, `ag/gemini-3.8-flash-high`, dan `ag/gemini-3.8-flash-low` tanpa kendala HTTP 404.
+
+### [2026-09-02 23:25 WIB] - [Antigravity] - Add Native Unmasked Gemini 3.8 Flash Support to Antigravity Provider
+- **Modul**: `Backend / Providers / Translator / Antigravity / Catalog`
+- **File Diubah / Dibuat**:
+  - `[MOD] zyrouter/backend/internal/providers/catalog.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/official_models.json`
+  - `[MOD] zyrouter/backend/internal/translator/antigravity.go`
+  - `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`
+  - `[MOD] zyrouter/frontend/app.js`
+  - `[MOD] zyrouter/CHANGELOG.md`
+- **Deskripsi Perubahan**:
+  - Menambahkan dukungan model `gemini-3.8-flash-high`, `gemini-3.8-flash-medium`, `gemini-3.8-flash-low`, dan `gemini-3.8-flash` pada katalog provider `antigravity`.
+  - Menerapkan aturan **Zero Masking**: model `gemini-3.8-flash*` tidak di-rewrite atau dialihkan ke versi 3.7 atau `-tiered`, melainkan diteruskan apa adanya (`passthrough`) sebagai nama model asli di envelope `AntigravityRequest.Model`.
+  - Menyelaraskan injeksi `generationConfig.thinkingConfig` dengan nilai uppercase (`MEDIUM`, `HIGH`, `LOW`) dan `includeThoughts: true` sesuai spesifikasi payload Antigravity agent.
+  - Menambahkan pengujian unit di `antigravity_test.go` dan melakukan live probe ke endpoint upstream Google Antigravity.
+- **Status Task**: Selesai / Siap Digunakan
+- **Catatan untuk Agent Lain**:
+  - Model dapat dipanggil melalui prefix aktif `ag/` (misal `ag/gemini-3.8-flash-medium`).
+  - Hasil live test terhadap endpoint upstream saat ini mengindikasikan status HTTP 404 pada public/daily dogfood tier umum, yang berarti model ini masih berada dalam canary/allowlist tertutup di sisi Google sebelum rollout bertahap. Engine Zyrouter sudah 100% siap me-route secara native saat endpoint tersebut dibuka.
+
+### [2026-09-02 23:15 WIB] - [Antigravity] - Strict Prefix-Only Routing (Remove Bare Model Fallback)
+- **Modul**: `Backend / Routing / Model Resolution / Security`
+- **File Diubah / Dibuat**:
+  - `[MOD] zyrouter/backend/internal/handlers/chat/resolution.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/resolution_test.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/chat_test.go`
+  - `[MOD] zyrouter/CHANGELOG.md`
+- **Deskripsi Perubahan**:
+  - Menghapus Step 5 (*Bare Model Fallback* loop yang mencocokkan model resmi tanpa prefix dan fallback ke primary provider aktif) di `resolveModel()`.
+  - Sekarang pemanggilan model tanpa garis miring (`/`) HANYA diizinkan jika model tersebut terdaftar sebagai model alias di `kv`, nama Combo di tabel `combos`, atau custom model di tabel `customModels`.
+  - Semua model direct lainnya (seperti `deepseek-chat`, `gpt-4o`, `claude-3-5-sonnet`) jika dipanggil tanpa prefix provider yang sah akan langsung ditolak (*fail-closed* dengan error `could not resolve model`).
+  - Memperbarui unit test `TestResolveModel_BareModelWithoutPrefix_IsRejected` untuk memverifikasi penolakan bare model tanpa prefix.
+- **Status Task**: Selesai / Disiplin Routing 100%
+- **Catatan untuk Agent Lain**:
+  - Client harus selalu mengirim request model dengan format `<prefix>/<model>` (misal `ds/deepseek-chat`, `oa/gpt-4o`, `oc/mimo-v2.5-free`), kecuali untuk nama Combo (misal `free-tier`, `fusion-flow`).
+
+### [2026-09-02 23:05 WIB] - [Antigravity] - Enforce Dynamic Single Active Provider Prefix (Option 3)
+- **Modul**: `Backend / Routing / Models / Resolution / Tests`
+- **File Diubah / Dibuat**:
+  - `[MOD] zyrouter/backend/internal/providers/aliases.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/resolution.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/resolution_test.go`
+  - `[MOD] zyrouter/backend/internal/handlers/chat/models_limits_test.go`
+  - `[MOD] zyrouter/TASK_BOARD.md`
+  - `[MOD] zyrouter/CHANGELOG.md`
+- **Deskripsi Perubahan**:
+  - Mengimplementasikan Opsi 3: Single Source of Truth active prefix per provider/koneksi yang dapat dikonfigurasi secara dinamis via database `kv` (`scope = 'providerPrefixes'`) atau connection data.
+  - Memperbaiki bug dual-prefix bypass di mana pemanggilan model sebelumnya bisa dilakukan dengan dua prefix sekaligus (misal `opencode/...` dan `oc/...`).
+  - Menambahkan `CanonicalDefaultAliasMap` dan `GetDefaultProviderAlias(canonical)` pada package `providers` untuk menetapkan default alias resmi (`opencode -> oc`, `antigravity -> ag`, `codex -> cx`, dll.).
+  - Memperketat `resolveProviderPrefix` dan `resolveModel`: pemanggilan di luar active prefix yang sah langsung ditolak (*fail-closed*).
+  - Menyelaraskan `getOutputAlias` pada `/v1/models` agar mengekspos ID model yang konsisten dengan active prefix (`oc/mimo-v2.5-free`).
+  - Menambahkan unit tests komprehensif (`TestOption3_*`) yang memverifikasi isolasi prefix default, penolakan pemanggilan canonical yang tidak dikonfigurasi, dan fleksibilitas perubahan prefix dinamis lewat database.
+- **Status Task**: Selesai / Terhubung ke TASK-015
+- **Catatan untuk Agent Lain**:
+  - Endpoint `/v1/models` sekarang mengekspos prefix default `oc/` untuk provider OpenCode. Jika admin ingin menggunakan prefix `opencode/`, cukup update prefix via endpoint `/api/provider-prefixes` atau modal konfigurasi di dashboard.
+  - Seluruh unit tests, static vet, build binary, frontend syntax, dan contract test lulus 100%.
+
 ### [2026-09-02 14:25 WIB] - [Codex] - Fix Allowed Connection Model Discovery
 - **Modul**: `Backend / Models / Client Policy / Dev Smoke Test`
 - **File Diubah / Dibuat**:
