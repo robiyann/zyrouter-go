@@ -18,6 +18,7 @@ const content = document.querySelector('#generic-content');
 const apiBase = window.ZYROUTER_API_BASE || '';
 let activeStream = null;
 let dashboardAuthenticated = false;
+const providerAccountPages = new Map();
 function hasDashboardAccess() {
   return dashboardAuthenticated || Boolean(getAuthToken());
 }
@@ -1896,6 +1897,15 @@ async function renderProviderDetail(provId) {
     });
 
     const modelsList = Array.from(modelSet);
+    const accountPageSize = 10;
+    const accountPageCount = Math.max(1, Math.ceil(conns.length / accountPageSize));
+    const accountPage = Math.min(providerAccountPages.get(provId) || 1, accountPageCount);
+    providerAccountPages.set(provId, accountPage);
+    const accountOffset = (accountPage - 1) * accountPageSize;
+    const visibleConns = conns.slice(accountOffset, accountOffset + accountPageSize);
+    const providerProxyMode = providerStrategy.rotateStrategy && providerStrategy.rotateStrategy !== 'none'
+      ? providerStrategy.rotateStrategy
+      : (providerStrategy.proxyPoolId ? 'fixed' : 'direct');
     content.innerHTML = `
       <div class="provider-detail-container">
         <div class="provider-detail-header card">
@@ -2035,13 +2045,33 @@ async function renderProviderDetail(provId) {
                 </div>
               ` : ''}
 
+              <div class="bulk-proxy-bar" style="background:#080b10; border:1px solid var(--line); border-radius:6px; padding:8px 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <span class="kicker" style="font-size:8px;">PROVIDER PROXY:</span>
+                <select id="provider-proxy-mode" style="font-size:10px; padding:3px 6px; background:#05070a; border:1px solid var(--line); color:var(--text); border-radius:4px;" title="Default proxy behavior for accounts without an explicit proxy">
+                  <option value="direct" ${providerProxyMode === 'direct' ? 'selected' : ''}>Direct (No Proxy)</option>
+                  <option value="fixed" ${providerProxyMode === 'fixed' ? 'selected' : ''}>One Fixed Proxy Pool</option>
+                  <option value="round-robin" ${providerProxyMode === 'round-robin' ? 'selected' : ''}>Smart Round-Robin (All Active Pools)</option>
+                  <option value="random" ${providerProxyMode === 'random' ? 'selected' : ''}>Smart Random (All Active Pools)</option>
+                </select>
+                <select id="provider-proxy-pool" style="font-size:10px; padding:3px 6px; background:#05070a; border:1px solid var(--line); color:var(--text); border-radius:4px; ${providerProxyMode === 'fixed' ? '' : 'display:none;'}" title="Fixed proxy pool for this provider">
+                  <option value="__none__">Select pool...</option>
+                  ${proxyPools.filter(isItemActive).map((p) => {
+                    const displayName = p.name || p.proxyUrl || p.id;
+                    return `<option value="${escapeHtml(p.id)}" ${p.id === providerStrategy.proxyPoolId ? 'selected' : ''}>${escapeHtml(displayName)} (${escapeHtml((p.type || 'http').toUpperCase())})</option>`;
+                  }).join('')}
+                </select>
+                <button type="button" class="secondary-button" id="btn-save-provider-proxy" style="font-size:9.5px; padding:3px 7px;">Save Provider Proxy</button>
+                <small style="font-size:9px; color:var(--dim);">Default only; an account-specific proxy assignment takes precedence.</small>
+              </div>
+
               <div class="conn-rows-list">
                 ${conns.length === 0 ? `
                   <div class="card generic-empty" style="padding: 24px;">
                     <p>No accounts connected for this provider.</p>
                     <button class="solid-button" data-add-account="${escapeHtml(provId)}" style="margin-top: 10px;">+ Add First Account</button>
                   </div>
-                ` : conns.map((conn, idx) => {
+                ` : visibleConns.map((conn, idx) => {
+                  const absoluteIdx = accountOffset + idx;
                   let parsed = {};
                   try { parsed = typeof conn.data === 'string' ? JSON.parse(conn.data) : (conn.data || {}); } catch {}
                   const hint = parsed.apiKey ? maskKey(parsed.apiKey) : (parsed.baseUrl || conn.email || conn.authType || '--');
@@ -2051,8 +2081,8 @@ async function renderProviderDetail(provId) {
                     <div class="detail-conn-row ${conn.isActive === 1 ? '' : 'inactive-card'}">
                       <div class="conn-left-side">
                         <div class="reorder-btns">
-                          <button class="reorder-btn" data-swap-up="${idx}" ${idx === 0 ? 'disabled style="opacity:0.2"' : ''} title="Move Up">&blacktriangle;</button>
-                          <button class="reorder-btn" data-swap-down="${idx}" ${idx === conns.length - 1 ? 'disabled style="opacity:0.2"' : ''} title="Move Down">&blacktriangledown;</button>
+                          <button class="reorder-btn" data-swap-up="${absoluteIdx}" ${absoluteIdx === 0 ? 'disabled style="opacity:0.2"' : ''} title="Move Up">&blacktriangle;</button>
+                          <button class="reorder-btn" data-swap-down="${absoluteIdx}" ${absoluteIdx === conns.length - 1 ? 'disabled style="opacity:0.2"' : ''} title="Move Down">&blacktriangledown;</button>
                         </div>
                         <div class="conn-main-info">
                           <strong>${escapeHtml(conn.name || conn.id)}</strong>
@@ -2082,6 +2112,16 @@ async function renderProviderDetail(provId) {
                   `;
                 }).join('')}
               </div>
+              ${accountPageCount > 1 ? `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+                  <small style="font:10px var(--mono); color:var(--muted);">Showing ${accountOffset + 1}-${Math.min(accountOffset + accountPageSize, conns.length)} of ${conns.length} accounts</small>
+                  <div style="display:flex; align-items:center; gap:4px;">
+                    <button type="button" class="secondary-button provider-page-btn" data-provider-page="${accountPage - 1}" ${accountPage === 1 ? 'disabled' : ''} style="font-size:9px; padding:3px 7px;">&larr;</button>
+                    <span style="font:10px var(--mono); color:var(--text); padding:0 5px;">Page ${accountPage} / ${accountPageCount}</span>
+                    <button type="button" class="secondary-button provider-page-btn" data-provider-page="${accountPage + 1}" ${accountPage === accountPageCount ? 'disabled' : ''} style="font-size:9px; padding:3px 7px;">&rarr;</button>
+                  </div>
+                </div>
+              ` : ''}
             </div>
           `}
 
@@ -2128,13 +2168,13 @@ async function renderProviderDetail(provId) {
       </div>
     `;
 
-    bindProviderDetailActions(provId, conns, meta, activePrefix);
+    bindProviderDetailActions(provId, conns, meta, activePrefix, accountOffset);
   } catch (err) {
     content.innerHTML = emptySurface(`Error loading provider details: ${err.message}`);
   }
 }
 
-function bindProviderDetailActions(provId, conns, meta, activePrefix = '') {
+function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accountOffset = 0) {
   // Back button
   const backBtn = document.querySelector('#btn-back-to-providers');
   if (backBtn) {
@@ -2143,6 +2183,15 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '') {
       setView('providers');
     };
   }
+  document.querySelectorAll('.provider-page-btn').forEach((btn) => {
+    btn.onclick = () => {
+      const nextPage = Number(btn.dataset.providerPage);
+      if (nextPage >= 1) {
+        providerAccountPages.set(provId, nextPage);
+        renderProviderDetail(provId);
+      }
+    };
+  });
   // Add account button
   document.querySelectorAll('[data-add-account]').forEach((btn) => {
     btn.onclick = () => {
@@ -2430,6 +2479,53 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '') {
   if (provStickyInput) {
     provStickyInput.onchange = async () => {
       await saveProvRoutingStrategy();
+    };
+  }
+
+  // Provider-wide proxy default. Explicit per-account assignments remain higher priority.
+  const providerProxyMode = document.querySelector('#provider-proxy-mode');
+  const providerProxyPool = document.querySelector('#provider-proxy-pool');
+  const saveProviderProxy = document.querySelector('#btn-save-provider-proxy');
+  if (providerProxyMode && providerProxyPool) {
+    providerProxyMode.onchange = () => {
+      providerProxyPool.style.display = providerProxyMode.value === 'fixed' ? '' : 'none';
+    };
+  }
+  if (saveProviderProxy && providerProxyMode && providerProxyPool) {
+    saveProviderProxy.onclick = async () => {
+      saveProviderProxy.disabled = true;
+      const originalText = saveProviderProxy.textContent;
+      saveProviderProxy.textContent = 'Saving...';
+      try {
+        const curSettings = await request('/api/settings').catch(() => ({}));
+        const currentStrategies = curSettings.providerStrategies || {};
+        const override = { ...(currentStrategies[provId] || {}) };
+        const mode = providerProxyMode.value;
+        delete override.rotateStrategy;
+        delete override.proxyPoolId;
+        if (mode === 'fixed') {
+          if (providerProxyPool.value === '__none__') throw new Error('Select an active proxy pool first');
+          override.proxyPoolId = providerProxyPool.value;
+        } else if (mode === 'round-robin' || mode === 'random') {
+          override.rotateStrategy = mode;
+        }
+        const updated = { ...currentStrategies };
+        if (Object.keys(override).length === 0) delete updated[provId];
+        else updated[provId] = override;
+        const response = await fetch(`${apiBase}/api/settings`, {
+          method: 'PUT',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...curSettings, providerStrategies: updated })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        showToast(`Provider proxy mode saved: ${mode}`, 'success');
+        await renderProviderDetail(provId);
+      } catch (err) {
+        showToast(`Provider proxy update failed: ${err.message}`, 'error');
+      } finally {
+        saveProviderProxy.disabled = false;
+        saveProviderProxy.textContent = originalText;
+      }
     };
   }
   // Save Free Node Proxy Settings (OpenCode Zen / Free Providers)

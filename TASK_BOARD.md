@@ -47,7 +47,7 @@
 - [x] **[DONE - Codex]** `TASK-013B`: Integrasi Full Real-time SSE listener toasts & hardening error handling.
 
 ### Fase 4: Testing, Verification & Benchmarking
-- [ ] **[IN PROGRESS - Codex]** `TASK-014`: Pembuatan automated test suite di `zyrouter/tests/` (Unit tests, auth restriction tests, proxy routing E2E test, load test & latency benchmarks).
+- [ ] **[IN PROGRESS - Codex]** `TASK-014`: Pembuatan automated test suite di `zyrouter/tests/` (Unit tests, auth restriction tests, proxy routing E2E test, load test & latency benchmarks). Provider account pagination dan strategi proxy universal sedang dikerjakan.
 - [x] **[DONE - Antigravity]** `TASK-015`: Implementasi Dynamic & Strictly Enforced Single Active Provider Prefix (Option 3), mencegah dual-prefix bypass.
 
 ---

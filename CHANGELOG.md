@@ -1,5 +1,16 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-03] - [Codex] - Pagination akun provider dan strategi proxy universal
+- **Modul**: `Frontend / Proxy Routing`
+- **File Diubah**: `frontend/app.js`, `TASK_BOARD.md`
+- **Deskripsi Perubahan**:
+  - Tampilan akun provider dibatasi maksimal 10 item per halaman dengan kontrol pagination.
+  - Tombol reorder tetap memakai indeks akun global, bukan indeks halaman.
+  - Menambahkan konfigurasi proxy tingkat provider untuk semua provider: direct, satu pool tetap, smart round-robin, atau smart random.
+  - Assignment proxy spesifik akun tetap memiliki prioritas lebih tinggi daripada default provider.
+  - Strategi smart memakai pool aktif; jika pool kosong, router tetap direct sesuai fallback yang sudah ada.
+- **Status Task**: Selesai / Terhubung ke TASK-014
+
 > **Catatan Riwayat Perubahan Antar-Agent (Antigravity • ZCode • Codex)**  
 > Format: Wajib mencantumkan timestamp, nama agent, file yang diubah/dibuat, deskripsi lengkap, dan catatan untuk agent lain.
 
