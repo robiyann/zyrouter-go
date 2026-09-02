@@ -2530,6 +2530,12 @@
 - **Deskripsi Perubahan**: 9router original menyimpan password dashboard dengan bcrypt, sedangkan Zyrouter sebelumnya hanya memeriksa SHA-256/plaintext. Zyrouter sekarang membaca bcrypt dan tetap mempertahankan kompatibilitas hash legacy; password baru juga disimpan dalam format bcrypt.
 - **Validasi**: Test bcrypt/legacy hash dan seluruh `go test ./... -count=1` berhasil.
 
+### [2026-09-02] - [Codex] - Kompatibilitas go.mod dengan VPS
+- **Modul**: `Build / Deployment`
+- **File Diubah**: `[MOD] zyrouter/backend/go.mod`
+- **Deskripsi Perubahan**: Directive Go diubah dari `go 1.26.0` menjadi format kompatibel `go 1.23`. Go 1.26.0 ditolak oleh compiler Go lama di VPS pada tahap parsing sebelum dependency/build berjalan.
+- **Catatan Deployment**: VPS tetap membutuhkan Go `1.23` atau lebih baru; jika `go version` lebih lama, upgrade Go sebelum build.
+
 ### [2026-09-02] - [Codex] - Menutup Loopback API-Key Bypass
 - **Modul**: `Auth / Security`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[NEW] regression test di zyrouter/backend/internal/middleware/auth_test.go`
