@@ -14,6 +14,7 @@ import (
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/middleware"
+	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/providers"
 	"zyrouter/backend/internal/proxy/executor"
 	"zyrouter/backend/internal/tokensaver"
@@ -70,14 +71,41 @@ func (h *ChatHandler) handleAccountFallback(
 
 	var excludeIDs []string
 	var lastErr error
-	for _, c := range allConns {
+	// Resolve the account once through the normal selector. This is important
+	// for provider-level round-robin: the old loop pinned every attempt to the
+	// priority-ordered account list, so successful requests stayed on account 1.
+	orderedConns := allConns
+	var preferredID string
+	var preferredData *ConnectionData
+	if selected, selectedData, selectErr := h.getBestConnection(provider, "", nil, model); selectErr == nil && selected != nil && selectedData != nil {
+		if apiKey == nil || apiKey.IsProviderAllowed(selected.ID) {
+			preferredID = selected.ID
+			preferredData = selectedData
+			orderedConns = make([]*models.ProviderConnection, 0, len(allConns))
+			orderedConns = append(orderedConns, selected)
+			for _, c := range allConns {
+				if c.ID != selected.ID {
+					orderedConns = append(orderedConns, c)
+				}
+			}
+		}
+	}
+
+	for _, c := range orderedConns {
 		if slices.Contains(excludeIDs, c.ID) {
 			continue
 		}
 		if apiKey != nil && !apiKey.IsProviderAllowed(c.ID) {
 			continue
 		}
-		connObj, connData, err := h.getBestConnection(provider, c.ID, nil, model)
+		connObj := c
+		var connData *ConnectionData
+		var err error
+		if c.ID == preferredID {
+			connData = preferredData
+		} else {
+			connObj, connData, err = h.getBestConnection(provider, c.ID, nil, model)
+		}
 		if err != nil || connObj == nil {
 			continue
 		}

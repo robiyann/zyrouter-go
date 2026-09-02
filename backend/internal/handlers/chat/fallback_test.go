@@ -9,11 +9,13 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"zyrouter/backend/internal/db"
+	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/tokensaver"
 )
 
@@ -87,6 +89,50 @@ func TestApplyTokenSavers_PonytailInjects(t *testing.T) {
 	got := h.applyTokenSavers(body)
 	if !strings.Contains(string(got), tokensaver.PonytailPrompt[:20]) {
 		t.Errorf("expected ponytail prompt injected, got %s", got)
+	}
+}
+
+func TestHandleAccountFallback_RoundRobinRotatesSuccessfulRequests(t *testing.T) {
+	var seenMu sync.Mutex
+	seen := make(map[string]int)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		seenMu.Lock()
+		seen[apiKey]++
+		seenMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"ok","choices":[{"message":{"content":"done"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	if _, err := database.Exec(`DELETE FROM providerConnections WHERE provider = 'deepseek'`); err != nil {
+		t.Fatalf("clear deepseek connections: %v", err)
+	}
+	seedConnDB(t, database, "deepseek", "rr-1", "key-1", srv.URL)
+	seedConnDB(t, database, "deepseek", "rr-2", "key-2", srv.URL)
+	settings, _ := json.Marshal(map[string]any{"providerStrategies": map[string]any{
+		"deepseek": map[string]any{"fallbackStrategy": "round-robin", "stickyRoundRobinLimit": 1},
+	}})
+	if err := db.NewRepo(database).SaveSettings(&models.Setting{ID: 1, Data: string(settings)}); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	h := NewChatHandler(db.NewRepo(database))
+	body := []byte(`{"model":"deepseek-chat","messages":[{"role":"user","content":"hi"}]}`)
+	for i := 0; i < 4; i++ {
+		rec := httptest.NewRecorder()
+		if err := h.handleAccountFallback(context.Background(), rec, "deepseek", "deepseek-chat", "", body, false, false, "/v1/chat/completions"); err != nil {
+			t.Fatalf("request %d failed: %v", i+1, err)
+		}
+	}
+
+	seenMu.Lock()
+	defer seenMu.Unlock()
+	if len(seen) != 2 {
+		t.Fatalf("expected round-robin to use both accounts, saw %v", seen)
 	}
 }
 
