@@ -1,5 +1,14 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-03] - [Codex] - Perbaiki provider custom pada policy API key
+- **Modul**: `Frontend / API Key Restrictions`
+- **File Diubah**: `frontend/app.js`
+- **Deskripsi Perubahan**:
+  - Editor restriction sekarang membaca metadata provider node custom sehingga menampilkan nama `bai`, bukan ID internal panjang.
+  - Model yang ditambahkan manual melalui custom model registry ikut muncul pada pilihan Allowed Models.
+  - Perbaikan berlaku untuk semua provider custom, bukan hanya provider `bai`.
+- **Status Task**: Selesai / Terhubung ke TASK-014
+
 ### [2026-09-03] - [Codex] - Auto-generate nama dan priority akun provider
 - **Modul**: `Backend / Frontend / Provider Accounts`
 - **File Diubah**: `backend/internal/handlers/admin/admin.go`, `frontend/app.js`
