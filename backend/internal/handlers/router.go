@@ -111,6 +111,11 @@ func SetupRoutes(r interface {
 
 	// Proxy Pool Deploy Domain
 	r.Post("/api/proxy-pools/vercel-deploy", deploymentH.HandleVercelDeploy)
+	r.Post("/api/proxy-pools/vercel-deploy/jobs", deploymentH.HandleCreateVercelDeployJob)
+	r.Get("/api/proxy-pools/vercel-deploy/jobs", deploymentH.HandleGetVercelDeployJobs)
+	r.Get("/api/proxy-pools/vercel-deploy/jobs/{id}", deploymentH.HandleGetVercelDeployJob)
+	r.Get("/api/proxy-pools/vercel-deploy/jobs/{id}/stream", deploymentH.HandleVercelDeployJobStream)
+	r.Post("/api/proxy-pools/vercel-deploy/jobs/{id}/cancel", deploymentH.HandleCancelVercelDeployJob)
 	r.Post("/api/proxy-pools/deno-deploy", deploymentH.HandleDenoDeploy)
 	r.Post("/api/proxy-pools/cloudflare-deploy", deploymentH.HandleCloudflareDeploy)
 	r.Post("/proxy-pools/vercel-deploy", deploymentH.HandleVercelDeploy)

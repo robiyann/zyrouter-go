@@ -6165,6 +6165,33 @@ function openCreateKeyModal() {
   });
 }
 
+async function waitForVercelDeployJob(jobId, statusContainer) {
+  const render = (job) => {
+    const done = Number(job.completed || 0) + Number(job.failed || 0);
+    const total = Math.max(Number(job.total || 1), 1);
+    const percent = Math.min(100, Math.round((done / total) * 100));
+    statusContainer.innerHTML = `
+      <div class="deploy-status-box deploy-progress-box">
+        <div class="deploy-progress-head"><strong>Vercel ${escapeHtml(job.status || 'running')}</strong><span>${done} / ${total}</span></div>
+        <div class="deploy-progress-track"><div class="deploy-progress-fill" style="width:${percent}%;"></div></div>
+        <small>${escapeHtml(job.currentProject || 'Preparing next project')} ${job.failed ? `· ${job.failed} failed` : ''}</small>
+      </div>
+    `;
+  };
+
+  while (true) {
+    const response = await fetch(`${apiBase}/api/proxy-pools/vercel-deploy/jobs/${encodeURIComponent(jobId)}`, { headers: getHeaders() });
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job.error?.message || job.error || 'Unable to read deployment job');
+    render(job);
+    if (job.status === 'completed') return;
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      throw new Error(job.lastError || `Vercel deployment job ${job.status}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
 function bindDeployButtons() {
   document.querySelectorAll('[data-deploy]').forEach((button) => {
     button.onclick = () => {
@@ -6223,9 +6250,33 @@ function bindDeployButtons() {
             <p class="form-error" role="alert"></p>
           </form>
         `;
+      } else if (type === 'vercel') {
+        formBody = `
+          <form class="inline-form deploy-form" style="background:#080b10; border:1px solid var(--line); border-radius:6px; padding:14px; margin-top:8px;">
+            <span class="kicker">VERCEL RELAY DEPLOY</span>
+            <div style="display:grid; gap:8px; margin-top:6px;">
+              <label>Vercel Token<input name="apiToken" type="password" placeholder="Vercel personal access token" required /></label>
+              <label>Project Name (Optional)<input name="projectName" placeholder="zyrouter-relay-1" /></label>
+              <label>Deploy Mode<select name="mode"><option value="single">Single project</option><option value="bulk">Bulk projects</option></select></label>
+              <label>Project Count<input name="count" type="number" min="1" max="50" value="1" /></label>
+              <label>Delay Mode<select name="delayMode"><option value="fixed">Fixed delay</option><option value="random">Random delay</option></select></label>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <label>Min Delay (sec)<input name="delayMinSeconds" type="number" min="0" max="3600" value="5" /></label>
+                <label>Max Delay (sec)<input name="delayMaxSeconds" type="number" min="0" max="3600" value="10" /></label>
+              </div>
+            </div>
+            <div class="form-actions" style="margin-top:10px;">
+              <button class="solid-button" type="submit">Deploy to Vercel</button>
+              <button class="cancel-button" type="button">Cancel</button>
+            </div>
+            <div class="deploy-status-container"></div>
+            <p class="form-error" role="alert"></p>
+          </form>
+        `;
       }
-      slot.innerHTML = formBody;
+      slot.innerHTML = `<div class="deploy-modal-backdrop"><div class="deploy-modal" role="dialog" aria-modal="true">${formBody}</div></div>`;
       const form = slot.querySelector('form');
+      if (!form) return;
       const cancelBtn = form.querySelector('.cancel-button');
       const submitBtn = form.querySelector('button[type="submit"]');
       const statusContainer = form.querySelector('.deploy-status-container');
@@ -6242,6 +6293,9 @@ function bindDeployButtons() {
         if (isSubmitting) return; // Anti-spam lock
 
         isSubmitting = true;
+        // Read form values before disabling controls; disabled inputs are
+        // intentionally omitted by FormData.
+        const values = Object.fromEntries(new FormData(form).entries());
         submitBtn.disabled = true;
         cancelBtn.disabled = true;
         form.querySelectorAll('input').forEach((input) => { input.disabled = true; });
@@ -6251,22 +6305,30 @@ function bindDeployButtons() {
         const actionLabel = type === 'custom' ? 'Saving Proxy Pool' : `Deploying to ${type.toUpperCase()}`;
         submitBtn.innerHTML = `<span class="spinner-icon"></span> ${escapeHtml(actionLabel)}...`;
 
-        if (type !== 'custom') {
-          statusContainer.innerHTML = `
-            <div class="deploy-status-box">
-              <span class="spinner-icon"></span>
-              <span>Provisioning & compiling serverless relay on <strong>${type.toUpperCase()}</strong>... Please wait (~5-15s).</span>
-            </div>
-          `;
-        }
+        statusContainer.innerHTML = `
+          <div class="deploy-status-box">
+            <span class="spinner-icon"></span>
+            <span>${type === 'custom' ? 'Validating and saving proxy pool...' : `Provisioning and compiling serverless relay on <strong>${type.toUpperCase()}</strong>... Please wait (~5-15s).`}</span>
+          </div>
+        `;
 
-        const values = Object.fromEntries(new FormData(form).entries());
         try {
           let endpoint = `/api/proxy-pools/${type}-deploy`;
           let bodyPayload = { ...values };
           if (type === 'vercel') {
             bodyPayload.vercelToken = values.apiToken || values.vercelToken || values.token || '';
             bodyPayload.apiToken = bodyPayload.vercelToken;
+            if (values.mode === 'bulk' || Number(values.count || 1) > 1) {
+              endpoint = '/api/proxy-pools/vercel-deploy/jobs';
+              bodyPayload = {
+                vercelToken: bodyPayload.vercelToken,
+                projectName: values.projectName || '',
+                count: Math.min(Math.max(Number(values.count || 1), 1), 50),
+                delayMode: values.delayMode === 'random' ? 'random' : 'fixed',
+                delayMinSeconds: Math.max(Number(values.delayMinSeconds || 0), 0),
+                delayMaxSeconds: Math.max(Number(values.delayMaxSeconds || values.delayMinSeconds || 0), 0)
+              };
+            }
           } else if (type === 'deno') {
             bodyPayload.denoToken = values.apiToken || values.denoToken || values.token || '';
             bodyPayload.apiToken = bodyPayload.denoToken;
@@ -6305,9 +6367,16 @@ function bindDeployButtons() {
           }
           if (!errorMsg) errorMsg = resText || `${response.status} ${response.statusText}`;
           if (!response.ok) throw new Error(errorMsg);
+
+          if (type === 'vercel' && endpoint.endsWith('/jobs')) {
+            const jobId = payload.id || payload.jobId;
+            if (!jobId) throw new Error('Vercel deployment job did not return an ID');
+            await waitForVercelDeployJob(jobId, statusContainer);
+          }
           
           statusContainer.innerHTML = '';
-          slot.innerHTML = `<p class="result-line" style="color:var(--lime); padding:10px 0;"><span class="icon-indicator" style="color:var(--lime);">&#10003;</span> Success: Proxy pool deployed and saved.</p>`;
+          slot.innerHTML = `<p class="result-line" style="color:var(--lime); padding:10px 0;"><span class="icon-indicator" style="color:var(--lime);">&#10003;</span> ${type === 'vercel' && endpoint.endsWith('/jobs') ? 'Bulk Vercel deployment completed.' : 'Proxy pool deployed and saved.'}</p>`;
+          showToast(type === 'vercel' && endpoint.endsWith('/jobs') ? 'Bulk Vercel deployment completed.' : 'Proxy pool deployed and saved.', 'success');
           await renderView('pools');
         } catch (error) {
           statusContainer.innerHTML = '';
@@ -7729,6 +7798,19 @@ document.querySelector('.avatar')?.addEventListener('click', async () => {
   if (confirmed) {
     await fetch(`${apiBase}/api/auth/logout`, { method: 'POST', headers: getHeaders() }).catch(() => {});
     setAuthToken(null);
+    // Lock the current view immediately. The delayed reload is only a
+    // secondary reset; it must not leave private dashboard data visible while
+    // the browser is waiting for navigation.
+    if (globalStreamController) {
+      globalStreamController.abort();
+      globalStreamController = null;
+    }
+    clearTimeout(streamReconnectTimer);
+    if (meshProviderSyncTimer) {
+      clearInterval(meshProviderSyncTimer);
+      meshProviderSyncTimer = null;
+    }
+    renderFullLoginGate();
     showToast('Signed out of dashboard', 'info');
     setTimeout(() => window.location.reload(), 400);
   }

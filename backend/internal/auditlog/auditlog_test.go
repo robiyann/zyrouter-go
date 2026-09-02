@@ -1,6 +1,7 @@
 package auditlog
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,6 +29,7 @@ func TestAuditLogger_RotationAndZeroDeletion(t *testing.T) {
 		Provider: "openai",
 		Model:    "gpt-4o",
 		Status:   "ok",
+		APIKey:   "sk-test-1234567890",
 		ClientRequest: HTTPPayload{
 			Method: "POST",
 			URL:    "/v1/chat/completions",
@@ -59,6 +61,22 @@ func TestAuditLogger_RotationAndZeroDeletion(t *testing.T) {
 	}
 	if len(content) == 0 {
 		t.Fatal("expected non-empty log file")
+	}
+	var persisted map[string]any
+	if err := json.Unmarshal(content[:len(content)-1], &persisted); err != nil {
+		t.Fatalf("compact record is not valid JSON: %v", err)
+	}
+	if persisted["apiKey"] != "sk-test...7890" {
+		t.Fatalf("expected masked API key, got %v", persisted["apiKey"])
+	}
+	if persisted["api"] != nil {
+		t.Fatalf("unexpected endpoint field, got %v", persisted["api"])
+	}
+	if _, exists := persisted["tokens"]; exists {
+		t.Fatal("audit record must not persist token metadata")
+	}
+	if persisted["request"] == nil || persisted["response"] == nil {
+		t.Fatalf("expected request and response training fields, got %v", persisted)
 	}
 
 	_ = filepath.Base(fullPath)

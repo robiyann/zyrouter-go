@@ -2657,6 +2657,84 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: linear-gradient(135deg, rgba(23, 32, 22, 0.5), rgba(16, 23, 28, 0.5));
 }
 
+.deploy-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 4, 7, 0.78);
+  backdrop-filter: blur(8px);
+  animation: deployModalFadeIn 0.16s ease-out;
+}
+
+.deploy-modal {
+  width: min(520px, 100%);
+  max-height: min(88vh, 680px);
+  overflow-y: auto;
+  border: 1px solid rgba(200, 255, 99, 0.3);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(15, 21, 29, 0.98), rgba(6, 9, 14, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.72), 0 0 30px rgba(200, 255, 99, 0.08);
+  animation: deployModalSlideIn 0.18s ease-out;
+}
+
+.deploy-modal .deploy-form {
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.deploy-progress-box {
+  display: grid;
+  gap: 7px;
+  animation: deployProgressPulse 1.8s ease-in-out infinite;
+}
+
+.deploy-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font: 10px var(--mono);
+}
+
+.deploy-progress-head span,
+.deploy-progress-box small {
+  color: var(--muted);
+  font: 9px var(--mono);
+}
+
+.deploy-progress-track {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.deploy-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--lime), var(--emerald));
+  box-shadow: 0 0 12px rgba(200, 255, 99, 0.5);
+  transition: width 0.35s ease;
+}
+
+@keyframes deployProgressPulse {
+  50% { border-color: rgba(200, 255, 99, 0.5); }
+}
+
+@keyframes deployModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes deployModalSlideIn {
+  from { transform: translateY(8px) scale(0.985); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
 .deploy-panel h2 {
   margin: 4px 0 2px;
   font-size: 14px;

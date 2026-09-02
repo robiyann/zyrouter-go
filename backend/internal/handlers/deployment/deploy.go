@@ -21,10 +21,11 @@ import (
 type Handler struct {
 	Repo   *db.Repo
 	Client *http.Client
+	jobs   *vercelJobManager
 }
 
 func NewHandler(repo *db.Repo) *Handler {
-	return &Handler{Repo: repo, Client: &http.Client{Timeout: 0}}
+	return &Handler{Repo: repo, Client: &http.Client{Timeout: 0}, jobs: newVercelJobManager()}
 }
 
 const (

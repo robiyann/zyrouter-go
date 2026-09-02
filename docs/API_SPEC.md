@@ -73,6 +73,13 @@ Semua endpoint berikut memerlukan admin session atau API key non-client.
 - `POST /proxy-pools/cloudflare-deploy` — Deploy proxy ke Cloudflare Worker.
 - `POST /proxy-pools/deno-deploy` — Deploy proxy ke Deno Deploy.
 - `POST /proxy-pools/vercel-deploy` — Deploy proxy ke Vercel Edge.
+- `POST /api/proxy-pools/vercel-deploy/jobs` — Membuat single/bulk Vercel deployment job. Token hanya hidup di memory selama job.
+- `GET /api/proxy-pools/vercel-deploy/jobs` — Daftar job deployment aktif/terakhir di memory proses.
+- `GET /api/proxy-pools/vercel-deploy/jobs/{id}` — Status progress job.
+- `GET /api/proxy-pools/vercel-deploy/jobs/{id}/stream` — SSE progress job.
+- `POST /api/proxy-pools/vercel-deploy/jobs/{id}/cancel` — Membatalkan job berjalan.
+
+Bulk job berjalan sequential dengan batas maksimal 50 project. Delay dapat berupa fixed atau random range. Metadata job tidak menyimpan token Vercel; restart proses akan menghentikan job yang masih berjalan.
 
 ### 3.6. Client Dashboard API (`/api/client/*`)
 Semua endpoint berikut memakai client access token terbitan admin, bukan admin session atau upstream provider key.
@@ -94,6 +101,10 @@ Client tidak dapat mengirim `allowedPrefixes`, `allowedProviders`, atau `allowed
 ---
 
 ## 4. Real-Time Telemetry & SSE Streams
+
+## 4.0. Audit Training Record
+
+Audit JSONL hanya menyimpan field training inti: `request`, `response`, masked `apiKey`, `provider`, `model`, status, dan timestamp. Header, URL upstream, connection ID, timing detail, token metadata, dan payload duplikat tidak dipersist. API key tidak pernah disimpan penuh; request/response masing-masing dibatasi 64 KiB dan diberi suffix `...[truncated]` jika melebihi batas.
 
 ### 4.1. `GET /usage/stream` / `GET /api/usage/stream`
 - **Protocol:** Server-Sent Events (`text/event-stream`)

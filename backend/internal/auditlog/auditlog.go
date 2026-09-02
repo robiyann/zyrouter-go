@@ -18,31 +18,36 @@ const (
 	MaxFileSizeBytes int64 = 50 * 1024 * 1024
 	// ChannelBufferSize allows non-blocking asynchronous log processing.
 	ChannelBufferSize = 4096
+	// MaxTrainingPayloadBytes keeps audit records useful for training without
+	// allowing a single huge prompt/response to dominate the rolling log.
+	MaxTrainingPayloadBytes = 64 * 1024
 )
 
-// AuditEntry captures the complete, unredacted transaction between client, gateway, and upstream AI provider.
+// AuditEntry is the internal transaction shape supplied by the router.
+// writeEntry deliberately serializes only the request/response training data.
 type AuditEntry struct {
-	ID               string              `json:"id"`
-	Timestamp        string              `json:"timestamp"`
-	Endpoint         string              `json:"endpoint"`
-	Provider         string              `json:"provider"`
-	Model            string              `json:"model"`
-	ConnectionID     string              `json:"connectionId"`
-	APIKey           string              `json:"apiKey"`
-	Status           string              `json:"status"`
-	StatusCode       int                 `json:"statusCode"`
-	DurationMs       int64               `json:"durationMs"`
-	TTFTMs           int64               `json:"ttftMs"`
-	ClientRequest    HTTPPayload         `json:"clientRequest"`
-	ProviderRequest  HTTPPayload         `json:"providerRequest"`
-	ProviderResponse HTTPPayload         `json:"providerResponse"`
-	ClientResponse   HTTPPayload         `json:"clientResponse"`
-	Tokens           map[string]int      `json:"tokens,omitempty"`
-	Cost             float64             `json:"cost,omitempty"`
-	Error            string              `json:"error,omitempty"`
+	ID               string         `json:"id"`
+	Timestamp        string         `json:"timestamp"`
+	Endpoint         string         `json:"endpoint"`
+	Provider         string         `json:"provider"`
+	Model            string         `json:"model"`
+	ConnectionID     string         `json:"connectionId"`
+	APIKey           string         `json:"apiKey"`
+	Status           string         `json:"status"`
+	StatusCode       int            `json:"statusCode"`
+	DurationMs       int64          `json:"durationMs"`
+	TTFTMs           int64          `json:"ttftMs"`
+	ClientRequest    HTTPPayload    `json:"clientRequest"`
+	ProviderRequest  HTTPPayload    `json:"providerRequest"`
+	ProviderResponse HTTPPayload    `json:"providerResponse"`
+	ClientResponse   HTTPPayload    `json:"clientResponse"`
+	Tokens           map[string]int `json:"tokens,omitempty"`
+	Cost             float64        `json:"cost,omitempty"`
+	Error            string         `json:"error,omitempty"`
 }
 
-// HTTPPayload contains raw, unredacted headers and body.
+// HTTPPayload is an internal capture shape; headers and URLs are never written
+// to the compact audit JSONL record.
 type HTTPPayload struct {
 	URL     string            `json:"url,omitempty"`
 	Method  string            `json:"method,omitempty"`
@@ -128,7 +133,7 @@ func (l *Logger) worker() {
 }
 
 func (l *Logger) writeEntry(entry *AuditEntry) {
-	data, err := json.Marshal(entry)
+	data, err := json.Marshal(compactRecord(entry))
 	if err != nil {
 		return
 	}
@@ -152,6 +157,57 @@ func (l *Logger) writeEntry(entry *AuditEntry) {
 			l.currentSize += int64(n)
 		}
 	}
+}
+
+// compactAuditRecord is the persisted training-oriented format. Credentials,
+// connection IDs, headers, URLs, timing data, and duplicate response fields
+// are intentionally excluded to keep storage small and avoid secret leakage.
+type compactAuditRecord struct {
+	ID         string `json:"id"`
+	Timestamp  string `json:"timestamp"`
+	APIKey     string `json:"apiKey,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Status     string `json:"status,omitempty"`
+	StatusCode int    `json:"statusCode,omitempty"`
+	Request    string `json:"request,omitempty"`
+	Response   string `json:"response,omitempty"`
+}
+
+func compactRecord(entry *AuditEntry) compactAuditRecord {
+	if entry == nil {
+		return compactAuditRecord{}
+	}
+	request := entry.ClientRequest.Body
+	response := entry.ProviderResponse.Body
+	if response == "" {
+		response = entry.ClientResponse.Body
+	}
+	return compactAuditRecord{
+		ID:         entry.ID,
+		Timestamp:  entry.Timestamp,
+		APIKey:     maskAPIKey(entry.APIKey),
+		Provider:   entry.Provider,
+		Model:      entry.Model,
+		Status:     entry.Status,
+		StatusCode: entry.StatusCode,
+		Request:    truncatePayload(request),
+		Response:   truncatePayload(response),
+	}
+}
+
+func maskAPIKey(value string) string {
+	if len(value) <= 10 {
+		return ""
+	}
+	return value[:7] + "..." + value[len(value)-4:]
+}
+
+func truncatePayload(value string) string {
+	if len(value) <= MaxTrainingPayloadBytes {
+		return value
+	}
+	return value[:MaxTrainingPayloadBytes] + "...[truncated]"
 }
 
 // rotateLocked finds the next sequential file index for today and opens it.
@@ -203,11 +259,11 @@ func (l *Logger) rotateLocked() error {
 
 // LogFileInfo represents metadata about an audit log file.
 type LogFileInfo struct {
-	Filename    string `json:"filename"`
-	SizeBytes   int64  `json:"sizeBytes"`
-	SizeMB      string `json:"sizeMB"`
-	ModTime     string `json:"modTime"`
-	IsActive    bool   `json:"isActive"`
+	Filename  string `json:"filename"`
+	SizeBytes int64  `json:"sizeBytes"`
+	SizeMB    string `json:"sizeMB"`
+	ModTime   string `json:"modTime"`
+	IsActive  bool   `json:"isActive"`
 }
 
 // ListLogFiles returns all historical audit log files ordered by newest first.

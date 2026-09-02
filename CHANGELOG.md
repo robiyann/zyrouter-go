@@ -2495,6 +2495,30 @@
 - **File Diubah**: `[NEW] zyrouter/ecosystem.config.cjs`
 - **Deskripsi Perubahan**: Menambahkan konfigurasi PM2 untuk menjalankan binary Go native tanpa Docker, dengan auto-restart, memory guard, frontend optional, dan data directory lokal.
 
+### [2026-09-02] - [Codex] - Proxy Deployment Modal dan Vercel Form
+- **Modul**: `Frontend / Proxy Pools`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/frontend/styles.css`
+- **Deskripsi Perubahan**:
+  - Menambahkan form deploy Vercel yang sebelumnya belum memiliki branch UI sehingga klik tombol dapat menyebabkan form kosong/error.
+  - Seluruh aksi Custom, Cloudflare, Deno, dan Vercel sekarang tampil dalam modal popup responsive.
+  - Semua aksi menampilkan status spinner/progress sampai request selesai, termasuk penyimpanan custom proxy pool.
+- **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
+
+### [2026-09-02] - [Codex] - Bulk Vercel Background Jobs dan Audit Ringkas
+- **Modul**: `Deployment / Telemetry`
+- **File Diubah**: `[NEW] zyrouter/backend/internal/handlers/deployment/jobs.go`, `[MOD] zyrouter/backend/internal/handlers/deployment/deploy.go`, `[MOD] zyrouter/backend/internal/handlers/router.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/frontend/styles.css`, `[MOD] zyrouter/backend/internal/auditlog/auditlog.go`, `[MOD] zyrouter/docs/API_SPEC.md`
+- **Deskripsi Perubahan**:
+  - Menambahkan single/bulk Vercel deployment job dengan sequential worker, random human-readable project names, fixed/random delay, progress polling/SSE, cancel, dan batas 50 deployment.
+  - Token Vercel hanya disimpan di memory selama job dan tidak masuk SQLite, response job, atau audit log.
+  - Nama bulk sekarang benar-benar acak dari kombinasi dictionary tiga kata tanpa nomor urut; audit JSONL hanya menyimpan request/response training inti, masked API key, provider, model, status, dan timestamp.
+- **Validasi**: `go test ./internal/handlers/deployment ./internal/handlers -count=1`, `go vet ./internal/handlers/deployment ./internal/handlers`, `node --check frontend/app.js`, dan frontend contract test berhasil.
+
+### [2026-09-02] - [Codex] - Fix Token Form Deployment
+- **Modul**: `Frontend / Proxy Pools`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/tests/frontend_contract.test.mjs`
+- **Deskripsi Perubahan**: Token deployment sebelumnya dibaca setelah seluruh input dinonaktifkan. Karena `FormData` mengabaikan input disabled, payload Vercel selalu kosong dan backend mengembalikan `Vercel API token is required`. Nilai form sekarang dibaca sebelum kontrol dinonaktifkan.
+- **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
+
 ### [2026-09-02] - [Codex] - PM2 Memakai Database 9router Bersama
 - **Modul**: `Deployment / Compatibility`
 - **File Diubah**: `[MOD] zyrouter/ecosystem.config.cjs`
@@ -2511,6 +2535,12 @@
 - **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[NEW] regression test di zyrouter/backend/internal/middleware/auth_test.go`
 - **Deskripsi Perubahan**: Request localhost dengan token API yang tidak dikenal sebelumnya mendapat synthetic local key dan dapat melewati restriction. Sekarang hanya request loopback tanpa token yang memperoleh local grant; token yang eksplisit tetapi invalid tetap mendapat `401`.
 - **Validasi Runtime**: Port `20128` setelah restart menghasilkan `invalid key -> 401`, key valid ke `/v1/models -> 200`, dan `/health -> 200`.
+
+### [2026-09-02] - [Codex] - Logout Mengunci View Secara Langsung
+- **Modul**: `Frontend / Session Security`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`
+- **Deskripsi Perubahan**: Logout sekarang langsung menampilkan login gate, menghentikan SSE dan polling mesh, serta menghapus token sebelum reload tertunda. Data provider/view tidak lagi dapat diintip selama menunggu reload atau jika reload tertunda.
+- **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
 
 ### [2026-09-02] - [Codex] - Native Deployment sebagai Target Utama
 - **Modul**: `Docs / Plan`
