@@ -134,3 +134,17 @@ func TestValidateRequestPolicy_AllowsProviderAliasForCanonicalModel(t *testing.T
 		t.Fatalf("canonical model should allow provider alias: %v", err)
 	}
 }
+
+func TestValidateRequestPolicyRejectsCanonicalProviderPrefix(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	restrictions := `{"allowedModels":["opencode/mimo-v2.5-free"],"allowedProviders":["opencode"]}`
+	key := &models.APIKey{ID: "strict-prefix-key", Key: "sk-strict-prefix-key", IsActive: 1, Restrictions: &restrictions}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
+	h := NewChatHandler(db.NewRepo(database))
+	info := &ModelInfo{Provider: "opencode", Model: "mimo-v2.5-free"}
+	if err := h.validateRequestPolicy(req, "opencode/mimo-v2.5-free", info); err == nil {
+		t.Fatal("canonical provider name must not be accepted as the model prefix when active prefix is oc")
+	}
+}

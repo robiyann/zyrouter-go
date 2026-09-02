@@ -205,19 +205,19 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	}
 
 	validateOne := func(requestedModel string, modelInfo *ModelInfo) error {
-		// Evaluate the active prefix route first, then canonical model
+		// Only the provider's single active prefix is valid for model policy.
 		activePrefix := h.GetActiveProviderPrefix(modelInfo.Provider, nil)
 		activeModel := activePrefix + "/" + modelInfo.Model
-		modelAllowed := key.IsModelAllowed(activeModel)
-		if !modelAllowed {
-			canonicalModel := modelInfo.Provider + "/" + modelInfo.Model
-			modelAllowed = key.IsModelAllowed(canonicalModel)
+		requestedPrefix := ""
+		if parts := strings.SplitN(requestedModel, "/", 2); len(parts) == 2 {
+			requestedPrefix = strings.ToLower(strings.TrimSpace(parts[0]))
 		}
-		if !modelAllowed {
-			modelAllowed = key.IsModelAllowed(modelInfo.Model)
+		if requestedPrefix != "" && !strings.EqualFold(requestedPrefix, activePrefix) {
+			return fmt.Errorf("%w: '%s' (use prefix '%s')", auth.ErrModelNotAllowed, requestedModel, activePrefix)
 		}
-		if !modelAllowed && requestedModel != modelInfo.Model {
-			modelAllowed = key.IsModelAllowed(requestedModel)
+		modelAllowed := key.IsModelAllowed(requestedModel)
+		if requestedPrefix == "" {
+			modelAllowed = key.IsModelAllowed(activeModel)
 		}
 		if !modelAllowed {
 			return fmt.Errorf("%w: '%s'", auth.ErrModelNotAllowed, requestedModel)
@@ -227,18 +227,6 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 			providerTarget = modelInfo.Provider
 		}
 		providerAllowed := providerTarget == "" || key.IsProviderAllowed(providerTarget) || key.IsProviderAllowed(modelInfo.Provider)
-		if !providerAllowed {
-			activePrefix := h.GetActiveProviderPrefix(modelInfo.Provider, nil)
-			if activePrefix != "" && key.IsProviderAllowed(activePrefix) {
-				providerAllowed = true
-			}
-		}
-		if !providerAllowed {
-			canon := h.resolveProviderPrefix(providerTarget)
-			if canon != "" && key.IsProviderAllowed(canon) {
-				providerAllowed = true
-			}
-		}
 		if !providerAllowed {
 			return fmt.Errorf("%w: '%s'", auth.ErrProviderNotAllowed, providerTarget)
 		}
@@ -388,46 +376,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 					providerAllowed = providerAllowed || apiKey.IsProviderAllowed(connectionProvider)
 				}
 			}
-			// If owner is an alias (e.g. "oc", "ag"), also check its canonical provider name
-			if !providerAllowed {
-				canonOwner := h.resolveProviderPrefix(owner)
-				if canonOwner != "" && canonOwner != owner && apiKey.IsProviderAllowed(canonOwner) {
-					providerAllowed = true
-				}
-			}
-			// If owner is canonical (e.g. "opencode"), check its active alias prefix
-			if !providerAllowed {
-				activeAlias := h.GetActiveProviderPrefix(owner, nil)
-				if activeAlias != "" && activeAlias != owner && apiKey.IsProviderAllowed(activeAlias) {
-					providerAllowed = true
-				}
-			}
-
-			// Check model permission with alias and canonical normalization
-			modelAllowed := apiKey.IsModelAllowed(id)
-			if !modelAllowed && strings.Contains(id, "/") {
-				parts := strings.SplitN(id, "/", 2)
-				prefix := parts[0]
-				leafModel := parts[1]
-				// 1. Check bare leaf model
-				modelAllowed = apiKey.IsModelAllowed(leafModel)
-				// 2. Check canonical model (e.g. if id is "oc/mimo-v2.5-free", check "opencode/mimo-v2.5-free")
-				if !modelAllowed {
-					canon := h.resolveProviderPrefix(prefix)
-					if canon != "" && canon != prefix {
-						modelAllowed = apiKey.IsModelAllowed(canon + "/" + leafModel)
-					}
-				}
-				// 3. Check active alias model (e.g. if id is "opencode/mimo-v2.5-free", check "oc/mimo-v2.5-free")
-				if !modelAllowed {
-					alias := h.GetActiveProviderPrefix(prefix, nil)
-					if alias != "" && alias != prefix {
-						modelAllowed = apiKey.IsModelAllowed(alias + "/" + leafModel)
-					}
-				}
-			}
-
-			if !modelAllowed || !providerAllowed {
+			if !apiKey.IsModelAllowed(id) || !providerAllowed {
 				return
 			}
 		}
@@ -535,7 +484,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(cleanModel, outputAlias+"/") {
 					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
 				}
-				addModel(outputAlias+"/"+cleanModel, outputAlias, conn.ID)
+				addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
 			}
 		}
 
@@ -546,14 +495,14 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(cleanModel, outputAlias+"/") {
 					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
 				}
-				addModel(outputAlias+"/"+cleanModel, outputAlias, conn.ID)
+				addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
 			}
 			if deployment, ok := connData["deployment"].(string); ok && deployment != "" {
 				cleanModel := deployment
 				if strings.HasPrefix(cleanModel, outputAlias+"/") {
 					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
 				}
-				addModel(outputAlias+"/"+cleanModel, outputAlias, conn.ID)
+				addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
 			}
 			if custModels, ok := connData["customModels"].([]any); ok {
 				for _, cm := range custModels {
@@ -562,7 +511,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 						if strings.HasPrefix(cleanModel, outputAlias+"/") {
 							cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
 						}
-						addModel(outputAlias+"/"+cleanModel, outputAlias, conn.ID)
+						addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
 					}
 				}
 			}
@@ -584,7 +533,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(cleanModel, outputAlias+"/") {
 				cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
 			}
-			addModel(outputAlias+"/"+cleanModel, outputAlias)
+			addModel(outputAlias+"/"+cleanModel, provider)
 		}
 	}
 
@@ -606,7 +555,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 						if strings.HasPrefix(cleanModel, prefix+"/") {
 							cleanModel = strings.TrimPrefix(cleanModel, prefix+"/")
 						}
-						addModel(prefix+"/"+cleanModel, prefix, node.ID)
+						addModel(prefix+"/"+cleanModel, node.ID, node.ID)
 					}
 				}
 			}
@@ -623,7 +572,11 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(cleanModel, outputAlias+"/") {
 					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
 				}
-				addModel(outputAlias+"/"+cleanModel, outputAlias)
+				owner := cm.ProviderAlias
+				if canonical := h.resolveProviderPrefix(cm.ProviderAlias); canonical != "" {
+					owner = canonical
+				}
+				addModel(outputAlias+"/"+cleanModel, owner)
 			}
 		}
 	}

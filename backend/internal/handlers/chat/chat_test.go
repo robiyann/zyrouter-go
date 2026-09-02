@@ -82,19 +82,19 @@ func setupChatTestDB(t *testing.T) (*sql.DB, func()) {
 }
 
 func TestValidateRequestPolicyUsesResolvedConnection(t *testing.T) {
-	restrictions := `{"allowedPrefixes":["ds"],"allowedProviders":["conn-1"]}`
+	restrictions := `{"allowedPrefixes":["deepseek/*"],"allowedProviders":["conn-1"]}`
 	key := &models.APIKey{IsActive: 1, Restrictions: &restrictions}
 	h := NewChatHandler(nil)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 
 	allowed := &ModelInfo{Provider: "deepseek", Model: "deepseek-chat", ConnectionID: "conn-1"}
-	if err := h.validateRequestPolicy(req, "ds/deepseek-chat", allowed); err != nil {
+	if err := h.validateRequestPolicy(req, "deepseek/deepseek-chat", allowed); err != nil {
 		t.Fatalf("expected resolved request to be allowed: %v", err)
 	}
 
 	wrongConnection := &ModelInfo{Provider: "deepseek", Model: "deepseek-chat", ConnectionID: "conn-2"}
-	if err := h.validateRequestPolicy(req, "ds/deepseek-chat", wrongConnection); err == nil {
+	if err := h.validateRequestPolicy(req, "deepseek/deepseek-chat", wrongConnection); err == nil {
 		t.Fatal("expected unlisted connection to be denied")
 	}
 }

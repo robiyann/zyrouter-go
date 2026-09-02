@@ -1,5 +1,24 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-03] - [Codex] - Tolak alias prefix alternatif pada policy runtime
+- **Modul**: `Backend / Auth Policy / Model Resolution`
+- **File Diubah**: `backend/internal/handlers/chat/chat.go`, `backend/internal/handlers/chat/chat_test.go`
+- **Deskripsi Perubahan**:
+  - Nama provider dan prefix model dipisahkan sepenuhnya.
+  - Request harus menggunakan satu active prefix provider yang terdaftar; nama provider canonical atau alias alternatif tidak diharmonisasi otomatis.
+  - `/v1/models` memakai provider ID/nama sebagai `owned_by`, sementara ID model tetap memakai prefix tunggal.
+- **Status Task**: Selesai / Terhubung ke TASK-014
+
+### [2026-09-03] - [Codex] - Tegaskan satu prefix model per provider
+- **Modul**: `Backend / Policy / Model Catalog`
+- **File Diubah**: `backend/internal/handlers/chat/chat.go`
+- **Deskripsi Perubahan**:
+  - Menghapus harmonisasi otomatis antara nama provider dan prefix model.
+  - Policy model sekarang hanya mencocokkan ID dengan active prefix tunggal, misalnya `oc/mimo-v2.5-free`.
+  - `opencode/mimo-v2.5-free` tidak lagi dianggap ekuivalen dengan `oc/mimo-v2.5-free`.
+  - Metadata `owned_by` tetap menggunakan nama/provider ID, sedangkan prefix hanya digunakan pada model ID.
+- **Status Task**: Selesai / Terhubung ke TASK-014
+
 ### [2026-09-03 04:43 WIB] - [Antigravity] - Fix API Key Restrictions Deadlock Detection & Alias Harmonization
 - **Modul**: `Frontend / Backend / API Key Restrictions / Model Resolution`
 - **File Diubah**: `frontend/app.js`, `backend/internal/handlers/chat/chat.go`
