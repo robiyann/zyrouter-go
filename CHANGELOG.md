@@ -2588,6 +2588,12 @@
 - **Validasi**: Menjalankan binary pada port `20129` dengan `FRONTEND_DIR` yang tidak tersedia; server tetap start, `/health` merespons `200`, lalu shutdown graceful.
 - **Deskripsi Perubahan**: Acceptance criterion bahwa Go proxy dapat berjalan tanpa frontend sekarang terverifikasi di runtime Windows.
 
+### [2026-09-02] - [Codex] - Format Standard Total Token
+- **Modul**: `Frontend / Usage Metrics`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`
+- **Deskripsi Perubahan**: Total token sekarang memakai format SI ringkas yang konsisten: ribuan `K`, jutaan `M`, dan miliaran `B`. Contoh `1,560,068,420` tampil sebagai `1.56B`, dengan nilai exact tersedia melalui tooltip.
+- **Validasi**: `node --check frontend/app.js` dan frontend contract test berhasil.
+
 ### [2026-09-02] - [Codex] - Provider Restriction Tidak Lagi Terkunci ke Connection ID
 - **Modul**: `Auth / Model Discovery`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`, `[NEW] regression test di zyrouter/backend/internal/handlers/chat/models_limits_test.go`

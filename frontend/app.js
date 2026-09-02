@@ -101,6 +101,15 @@ function maskKey(value) {
   const key = String(value || '');
   return key.length > 10 ? `${key.slice(0, 7)}...${key.slice(-4)}` : key || '--';
 }
+
+function formatTokenCount(value) {
+  const amount = Number(value) || 0;
+  const absolute = Math.abs(amount);
+  if (absolute >= 1e9) return `${(amount / 1e9).toFixed(absolute >= 1e10 ? 1 : 2)}B`;
+  if (absolute >= 1e6) return `${(amount / 1e6).toFixed(absolute >= 1e7 ? 1 : 2)}M`;
+  if (absolute >= 1e3) return `${(amount / 1e3).toFixed(absolute >= 1e5 ? 1 : 2)}K`;
+  return Math.round(amount).toLocaleString('en-US');
+}
 function emptySurface(message = 'No data connected') {
   return `<div class="card generic-empty"><span class="empty-symbol large">+</span><h2>${escapeHtml(message)}</h2><p>Data on this surface is read from the Go engine and SQLite database.</p></div>`;
 }
@@ -4329,7 +4338,7 @@ function renderUsage(payload) {
           </span>
         </div>
         <div class="usage-metric-body">
-          <div class="usage-metric-val" id="usage-total-tokens">${totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(2)}K` : totalTokens.toLocaleString()}</div>
+          <div class="usage-metric-val" id="usage-total-tokens" title="${totalTokens.toLocaleString('en-US')} tokens">${formatTokenCount(totalTokens)}</div>
           <div class="usage-metric-spark" id="usage-spark-tokens">${renderSparkline(tokenPoints, '#c8ff63')}</div>
         </div>
         <div class="usage-metric-footer">
@@ -7009,7 +7018,8 @@ function bindLogStream() {
         const totalTokEl = document.querySelector('#usage-total-tokens');
         if (totalTokEl) {
           const tt = cachedUsagePayload.totalTokens;
-          totalTokEl.textContent = tt > 1000 ? `${(tt / 1000).toFixed(2)}K` : Number(tt).toLocaleString();
+          totalTokEl.textContent = formatTokenCount(tt);
+          totalTokEl.title = `${Number(tt).toLocaleString('en-US')} tokens`;
         }
 
         const totalCostEl = document.querySelector('#usage-total-cost');
@@ -7259,7 +7269,8 @@ async function loadOverview() {
     // 2. Real Token Usage from SQLite
     const totalTokensEl = document.querySelector('#cost-saved-value');
     if (totalTokensEl) {
-      totalTokensEl.textContent = totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(2)}K` : totalTokens.toLocaleString();
+      totalTokensEl.textContent = formatTokenCount(totalTokens);
+      totalTokensEl.title = `${totalTokens.toLocaleString('en-US')} tokens`;
     }
     const tokenRatioEl = document.querySelector('#tokens-in-out-ratio');
     if (tokenRatioEl) {
@@ -7910,7 +7921,8 @@ startStream('/api/usage/stream', (payload) => {
     const totalTokEl = document.querySelector('#usage-total-tokens');
     if (totalTokEl && cachedUsagePayload) {
       const tt = Number(cachedUsagePayload.totalTokens || 0);
-      totalTokEl.textContent = tt > 1000 ? `${(tt / 1000).toFixed(2)}K` : tt.toLocaleString();
+      totalTokEl.textContent = formatTokenCount(tt);
+      totalTokEl.title = `${tt.toLocaleString('en-US')} tokens`;
     }
 
     const totalCostEl = document.querySelector('#usage-total-cost');
