@@ -2510,6 +2510,12 @@
 - **Deskripsi Perubahan**: Provider publik/no-auth seperti OpenCode kini tetap ditampilkan pada allowlist provider dan `/v1/models` meskipun tidak memiliki baris `providerConnections`. Model aktif OpenCode dapat dipilih untuk restriction API key.
 - **Validasi**: Regression test model no-auth, chat handler tests, Go vet, dan frontend contract test berhasil.
 
+### [2026-09-02] - [Codex] - Normalisasi Model Policy ke Provider Prefix
+- **Modul**: `Frontend / API Key Restrictions`
+- **File Diubah**: `[MOD] zyrouter/frontend/app.js`
+- **Deskripsi Perubahan**: Model catalog di Policy Builder sekarang selalu ditampilkan dalam bentuk canonical `provider/model`. Model catalog provider yang sebelumnya tampil tanpa prefix tidak lagi bercampur dengan route-prefixed models; provider no-auth ditandai sebagai `public / no-auth`.
+- **Validasi**: `node --check frontend/app.js`, frontend contract test, chat handler tests, dan Go vet berhasil.
+
 ### [2026-09-02] - [Codex] - Bulk Vercel Background Jobs dan Audit Ringkas
 - **Modul**: `Deployment / Telemetry`
 - **File Diubah**: `[NEW] zyrouter/backend/internal/handlers/deployment/jobs.go`, `[MOD] zyrouter/backend/internal/handlers/deployment/deploy.go`, `[MOD] zyrouter/backend/internal/handlers/router.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/frontend/styles.css`, `[MOD] zyrouter/backend/internal/auditlog/auditlog.go`, `[MOD] zyrouter/docs/API_SPEC.md`

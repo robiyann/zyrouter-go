@@ -5071,7 +5071,12 @@ function getActiveProviderModels(allConnections = [], allBackendModels = []) {
   // 3. Build distinct provider groups and suggested prefixes
   const groups = [];
   activeProviderMap.forEach((entry, provId) => {
-    const rawModels = Array.from(entry.modelSet);
+    const rawModels = Array.from(entry.modelSet)
+      .map((model) => {
+        const normalized = String(model || '').trim();
+        return normalized && normalized.includes('/') ? normalized : `${provId}/${normalized}`;
+      })
+      .filter(Boolean);
     rawModels.forEach((m) => allActiveModels.push(m));
 
     // Suggested wildcard prefixes for this active provider
@@ -5118,6 +5123,11 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
   const current = parseRestrictionsObject(item.restrictions);
   const { activeConnections, groups, allActiveModels, suggestedPrefixes } = getActiveProviderModels(availableProviders, availableModels);
   const uniquePrefixes = Array.from(new Set([...suggestedPrefixes, ...current.allowedPrefixes]));
+  const isModelSelected = (model) => current.allowedModels.some((allowed) => {
+    const allowedName = String(allowed || '').split('/').pop();
+    const modelName = String(model || '').split('/').pop();
+    return String(allowed).toLowerCase() === String(model).toLowerCase() || allowedName.toLowerCase() === modelName.toLowerCase();
+  });
 
   return `
     <form class="inline-form policy-builder-form" id="key-policy-form" data-key-id="${escapeHtml(item.id || '')}">
@@ -5164,11 +5174,11 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
                 <div class="active-prov-model-group" style="background:#080b10; border:1px solid var(--line-subtle); border-radius:5px; padding:6px 8px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                     <strong style="font-size:10.5px; color:var(--text-bright);">${escapeHtml(grp.providerName)}</strong>
-                    <span style="font-size:8.5px; font-family:var(--mono); color:var(--muted);">${grp.accountCount} active</span>
+                    <span style="font-size:8.5px; font-family:var(--mono); color:var(--muted);">${grp.accountCount > 0 ? `${grp.accountCount} active` : 'public / no-auth'}</span>
                   </div>
                   <div class="quick-chips" style="display:flex; flex-wrap:wrap; gap:3px;">
                     ${grp.models.map((m) => `
-                      <button type="button" class="preset-chip ${current.allowedModels.includes(m) ? 'picked' : ''}" data-add-model="${escapeHtml(m)}">
+                      <button type="button" class="preset-chip ${isModelSelected(m) ? 'picked' : ''}" data-add-model="${escapeHtml(m)}">
                         + ${escapeHtml(m)}
                       </button>
                     `).join('')}
