@@ -13,6 +13,8 @@ for (const endpoint of [
 }
 
 assert.match(app, /Authorization: `Bearer \$\{apiKey\}`/);
+assert.match(app, /async function copyText\(value\)/, 'clipboard compatibility helper is required');
+assert.match(app, /document\.execCommand\('copy'\)/, 'clipboard HTTP fallback is required');
 assert.match(app, /const values = Object\.fromEntries\(new FormData\(form\)\.entries\(\)\);[\s\S]*?submitBtn\.disabled = true;/,
   'deployment form values must be captured before controls are disabled');
 assert.match(app, /Public\/no-auth providers have no providerConnections row/,

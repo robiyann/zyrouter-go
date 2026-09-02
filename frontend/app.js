@@ -36,6 +36,28 @@ const getHeaders = () => {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 };
 
+async function copyText(value) {
+  const text = String(value ?? '');
+  if (!text) throw new Error('Nothing to copy');
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  // Clipboard API is unavailable on plain HTTP VPS origins. Use the browser
+  // compatibility path so model IDs and keys still work without HTTPS.
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  const copied = document.execCommand('copy');
+  area.remove();
+  if (!copied) throw new Error('Clipboard is unavailable in this browser');
+}
+
 const apiKey = getAuthToken();
 const headers = getHeaders();
 
@@ -2267,7 +2289,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '') {
   // Copy Model ID
   document.querySelectorAll('[data-copy-text]').forEach((btn) => {
     btn.onclick = async () => {
-      await navigator.clipboard.writeText(btn.dataset.copyText);
+      await copyText(btn.dataset.copyText);
       const prev = btn.textContent;
       btn.textContent = 'Copied!';
       setTimeout(() => { btn.textContent = prev; }, 1200);
@@ -3273,7 +3295,7 @@ async function openProviderModal(provId = 'openai') {
         const copyBtn = form.querySelector('#btn-copy-github-code');
         if (copyBtn) {
           copyBtn.onclick = async () => {
-            await navigator.clipboard.writeText(data.user_code);
+            await copyText(data.user_code);
             copyBtn.textContent = 'Tersalin!';
             setTimeout(() => { copyBtn.textContent = 'Copy Kode'; }, 1500);
           };
@@ -4836,10 +4858,14 @@ async function renderView(name) {
 function bindCopyKeyButtons() {
   document.querySelectorAll('[data-copy-key]').forEach((btn) => {
     btn.onclick = async () => {
-      await navigator.clipboard.writeText(btn.dataset.copyKey);
-      const prev = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = prev; }, 1200);
+      try {
+        await copyText(btn.dataset.copyKey);
+        const prev = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = prev; }, 1200);
+      } catch (error) {
+        showToast(error.message || 'Copy failed', 'error');
+      }
     };
   });
 }
@@ -7156,7 +7182,7 @@ function openPayloadInspectorDrawer(reqData = {}) {
   const copyBtn = overlay.querySelector('#btn-copy-raw-json');
   if (copyBtn) {
     copyBtn.onclick = async () => {
-      await navigator.clipboard.writeText(JSON.stringify(reqData, null, 2));
+            await copyText(JSON.stringify(reqData, null, 2));
       copyBtn.textContent = 'Copied!';
       setTimeout(() => { copyBtn.textContent = 'Copy JSON'; }, 1500);
     };
