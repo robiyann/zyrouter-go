@@ -2670,6 +2670,12 @@
 - **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/gemini_handler.go`
 - **Deskripsi Perubahan**: Menambahkan log aman `client_model`, `upstream_model`, `thinking_level`, dan endpoint logical `v1internal` tanpa mencatat OAuth token. Ini membuat verifikasi manual membedakan alias 3.7 dari model upstream yang benar-benar dikirim.
 
+### [2026-09-03] - [Codex] - Hardening Auth di Balik Nginx
+- **Modul**: `Security / Reverse Proxy`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[NEW] regression test di zyrouter/backend/internal/middleware/auth_test.go`
+- **Deskripsi Perubahan**: Request publik melalui Nginx sebelumnya terlihat berasal dari `127.0.0.1` karena backend hanya membaca header internal `X-9r-Real-IP`. Akibatnya local loopback grant dapat melewati auth pada API/admin route. Backend sekarang membaca `X-Real-IP` yang ditulis ulang Nginx dan menolak token invalid dari public proxy.
+- **Validasi**: Middleware, auth, handler tests, Go vet, dan frontend contract test berhasil.
+
 ### [2026-09-03] - [Codex] - Bind Native Engine ke Localhost untuk Nginx
 - **Modul**: `Config / Deployment Security`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/config/config.go`, `[MOD] zyrouter/backend/cmd/zyrouter/main.go`, `[MOD] zyrouter/ecosystem.config.cjs`, `[MOD] zyrouter/backend/.env.example`

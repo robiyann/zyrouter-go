@@ -40,6 +40,12 @@ func isLocalRequest(r *http.Request) bool {
 	if r.Header.Get("X-9r-Via-Proxy") != "" {
 		return false
 	}
+	// Nginx (the supported public entrypoint) forwards the original client IP
+	// in X-Real-IP. Without honoring it, every proxied public request appears
+	// to come from 127.0.0.1 and receives the local loopback grant.
+	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		return isLoopbackHost(realIP)
+	}
 	if realIP := r.Header.Get("X-9r-Real-IP"); realIP != "" {
 		return isLoopbackHost(realIP)
 	}

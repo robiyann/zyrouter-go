@@ -196,6 +196,20 @@ func TestRequireApiKey_RejectsUnknownTokenOnLoopback(t *testing.T) {
 	}
 }
 
+func TestIsLocalRequest_UsesForwardedClientIP(t *testing.T) {
+	publicViaNginx := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	publicViaNginx.Header.Set("X-Real-IP", "198.51.100.20")
+	if isLocalRequest(publicViaNginx) {
+		t.Fatal("public request forwarded by Nginx must not receive local loopback access")
+	}
+
+	localViaNginx := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	localViaNginx.Header.Set("X-Real-IP", "127.0.0.1")
+	if !isLocalRequest(localViaNginx) {
+		t.Fatal("loopback client IP should remain local")
+	}
+}
+
 func TestExtractApiKey(t *testing.T) {
 	tests := []struct {
 		name     string
