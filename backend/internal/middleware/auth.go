@@ -49,6 +49,11 @@ func isLocalRequest(r *http.Request) bool {
 	if realIP := r.Header.Get("X-9r-Real-IP"); realIP != "" {
 		return isLoopbackHost(realIP)
 	}
+	// A public hostname must never receive a local grant, even when a reverse
+	// proxy forgets to forward the client IP and RemoteAddr is 127.0.0.1.
+	if !isLoopbackHost(r.Host) {
+		return false
+	}
 	if isLoopbackHost(r.RemoteAddr) {
 		return true
 	}

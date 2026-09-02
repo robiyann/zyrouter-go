@@ -210,6 +210,14 @@ func TestIsLocalRequest_UsesForwardedClientIP(t *testing.T) {
 	}
 }
 
+func TestIsLocalRequest_RejectsPublicHostFromLoopbackProxy(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://panel.zyvenox.tech/v1/models", nil)
+	request.RemoteAddr = "127.0.0.1:8080"
+	if isLocalRequest(request) {
+		t.Fatal("public dashboard host must not receive a loopback grant")
+	}
+}
+
 func TestExtractApiKey(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -2676,6 +2676,12 @@
 - **Deskripsi Perubahan**: Request publik melalui Nginx sebelumnya terlihat berasal dari `127.0.0.1` karena backend hanya membaca header internal `X-9r-Real-IP`. Akibatnya local loopback grant dapat melewati auth pada API/admin route. Backend sekarang membaca `X-Real-IP` yang ditulis ulang Nginx dan menolak token invalid dari public proxy.
 - **Validasi**: Middleware, auth, handler tests, Go vet, dan frontend contract test berhasil.
 
+### [2026-09-03] - [Codex] - Menutup Loopback Grant untuk Public Host
+- **Modul**: `Security / Reverse Proxy`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/middleware/auth.go`, `[MOD] zyrouter/backend/internal/middleware/auth_test.go`
+- **Deskripsi Perubahan**: Local grant sekarang ditolak jika `Host` bukan alamat loopback, bahkan ketika reverse proxy lupa mengirim IP client dan `RemoteAddr` terlihat `127.0.0.1`. Ini menutup bypass auth yang terkonfirmasi pada `panel.zyvenox.tech` dan `api.zyvenox.tech` sebelum patch terbaru dideploy.
+- **Validasi**: Regression test public-host/loopback, middleware tests, auth tests, handler tests, dan Go vet berhasil.
+
 ### [2026-09-03] - [Codex] - Bind Native Engine ke Localhost untuk Nginx
 - **Modul**: `Config / Deployment Security`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/config/config.go`, `[MOD] zyrouter/backend/cmd/zyrouter/main.go`, `[MOD] zyrouter/ecosystem.config.cjs`, `[MOD] zyrouter/backend/.env.example`
