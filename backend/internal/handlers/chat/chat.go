@@ -43,15 +43,6 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing model")
 		return
 	}
-	// Apply the raw request policy before synthetic bypass handling; the
-	// resolved check below adds provider and connection enforcement.
-	if apiKey := middleware.GetAuthenticatedApiKey(r); apiKey != nil {
-		if err := auth.ValidateKeyPolicy(apiKey, reqBody.Model, ""); err != nil {
-			handlerutil.WriteJSONError(w, http.StatusForbidden, fmt.Sprintf("Forbidden: %v", err))
-			return
-		}
-	}
-
 	// Bypass synthetic requests (Claude Code naming, warmup, keepalive)
 	if handleBypassRequest(w, body, reqBody.Model, reqBody.Stream) {
 		return

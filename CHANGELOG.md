@@ -2605,3 +2605,9 @@
 - **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`, `[MOD] zyrouter/backend/internal/handlers/chat/models_limits_test.go`
 - **Deskripsi Perubahan**: API key yang mengizinkan `opencode/mimo-v2.5-free` sekarang juga dapat memakai request alias `oc/mimo-v2.5-free`. Validasi mencoba route canonical provider/model terlebih dahulu sebelum bentuk alias/request mentah.
 - **Validasi**: Regression test alias canonical, chat handler tests, dan Go vet berhasil.
+
+### [2026-09-02] - [Codex] - Validasi Alias Setelah Resolusi Model
+- **Modul**: `Auth / Model Policy`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/chat.go`
+- **Deskripsi Perubahan**: Menghapus validasi whitelist terhadap model mentah sebelum resolver berjalan. Validasi sekarang dilakukan setelah resolusi canonical provider/model, sehingga alias `oc/mimo-v2.5-free` tidak salah ditolak ketika policy menyimpan `opencode/mimo-v2.5-free`.
+- **Validasi**: `go test ./internal/handlers/chat -count=1` dan Go vet berhasil.
