@@ -136,6 +136,36 @@ func TestHandleAccountFallback_RoundRobinRotatesSuccessfulRequests(t *testing.T)
 	}
 }
 
+func TestGetBestConnection_RoundRobinHonorsStickyLimit(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	if _, err := database.Exec(`DELETE FROM providerConnections WHERE provider = 'deepseek'`); err != nil {
+		t.Fatalf("clear deepseek connections: %v", err)
+	}
+	seedConnDB(t, database, "deepseek", "sticky-1", "key-1", "https://upstream.example.com")
+	seedConnDB(t, database, "deepseek", "sticky-2", "key-2", "https://upstream.example.com")
+	settings, _ := json.Marshal(map[string]any{"providerStrategies": map[string]any{
+		"deepseek": map[string]any{"fallbackStrategy": "round-robin", "stickyRoundRobinLimit": 2},
+	}})
+	repo := db.NewRepo(database)
+	if err := repo.SaveSettings(&models.Setting{ID: 1, Data: string(settings)}); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	h := NewChatHandler(repo)
+	selected := make([]string, 0, 4)
+	for i := 0; i < 4; i++ {
+		conn, _, err := h.GetBestConnection("deepseek", "", nil, "deepseek-chat")
+		if err != nil {
+			t.Fatalf("select account %d: %v", i+1, err)
+		}
+		selected = append(selected, conn.ID)
+	}
+	if selected[0] != selected[1] || selected[2] != selected[3] || selected[1] == selected[2] {
+		t.Fatalf("sticky limit 2 was not honored, selected sequence: %v", selected)
+	}
+}
+
 func TestTryForwardWithConnection_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

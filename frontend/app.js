@@ -2047,7 +2047,7 @@ async function renderProviderDetail(provId) {
 
               <div class="bulk-proxy-bar" style="background:#080b10; border:1px solid var(--line); border-radius:6px; padding:8px 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                 <span class="kicker" style="font-size:8px;">PROVIDER PROXY:</span>
-                <select id="provider-proxy-mode" style="font-size:10px; padding:3px 6px; background:#05070a; border:1px solid var(--line); color:var(--text); border-radius:4px;" title="Default proxy behavior for accounts without an explicit proxy">
+                <select id="provider-proxy-mode" style="font-size:10px; padding:3px 6px; background:#05070a; border:1px solid var(--line); color:var(--text); border-radius:4px;" title="Provider proxy overrides account assignments unless set to Direct">
                   <option value="direct" ${providerProxyMode === 'direct' ? 'selected' : ''}>Direct (No Proxy)</option>
                   <option value="fixed" ${providerProxyMode === 'fixed' ? 'selected' : ''}>One Fixed Proxy Pool</option>
                   <option value="round-robin" ${providerProxyMode === 'round-robin' ? 'selected' : ''}>Smart Round-Robin (All Active Pools)</option>
@@ -2061,7 +2061,7 @@ async function renderProviderDetail(provId) {
                   }).join('')}
                 </select>
                 <button type="button" class="secondary-button" id="btn-save-provider-proxy" style="font-size:9.5px; padding:3px 7px;">Save Provider Proxy</button>
-                <small style="font-size:9px; color:var(--dim);">Default only; an account-specific proxy assignment takes precedence.</small>
+                <small style="font-size:9px; color:var(--dim);">Provider setting takes precedence; Direct falls back to the account assignment.</small>
               </div>
 
               <div class="conn-rows-list">
@@ -2482,7 +2482,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
     };
   }
 
-  // Provider-wide proxy default. Explicit per-account assignments remain higher priority.
+  // Provider-wide proxy policy. Non-direct provider modes override account assignments.
   const providerProxyMode = document.querySelector('#provider-proxy-mode');
   const providerProxyPool = document.querySelector('#provider-proxy-pool');
   const saveProviderProxy = document.querySelector('#btn-save-provider-proxy');

@@ -36,6 +36,8 @@ func (h *ChatHandler) handleAccountFallback(
 	endpoint string,
 ) error {
 	apiKey := middleware.GetAuthenticatedApiKeyFromContext(ctx)
+	providerLabel := h.displayProviderLabel(provider)
+	modelLabel := h.displayModelLabel(provider, model)
 	if pinnedConnectionID != "" {
 		if apiKey != nil && !apiKey.IsProviderAllowed(pinnedConnectionID) {
 			return fmt.Errorf("%w: '%s'", auth.ErrProviderNotAllowed, pinnedConnectionID)
@@ -44,12 +46,12 @@ func (h *ChatHandler) handleAccountFallback(
 		if err != nil {
 			return fmt.Errorf("pinned connection %s: %w", pinnedConnectionID, err)
 		}
-		log.Debug("fallback", "pinned", "pinnedConn", pinnedConnectionID, "connObj", connObj.ID)
+		log.Debug("fallback", "pinned", "provider", providerLabel, "model", modelLabel, "pinnedConn", pinnedConnectionID, "connObj", connObj.ID)
 		return h.tryForwardWithConnection(ctx, w, provider, model, connObj.ID, connData, body, isStream, translateResponse, endpoint)
 	}
 
 	if !h.Repo.IsProviderAvailable(provider, model) {
-		log.Warn("fallback", "skip unhealthy", "provider", provider, "model", model)
+		log.Warn("fallback", "skip unhealthy", "provider", providerLabel, "model", modelLabel, "providerId", provider)
 		return fmt.Errorf("provider %s/%s is unhealthy", provider, model)
 	}
 
@@ -118,7 +120,7 @@ func (h *ChatHandler) handleAccountFallback(
 				continue
 			}
 		}
-		log.Info("fallback", "trying connection", "provider", provider, "model", model, "account", c.Name, "email", c.Email, "priority", c.Priority)
+		log.Info("fallback", "trying connection", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", c.Name, "email", c.Email, "priority", c.Priority)
 		if err := h.tryForwardWithConnection(ctx, w, provider, model, c.ID, connData, body, isStream, translateResponse, endpoint); err == nil {
 			return nil
 		} else {
@@ -138,7 +140,7 @@ func (h *ChatHandler) handleAccountFallback(
 				errMsg = fmt.Sprintf("%d upstream error", ue.StatusCode)
 			}
 			h.Repo.LockConnectionModel(connObj.ID, model, cooldownSec, classification.NewBackoffLevel)
-			log.Warn("fallback", "account failed, cycling to next connection", "failed_account", c.Name, "email", c.Email, "provider", provider, "model", model, "status", ue.StatusCode, "cooldown_s", cooldownSec)
+			log.Warn("fallback", "account failed, cycling to next connection", "failed_account", c.Name, "email", c.Email, "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "status", ue.StatusCode, "cooldown_s", cooldownSec)
 			excludeIDs = append(excludeIDs, c.ID)
 			continue
 		}
@@ -188,14 +190,12 @@ func (h *ChatHandler) tryForwardWithConnection(
 		}
 	}
 	// Extract account label, proxy pool, and routing strategy details for observability
-	accountLabel := connectionID
+	providerLabel := h.displayProviderLabel(provider)
+	modelLabel := h.displayModelLabel(provider, model)
+	accountLabel := h.displayAccountLabel(connectionID)
 	if connectionID != "" && h.Repo != nil {
 		if c, err := h.Repo.GetProviderConnectionByID(connectionID); err == nil && c != nil {
-			if c.Name != nil && *c.Name != "" {
-				accountLabel = *c.Name
-			} else if c.Email != nil && *c.Email != "" {
-				accountLabel = *c.Email
-			}
+			accountLabel = h.displayAccountLabel(connectionID)
 		}
 	}
 
@@ -212,23 +212,24 @@ func (h *ChatHandler) tryForwardWithConnection(
 	}
 
 	stratLabel := "fallback"
-	if settings, sErr := h.Repo.GetSettings(); sErr == nil && settings != nil && settings.ProviderStrategies != nil {
-		if strat, ok := settings.ProviderStrategies[provider]; ok && strat.FallbackStrategy != nil && *strat.FallbackStrategy != "" {
-			stratLabel = *strat.FallbackStrategy
+	if strat, ok := h.getProviderStrategy(provider); ok && strat.FallbackStrategy != nil && *strat.FallbackStrategy != "" {
+		stratLabel = *strat.FallbackStrategy
+		if stratLabel == "round-robin" && strat.StickyRoundRobinLimit > 1 {
+			stratLabel = fmt.Sprintf("round-robin (sticky=%d)", strat.StickyRoundRobinLimit)
 		}
 	}
 
-	log.Info("router", "dispatch", "provider", provider, "model", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
+	log.Info("router", "dispatch", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
 
 	pipedBody := h.applyTokenSavers(body)
 	start := time.Now()
 	metrics := &streamMetrics{}
 	var fwdErr error
 
-	usagetracker.GetTracker().TrackPending(model, provider, connectionID, true, false)
+	usagetracker.GetTracker().TrackPending(modelLabel, providerLabel, connectionID, true, false)
 	defer func() {
 		hasErr := fwdErr != nil
-		usagetracker.GetTracker().TrackPending(model, provider, connectionID, false, hasErr)
+		usagetracker.GetTracker().TrackPending(modelLabel, providerLabel, connectionID, false, hasErr)
 	}()
 	httpClient := h.getClientForConnection(connData)
 
@@ -333,8 +334,8 @@ func (h *ChatHandler) tryForwardWithConnection(
 		usagetracker.GetTracker().PushRecent(usagetracker.RecentRequest{
 			ID:               reqID,
 			Timestamp:        now.Format(time.RFC3339),
-			Model:            model,
-			Provider:         provider,
+			Model:            modelLabel,
+			Provider:         providerLabel,
 			Account:          accountLabel,
 			Proxy:            proxyLabel,
 			Strategy:         stratLabel,
@@ -347,7 +348,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 
 		// Record in SQLite requestDetails
 		reqData, _ := json.Marshal(map[string]any{
-			"id": reqID, "provider": provider, "model": model,
+			"id": reqID, "provider": providerLabel, "providerId": provider, "model": modelLabel, "modelId": model,
 			"connectionId": connectionID, "account": accountLabel,
 			"proxy": proxyLabel, "strategy": stratLabel, "status": "error",
 			"statusCode": statusCode,

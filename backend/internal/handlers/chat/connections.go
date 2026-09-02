@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"zyrouter/backend/internal/constants"
+	"zyrouter/backend/internal/db"
+	"zyrouter/backend/internal/labels"
 	"zyrouter/backend/internal/log"
 	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/providers"
@@ -114,26 +116,27 @@ func (h *ChatHandler) getBestConnection(provider string, connectionID string, ex
 		}
 
 		// Check if provider has a specific routing/fallback strategy override (e.g. round-robin)
-		settings, _ := h.Repo.GetSettings()
-		if settings != nil && settings.ProviderStrategies != nil {
-			if strat, ok := settings.ProviderStrategies[provider]; ok && strat.FallbackStrategy != nil && *strat.FallbackStrategy == "round-robin" && len(available) > 1 {
-				limit := strat.StickyRoundRobinLimit
-				if limit <= 0 {
-					limit = 1
-				}
-				// Rotate connection selection across accounts
-				var connIDs []string
+		if strat, ok := h.getProviderStrategy(provider); ok && strat.FallbackStrategy != nil && *strat.FallbackStrategy == "round-robin" && len(available) > 1 {
+			limit := strat.StickyRoundRobinLimit
+			if limit <= 0 {
+				limit = 1
+			}
+			// Rotate connection selection across accounts
+			var connIDs []string
+			for _, a := range available {
+				connIDs = append(connIDs, a.ID)
+			}
+			strategyName := "round-robin"
+			if limit > 1 {
+				strategyName = "sticky"
+			}
+			rotatedIDs := h.applyComboStrategy(strategyName, connIDs, "prov-acc-"+provider, limit, true)
+			if len(rotatedIDs) > 0 {
+				targetID := rotatedIDs[0]
 				for _, a := range available {
-					connIDs = append(connIDs, a.ID)
-				}
-				rotatedIDs := h.applyComboStrategy("round-robin", connIDs, "prov-acc-"+provider, limit, true)
-				if len(rotatedIDs) > 0 {
-					targetID := rotatedIDs[0]
-					for _, a := range available {
-						if a.ID == targetID {
-							conn = a
-							break
-						}
+					if a.ID == targetID {
+						conn = a
+						break
 					}
 				}
 			}
@@ -163,18 +166,7 @@ func (h *ChatHandler) applyProviderProxyStrategy(provider string, connData *Conn
 	if h.Repo == nil || connData == nil {
 		return
 	}
-	settings, err := h.Repo.GetSettings()
-	if err != nil || settings == nil {
-		return
-	}
-	strategy, ok := settings.ProviderStrategies[provider]
-	if !ok {
-		canonical := provider
-		if mapped, exists := providers.ProviderAliasMap[strings.ToLower(provider)]; exists {
-			canonical = mapped
-		}
-		strategy, ok = settings.ProviderStrategies[canonical]
-	}
+	strategy, ok := h.getProviderStrategy(provider)
 	if !ok {
 		return
 	}
@@ -202,6 +194,53 @@ func (h *ChatHandler) applyProviderProxyStrategy(provider string, connData *Conn
 	if strategy.ProxyPoolID != "" && strategy.ProxyPoolID != "__none__" {
 		connData.ProxyPoolID = strategy.ProxyPoolID
 	}
+}
+
+func (h *ChatHandler) getProviderStrategy(provider string) (db.ProviderStrategy, bool) {
+	if h.Repo == nil {
+		return db.ProviderStrategy{}, false
+	}
+	settings, err := h.Repo.GetSettings()
+	if err != nil || settings == nil || settings.ProviderStrategies == nil {
+		return db.ProviderStrategy{}, false
+	}
+	if strategy, ok := settings.ProviderStrategies[provider]; ok {
+		return strategy, true
+	}
+	canonical := provider
+	if mapped, exists := providers.ProviderAliasMap[strings.ToLower(provider)]; exists {
+		canonical = mapped
+	}
+	strategy, ok := settings.ProviderStrategies[canonical]
+	return strategy, ok
+}
+
+func (h *ChatHandler) displayProviderLabel(provider string) string {
+	return labels.Provider(h.Repo, provider)
+}
+
+func (h *ChatHandler) displayModelLabel(provider, model string) string {
+	return labels.Model(h.Repo, provider, model)
+}
+
+func (h *ChatHandler) displayAccountLabel(connectionID string) string {
+	if connectionID == "" || connectionID == "noauth" || connectionID == "default" {
+		return "Public"
+	}
+	if h.Repo != nil {
+		if conn, err := h.Repo.GetProviderConnectionByID(connectionID); err == nil && conn != nil {
+			if conn.Name != nil && strings.TrimSpace(*conn.Name) != "" {
+				return strings.TrimSpace(*conn.Name)
+			}
+			if conn.Email != nil && strings.TrimSpace(*conn.Email) != "" {
+				return strings.TrimSpace(*conn.Email)
+			}
+		}
+	}
+	if len(connectionID) > 8 {
+		return "Account " + connectionID[:8] + "..."
+	}
+	return "Account " + connectionID
 }
 
 // GetProviderConfig returns the upstream configuration for a provider.

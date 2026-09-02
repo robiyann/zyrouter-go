@@ -55,11 +55,13 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	totalTokens := usage.PromptTokens + usage.CompletionTokens
 	cost := pricing.EstimateCost(info.Model, usage.PromptTokens, usage.CompletionTokens)
 	metaJSON := fmt.Sprintf(`{"provider":"%s","model":"%s","connectionId":"%s"}`, info.Provider, info.Model, info.ConnectionID)
+	providerLabel := h.displayProviderLabel(info.Provider)
+	modelLabel := h.displayModelLabel(info.Provider, info.Model)
 
 	cachedTokens := usage.GetCachedTokens()
 	cacheCreationTokens := usage.CacheCreationInputTokens
 
-	log.Info("router", "success", "provider", info.Provider, "model", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
+	log.Info("router", "success", "provider", providerLabel, "providerId", info.Provider, "model", modelLabel, "modelId", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
 	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
 	if err := h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, maskAPIKey(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON); err != nil {
 		log.Error("usage", "insert failed", "error", err)
@@ -69,7 +71,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	reqID := fmt.Sprintf("%d-%s", now.UnixMilli(), info.Model)
 	reqMsgs := extractRequestMessages(requestBody)
 
-	accountLabel := info.ConnectionID
+	accountLabel := h.displayAccountLabel(info.ConnectionID)
 	proxyLabel := "Direct"
 	stratLabel := "fallback"
 	if info.ProxyPoolID != "" && info.ProxyPoolID != "__none__" {
@@ -85,11 +87,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 
 	if info.ConnectionID != "" && h.Repo != nil {
 		if c, err := h.Repo.GetProviderConnectionByID(info.ConnectionID); err == nil && c != nil {
-			if c.Name != nil && *c.Name != "" {
-				accountLabel = *c.Name
-			} else if c.Email != nil && *c.Email != "" {
-				accountLabel = *c.Email
-			}
+			accountLabel = h.displayAccountLabel(info.ConnectionID)
 			var cData map[string]any
 			if proxyLabel == "Direct" && json.Unmarshal([]byte(c.Data), &cData) == nil {
 				if poolID, ok := cData["proxyPoolId"].(string); ok && poolID != "" && poolID != "__none__" {
@@ -106,14 +104,15 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		}
 	}
 
-	if settings, sErr := h.Repo.GetSettings(); sErr == nil && settings != nil && settings.ProviderStrategies != nil {
-		if strat, ok := settings.ProviderStrategies[info.Provider]; ok && strat.FallbackStrategy != nil && *strat.FallbackStrategy != "" {
-			stratLabel = *strat.FallbackStrategy
+	if strat, ok := h.getProviderStrategy(info.Provider); ok && strat.FallbackStrategy != nil && *strat.FallbackStrategy != "" {
+		stratLabel = *strat.FallbackStrategy
+		if stratLabel == "round-robin" && strat.StickyRoundRobinLimit > 1 {
+			stratLabel = fmt.Sprintf("round-robin (sticky=%d)", strat.StickyRoundRobinLimit)
 		}
 	}
 
 	reqData, err := json.Marshal(map[string]any{
-		"id": reqID, "provider": info.Provider, "model": info.Model,
+		"id": reqID, "provider": providerLabel, "providerId": info.Provider, "model": modelLabel, "modelId": info.Model,
 		"connectionId": info.ConnectionID, "account": accountLabel,
 		"proxy": proxyLabel, "strategy": stratLabel, "status": "success",
 		"timestamp": now.Format("2006-01-02T15:04:05.000Z"),
@@ -168,8 +167,8 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	usagetracker.GetTracker().PushRecent(usagetracker.RecentRequest{
 		ID:               reqID,
 		Timestamp:        now.Format(time.RFC3339),
-		Model:            info.Model,
-		Provider:         info.Provider,
+		Model:            modelLabel,
+		Provider:         providerLabel,
 		Account:          accountLabel,
 		Proxy:            proxyLabel,
 		Strategy:         stratLabel,

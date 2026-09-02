@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"zyrouter/backend/internal/db"
+	"zyrouter/backend/internal/labels"
 )
 
 const (
@@ -241,13 +242,15 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 				var ts, prov, mod, status string
 				var prompt, completion int
 				if err := rows.Scan(&ts, &prov, &mod, &prompt, &completion, &status); err == nil {
-					k := fmt.Sprintf("%s|%s|%s", ts, prov, mod)
+					displayProvider := labels.Provider(repo, prov)
+					displayModel := labels.Model(repo, prov, mod)
+					k := fmt.Sprintf("%s|%s|%s", ts, displayProvider, displayModel)
 					if !seen[k] {
 						seen[k] = true
 						recent = append(recent, RecentRequest{
 							Timestamp:        ts,
-							Provider:         prov,
-							Model:            mod,
+							Provider:         displayProvider,
+							Model:            displayModel,
 							PromptTokens:     prompt,
 							CompletionTokens: completion,
 							Status:           status,

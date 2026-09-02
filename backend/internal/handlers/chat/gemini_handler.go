@@ -97,7 +97,7 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 		}
 	}
 	backendModel, thinkingLevel := translator.NormalizeAntigravityModel(modelName)
-	log.Info("gemini", "upstream dispatch", "provider", provider, "client_model", modelName, "upstream_model", backendModel, "thinking_level", thinkingLevel, "endpoint", "v1internal")
+	log.Info("gemini", "upstream dispatch", "provider", h.displayProviderLabel(provider), "providerId", provider, "client_model", h.displayModelLabel(provider, modelName), "modelId", modelName, "upstream_model", backendModel, "thinking_level", thinkingLevel, "endpoint", "v1internal")
 	var bodyCloser io.Closer
 	resp, err := proxy.ForwardGemini(ctx, client, cfg, apiKey, string(body), isStream, projectID, modelName)
 	if err != nil {

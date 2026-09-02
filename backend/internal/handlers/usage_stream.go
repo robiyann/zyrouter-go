@@ -10,6 +10,7 @@ import (
 
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
+	"zyrouter/backend/internal/labels"
 	"zyrouter/backend/internal/usagetracker"
 )
 
@@ -232,10 +233,12 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 			var ts, prov, mod, status string
 			var prompt, completion int
 			if err := recentRows.Scan(&ts, &prov, &mod, &prompt, &completion, &status); err == nil {
+				displayProvider := labels.Provider(repo, prov)
+				displayModel := labels.Model(repo, prov, mod)
 				recent = append(recent, usagetracker.RecentRequest{
 					Timestamp:        ts,
-					Provider:         prov,
-					Model:            mod,
+					Provider:         displayProvider,
+					Model:            displayModel,
 					PromptTokens:     prompt,
 					CompletionTokens: completion,
 					Status:           status,
