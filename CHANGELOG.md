@@ -2600,6 +2600,12 @@
 - **File Diubah**: `[MOD] zyrouter/backend/internal/handlers/chat/gemini_handler.go`
 - **Deskripsi Perubahan**: Menambahkan log aman `client_model`, `upstream_model`, `thinking_level`, dan endpoint logical `v1internal` tanpa mencatat OAuth token. Ini membuat verifikasi manual membedakan alias 3.7 dari model upstream yang benar-benar dikirim.
 
+### [2026-09-02] - [Codex] - Revert Model Antigravity 3.8 yang Tidak Tersedia
+- **Modul**: `Provider Catalog / Translator`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/providers/catalog.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/backend/internal/translator/antigravity.go`, `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`
+- **Deskripsi Perubahan**: Test runtime ke Antigravity menunjukkan seluruh alias 3.8 mengembalikan HTTP `404`, sedangkan alias 3.7 high/medium/low berhasil `200`. Model 3.8 dihapus dari catalog dan translator agar dashboard tidak mengiklankan route unsupported.
+- **Bukti Runtime**: `gemini-3.8-flash`, `-low`, `-medium`, dan `-high` semuanya `404`; `gemini-3.7-flash`, `-high`, `-medium`, dan `-low` berhasil.
+
 ### [2026-09-02] - [Codex] - Antigravity 3.8 Flash Tiered Probe
 - **Modul**: `Provider Catalog / Translator`
 - **File Diubah**: `[MOD] zyrouter/backend/internal/providers/catalog.go`, `[MOD] zyrouter/frontend/app.js`, `[MOD] zyrouter/backend/internal/translator/antigravity.go`, `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`
