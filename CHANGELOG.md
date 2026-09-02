@@ -2595,6 +2595,12 @@
 - **Upstream**: `https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent` atau `streamGenerateContent?alt=sse`, dengan onboarding di `v1internal:loadCodeAssist` dan `v1internal:onboardUser`.
 - **Validasi**: chat handler tests dan Go vet berhasil.
 
+### [2026-09-02] - [Codex] - Antigravity 3.7 Tiered Upstream Mapping
+- **Modul**: `Translator / Antigravity`
+- **File Diubah**: `[MOD] zyrouter/backend/internal/translator/antigravity.go`, `[MOD] zyrouter/backend/internal/translator/antigravity_test.go`
+- **Deskripsi Perubahan**: Alias `gemini-3.7-flash-high/medium/low` sekarang diteruskan sebagai `gemini-3.7-flash-tiered` dengan thinking level yang sesuai. Alias 3.6 dan legacy 3.5 tetap memakai `gemini-3.6-flash-tiered`.
+- **Validasi**: Translator, proxy, dan chat handler tests serta Go vet berhasil.
+
 ### [2026-09-02] - [Codex] - Format Standard Total Token
 - **Modul**: `Frontend / Usage Metrics`
 - **File Diubah**: `[MOD] zyrouter/frontend/app.js`

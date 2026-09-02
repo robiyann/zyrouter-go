@@ -126,9 +126,9 @@ func TestNormalizeAntigravityModel(t *testing.T) {
 		{"gemini-default", "gemini-3.6-flash-tiered", "high"},
 		{"gemini-3.1-pro", "gemini-pro-agent", "high"},
 		{"claude-3-7-sonnet", "claude-sonnet-4-6", "high"},
-		{"gemini-3.7-flash-high", "gemini-3.6-flash-tiered", "high"},
-		{"gemini-3.7-flash-medium", "gemini-3.6-flash-tiered", "medium"},
-		{"gemini-3.7-flash-low", "gemini-3.6-flash-tiered", "low"},
+		{"gemini-3.7-flash-high", "gemini-3.7-flash-tiered", "high"},
+		{"gemini-3.7-flash-medium", "gemini-3.7-flash-tiered", "medium"},
+		{"gemini-3.7-flash-low", "gemini-3.7-flash-tiered", "low"},
 		{"claude-opus-4-6-thinking", "claude-opus-4-6-thinking", "high"},
 	}
 
@@ -250,12 +250,11 @@ func TestNormalizeAntigravityModel_TieredResolution(t *testing.T) {
 		"gemini-3.5-flash-high",
 	}
 
-	for _, m := range models {
+	want := []string{"gemini-3.7-flash-tiered", "gemini-3.6-flash-tiered", "gemini-3.6-flash-tiered"}
+	for i, m := range models {
 		got, lvl := translator.NormalizeAntigravityModel(m)
-		if got != "gemini-3.6-flash-tiered" || lvl != "high" {
-			t.Errorf("expected tiered high for %s, got (%s, %s)", m, got, lvl)
+		if got != want[i] || lvl != "high" {
+			t.Errorf("expected %s tiered high for %s, got (%s, %s)", want[i], m, got, lvl)
 		}
 	}
 }
-
-

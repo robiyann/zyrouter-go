@@ -21,13 +21,13 @@ type AntigravityRequest struct {
 
 // AntigravityNativeToolNames are tool names preserved without suffix.
 var AntigravityNativeToolNames = map[string]bool{
-	"browser_subagent":                           true,
-	"command_status":                             true,
-	"find_by_name":                               true,
-	"generate_image":                             true,
-	"grep_search":                                true,
-	"list_dir":                                   true,
-	"list_resources":                             true,
+	"browser_subagent": true,
+	"command_status":   true,
+	"find_by_name":     true,
+	"generate_image":   true,
+	"grep_search":      true,
+	"list_dir":         true,
+	"list_resources":   true,
 	"mcp_sequential-thinking_sequentialthinking": true,
 	"multi_replace_file_content":                 true,
 	"notify_user":                                true,
@@ -235,8 +235,12 @@ func NormalizeAntigravityModel(model string) (backendModel string, thinkingLevel
 		thinkingLevel = "low"
 	}
 
-	// 100% 9router parity mapping to Google Cloud Code backend models:
-	if strings.HasPrefix(m, "gemini-3.7-flash") || strings.HasPrefix(m, "gemini-3.6-flash") || strings.HasPrefix(m, "gemini-3.5-flash") || m == "gemini-default" || m == "gemini-3-flash-agent" {
+	// Keep the client-facing tier aliases separate: Antigravity's 3.7 and 3.6
+	// tiers are distinct upstream model IDs.
+	if strings.HasPrefix(m, "gemini-3.7-flash") {
+		return "gemini-3.7-flash-tiered", thinkingLevel
+	}
+	if strings.HasPrefix(m, "gemini-3.6-flash") || strings.HasPrefix(m, "gemini-3.5-flash") || m == "gemini-default" || m == "gemini-3-flash-agent" {
 		return "gemini-3.6-flash-tiered", thinkingLevel
 	}
 	if strings.HasPrefix(m, "gemini-3.1-pro") || strings.HasPrefix(m, "gemini-3-pro") || m == "gemini-pro-agent" {
@@ -265,7 +269,7 @@ func WrapForAntigravity(geminiBody []byte, projectID, rawModelName string) ([]by
 		}
 
 		// Inject thinkingConfig for tiered models if not already set (100% 9router parity)
-		if backendModel == "gemini-3.6-flash-tiered" {
+		if backendModel == "gemini-3.6-flash-tiered" || backendModel == "gemini-3.7-flash-tiered" {
 			var rawMap map[string]any
 			if json.Unmarshal(geminiBody, &rawMap) == nil && rawMap != nil {
 				genConfig, ok := rawMap["generationConfig"].(map[string]any)
@@ -449,5 +453,3 @@ func FormatAntigravityImageResponse(rawGeminiResp []byte, prompt string) ([]byte
 
 	return json.Marshal(result)
 }
-
-
