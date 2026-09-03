@@ -252,10 +252,19 @@ func (h *ChatHandler) getProviderConfig(provider string, connData *ConnectionDat
 	var baseCfg *providers.ProviderConfig
 
 	if connData != nil && connData.BaseURL != "" {
-		baseCfg = &providers.ProviderConfig{
-			BaseURL:    connData.BaseURL,
-			AuthHeader: constants.HeaderAuthorization,
-			AuthScheme: constants.AuthSchemeBearer,
+		// A per-connection URL override must not discard the known provider's
+		// required headers. This matters for CodeBuddy, whose gateway rejects
+		// requests missing its x-codebuddy and IDE identity headers.
+		if cfg, ok := providers.KnownProviders[provider]; ok {
+			cloned := cfg
+			cloned.BaseURL = connData.BaseURL
+			baseCfg = &cloned
+		} else {
+			baseCfg = &providers.ProviderConfig{
+				BaseURL:    connData.BaseURL,
+				AuthHeader: constants.HeaderAuthorization,
+				AuthScheme: constants.AuthSchemeBearer,
+			}
 		}
 	} else if cfg, ok := providers.KnownProviders[provider]; ok {
 		// Clone config so per-request headers don't mutate global registry

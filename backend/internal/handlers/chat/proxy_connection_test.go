@@ -93,6 +93,25 @@ func TestGetBestConnection_ProviderProxyOverridesAccountAssignment(t *testing.T)
 	}
 }
 
+func TestGetProviderConfig_CustomURLPreservesCodeBuddyHeaders(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	h := NewChatHandler(db.NewRepo(database))
+
+	cfg, err := h.GetProviderConfig("codebuddy-intl", &ConnectionData{
+		BaseURL: "https://www.codebuddy.ai/v2/chat/completions",
+	})
+	if err != nil {
+		t.Fatalf("GetProviderConfig failed: %v", err)
+	}
+	if cfg.BaseURL != "https://www.codebuddy.ai/v2/chat/completions" {
+		t.Fatalf("unexpected CodeBuddy URL: %s", cfg.BaseURL)
+	}
+	if cfg.StaticHeaders["x-codebuddy-request"] != "1" || cfg.StaticHeaders["X-IDE-Type"] != "IDE" {
+		t.Fatalf("CodeBuddy headers were discarded by connection URL override: %#v", cfg.StaticHeaders)
+	}
+}
+
 func TestLogUsage_ReportsResolvedProxyPoolForNoAuth(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
