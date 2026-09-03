@@ -404,7 +404,7 @@ func (h *ChatHandler) getClientForConnection(connData *ConnectionData) *http.Cli
 		transport.Proxy = http.ProxyURL(parsedURL)
 		// Bound proxy connection stalls without imposing a timeout on an
 		// already-established streaming response.
-		transport.ResponseHeaderTimeout = 30 * time.Second
+		transport.ResponseHeaderTimeout = 10 * time.Second
 		return &http.Client{
 			Transport: transport,
 			Timeout:   h.Client.Timeout,

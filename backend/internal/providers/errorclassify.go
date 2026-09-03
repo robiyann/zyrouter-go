@@ -20,32 +20,33 @@ var BackoffConfig = struct {
 	MaxMs    int
 	MaxLevel int
 }{
-	BaseMs:   2000,       // 2 seconds base
+	BaseMs:   2000,          // 2 seconds base
 	MaxMs:    5 * 60 * 1000, // 5 minutes cap
 	MaxLevel: 15,
 }
 
-// TransientCooldownMs is the default cooldown for unmatched/unknown errors.
-const TransientCooldownMs = 30 * 1000 // 30 seconds
+// TransientCooldownMs is the short cooldown for transient upstream/proxy
+// failures. Authentication and quota errors use their dedicated rules below.
+const TransientCooldownMs = 5 * 1000 // 5 seconds
 
 // cooldown durations (ms) used by ERROR_RULES
 const (
-	cooldownLong  = 2 * 60 * 1000  // 2 minutes
-	cooldownShort = 5 * 1000       // 5 seconds
+	cooldownLong  = 2 * 60 * 1000 // 2 minutes
+	cooldownShort = 5 * 1000      // 5 seconds
 )
 
 // ErrorRules is the ordered list of error classification rules, matching Next.js ERROR_RULES.
 // Checked top-to-bottom: text rules first (by order), then status rules.
 var ErrorRules = []ErrorRule{
 	// --- Text-based rules (checked first, order = priority) ---
-	{Text: "no credentials",              CooldownMs: cooldownLong},
-	{Text: "request not allowed",         CooldownMs: cooldownShort},
-	{Text: "improperly formed request",   CooldownMs: cooldownLong},
-	{Text: "rate limit",                  Backoff: true},
-	{Text: "too many requests",           Backoff: true},
-	{Text: "quota exceeded",              Backoff: true},
-	{Text: "capacity",                    Backoff: true},
-	{Text: "overloaded",                  Backoff: true},
+	{Text: "no credentials", CooldownMs: cooldownLong},
+	{Text: "request not allowed", CooldownMs: cooldownShort},
+	{Text: "improperly formed request", CooldownMs: cooldownLong},
+	{Text: "rate limit", Backoff: true},
+	{Text: "too many requests", Backoff: true},
+	{Text: "quota exceeded", Backoff: true},
+	{Text: "capacity", Backoff: true},
+	{Text: "overloaded", Backoff: true},
 
 	// --- Status-based rules (fallback when text doesn't match) ---
 	{Status: 401, CooldownMs: cooldownLong},
