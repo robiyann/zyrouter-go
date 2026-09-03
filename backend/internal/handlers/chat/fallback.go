@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -127,20 +129,26 @@ func (h *ChatHandler) handleAccountFallback(
 			lastErr = err
 		}
 		var ue *upstreamError
-		if errors.As(lastErr, &ue) && providers.RetryableStatusCodes[ue.StatusCode] {
+		transportFailure := isRetryableConnectionError(lastErr)
+		if (errors.As(lastErr, &ue) && providers.RetryableStatusCodes[ue.StatusCode]) || transportFailure {
 			// Extract error text from upstream body for classification
-			errorText := extractErrorText(ue.Body)
+			statusCode := http.StatusBadGateway
+			errorText := ""
+			if ue != nil {
+				statusCode = ue.StatusCode
+				errorText = extractErrorText(ue.Body)
+			}
 			// Get current backoff level from this connection
 			currentBackoffLevel := h.Repo.GetConnectionBackoffLevel(connObj.ID)
 			// Classify error to get dynamic cooldown
-			classification := providers.ClassifyError(ue.StatusCode, errorText, currentBackoffLevel)
+			classification := providers.ClassifyError(statusCode, errorText, currentBackoffLevel)
 			cooldownSec := int((classification.CooldownMs + 999) / 1000) // ceil to seconds
 			errMsg := errorText
 			if errMsg == "" {
 				errMsg = fmt.Sprintf("%d upstream error", ue.StatusCode)
 			}
 			h.Repo.LockConnectionModel(connObj.ID, model, cooldownSec, classification.NewBackoffLevel)
-			log.Warn("fallback", "account failed, cycling to next connection", "failed_account", c.Name, "email", c.Email, "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "status", ue.StatusCode, "cooldown_s", cooldownSec)
+			log.Warn("fallback", "account failed, cycling to next connection", "failed_account", c.Name, "email", c.Email, "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "status", statusCode, "transport", transportFailure, "cooldown_s", cooldownSec)
 			excludeIDs = append(excludeIDs, c.ID)
 			continue
 		}
@@ -150,6 +158,17 @@ func (h *ChatHandler) handleAccountFallback(
 		return lastErr
 	}
 	return fmt.Errorf("no available connections for provider: %s", provider)
+}
+
+func isRetryableConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var networkErr net.Error
+	return errors.As(err, &networkErr)
 }
 
 // tryForwardWithConnection attempts a single upstream request using the given connection data.
