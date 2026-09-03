@@ -104,6 +104,8 @@ func SetupRoutes(r interface {
 	r.Get("/v1/models/{kind}", chatH.HandleModelsByKind)
 	r.Post("/chat/completions", chatH.HandleChatCompletions)
 	r.Post("/v1/chat/completions", chatH.HandleChatCompletions)
+	r.Post("/responses", chatH.HandleResponses)
+	r.Post("/v1/responses", chatH.HandleResponses)
 	r.Post("/messages", chatH.HandleMessages)
 	r.Post("/v1/messages", chatH.HandleMessages)
 	r.Post("/messages/count_tokens", chatH.HandleCountTokens)
