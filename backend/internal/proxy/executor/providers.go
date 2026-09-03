@@ -9,12 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"zyrouter/backend/internal/log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+	"zyrouter/backend/internal/log"
 
 	"github.com/google/uuid"
 
@@ -90,8 +90,8 @@ func ForwardIflow(w http.ResponseWriter, req *Request) error {
 	signature := hex.EncodeToString(mac.Sum(nil))
 
 	extraHeaders := map[string]string{
-		"User-Agent":       userAgent,
-		"session-id":       sessionID,
+		"User-Agent":        userAgent,
+		"session-id":        sessionID,
 		"x-iflow-timestamp": strconv.FormatInt(timestamp, 10),
 		"x-iflow-signature": signature,
 	}
@@ -280,6 +280,9 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 	if apiKey == "" {
 		apiKey = "public"
 	}
+	if isMuseSparkModel(req.Body) {
+		return forwardMuseSparkResponses(w, req, apiKey)
+	}
 
 	body := InjectReasoningContent(req.Body, "opencode")
 
@@ -365,4 +368,3 @@ func ForwardOpencodeGo(w http.ResponseWriter, req *Request) error {
 	}
 	return jsonResponse(req.Ctx, w, resp.Body, req.TranslateResp, req.ResponseBuf)
 }
-
