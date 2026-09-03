@@ -266,6 +266,16 @@ func (h *ChatHandler) getProviderConfig(provider string, connData *ConnectionDat
 				AuthScheme: constants.AuthSchemeBearer,
 			}
 		}
+	} else if customURL := providerSpecificBaseURL(connData); customURL != "" {
+		// Some imported custom-node connections store the endpoint under
+		// providerSpecificData.baseUrl instead of the top-level baseUrl field.
+		// Resolve it here so the request does not silently fall through to a
+		// different node configuration.
+		baseCfg = &providers.ProviderConfig{
+			BaseURL:    normalizeChatBaseURL(customURL),
+			AuthHeader: constants.HeaderAuthorization,
+			AuthScheme: constants.AuthSchemeBearer,
+		}
 	} else if cfg, ok := providers.KnownProviders[provider]; ok {
 		// Clone config so per-request headers don't mutate global registry
 		cloned := cfg
@@ -277,13 +287,7 @@ func (h *ChatHandler) getProviderConfig(provider string, connData *ConnectionDat
 		}
 		if node != nil && nodeData != nil && nodeData.BaseURL != "" {
 			baseURL := nodeData.BaseURL
-			if !strings.HasSuffix(baseURL, "/chat/completions") {
-				if strings.HasSuffix(baseURL, "/v1") || strings.HasSuffix(baseURL, "/v1/") {
-					baseURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
-				} else {
-					baseURL = strings.TrimRight(baseURL, "/") + "/v1/chat/completions"
-				}
-			}
+			baseURL = normalizeChatBaseURL(baseURL)
 			baseCfg = &providers.ProviderConfig{
 				BaseURL:    baseURL,
 				AuthHeader: constants.HeaderAuthorization,
@@ -327,6 +331,25 @@ func (h *ChatHandler) getProviderConfig(provider string, connData *ConnectionDat
 	}
 
 	return baseCfg, nil
+}
+
+func normalizeChatBaseURL(baseURL string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if strings.HasSuffix(baseURL, "/chat/completions") {
+		return baseURL
+	}
+	if strings.HasSuffix(baseURL, "/v1") {
+		return baseURL + "/chat/completions"
+	}
+	return baseURL + "/v1/chat/completions"
+}
+
+func providerSpecificBaseURL(connData *ConnectionData) string {
+	if connData == nil || connData.ProviderSpecificData == nil {
+		return ""
+	}
+	customURL, _ := connData.ProviderSpecificData["baseUrl"].(string)
+	return strings.TrimSpace(customURL)
 }
 
 // ExtractAPIKey gets the API key from a connection's data.
