@@ -30,14 +30,13 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 	}
 
 	cfg := *req.Config
-	if strings.Contains(cfg.BaseURL, "/chat/completions") {
-		cfg.BaseURL = strings.Replace(cfg.BaseURL, "/chat/completions", "/responses", 1)
-	}
 	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, false)
 	// Edge relays keep their own URL and route by x-relay-path instead of the
 	// upstream URL path.
 	if _, ok := cfg.StaticHeaders["x-relay-path"]; ok {
 		cfg.StaticHeaders["x-relay-path"] = "/v1/responses"
+	} else {
+		cfg.BaseURL = museResponsesURL(cfg.BaseURL)
 	}
 	ctx := req.Ctx
 	if ctx == nil {
@@ -65,6 +64,20 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 		return writeMuseChatStream(w, chatBody, req)
 	}
 	return jsonResponse(ctx, w, bytes.NewReader(chatBody), req.TranslateResp, req.ResponseBuf)
+}
+
+func museResponsesURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(baseURL, "/chat/completions") {
+		return strings.TrimSuffix(baseURL, "/chat/completions") + "/responses"
+	}
+	if strings.HasSuffix(baseURL, "/v1") {
+		return baseURL + "/responses"
+	}
+	if strings.HasSuffix(baseURL, "/responses") {
+		return baseURL
+	}
+	return baseURL + "/responses"
 }
 
 func chatToResponsesBody(body []byte) ([]byte, error) {
