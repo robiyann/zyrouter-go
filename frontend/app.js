@@ -2878,7 +2878,10 @@ function providerConnectionModal(presetProviderId = 'openai', customNodeMeta = n
             <strong style="font-size: 13px; color: var(--text); display: block; margin-bottom: 6px;">Google Cloud OAuth Code Flow</strong>
             <p style="margin: 0 0 14px; font-size: 11px; color: var(--muted); line-height: 1.4;">Klik tombol di bawah untuk membuka halaman izin Google dengan Client ID Antigravity resmi, lalu salin Authorization Code yang didapat.</p>
             
-            <button type="button" class="solid-button" id="btn-start-google-oauth" style="margin-bottom: 16px;">🚀 Buka Halaman Izin Google OAuth</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+              <button type="button" class="solid-button" id="btn-start-google-oauth">🚀 Buka di Tab Baru</button>
+              <button type="button" class="secondary-button" id="btn-copy-google-oauth">📋 Salin Link OAuth</button>
+            </div>
 
             <label style="display:block; margin-top: 10px;">
               Paste Authorization Code / Callback URL
@@ -2966,11 +2969,20 @@ function providerConnectionModal(presetProviderId = 'openai', customNodeMeta = n
             <strong style="font-size: 13px; color: var(--text); display: block; margin-bottom: 6px;">Anthropic Claude Code OAuth</strong>
             <p style="margin: 0 0 14px; font-size: 11px; color: var(--muted); line-height: 1.4;">Buka halaman izin Claude AI, lalu salin Authorization Code yang muncul.</p>
             
-            <button type="button" class="solid-button" id="btn-start-claude-oauth" style="margin-bottom: 14px;">🚀 Buka Izin Claude AI</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+              <button type="button" class="solid-button" id="btn-start-claude-oauth">🚀 Buka di Tab Baru</button>
+              <button type="button" class="secondary-button" id="btn-copy-claude-oauth">📋 Salin Link OAuth</button>
+              <button type="button" class="secondary-button" id="btn-copy-claude-verifier">📋 Salin PKCE Verifier</button>
+            </div>
 
             <label style="display:block; margin-top: 10px;">
               Paste Authorization Code
               <input type="text" id="claude-auth-code-input" placeholder="Paste kode otorisasi dari Claude AI..." />
+            </label>
+
+            <label style="display:block; margin-top: 10px;">
+              PKCE Verifier (wajib jika approve di browser/device lain)
+              <input type="text" id="claude-code-verifier-input" placeholder="Paste verifier jika dashboard dibuka di browser lain..." />
             </label>
             
             <button type="button" class="secondary-button" id="btn-exchange-claude-code" style="margin-top: 10px;">⚡ Exchange Code & Hubungkan Akun</button>
@@ -3325,12 +3337,19 @@ async function openProviderModal(provId = 'openai') {
 
   // Antigravity Google OAuth interactive flow
   const btnStartGoogle = form.querySelector('#btn-start-google-oauth');
+  const btnCopyGoogle = form.querySelector('#btn-copy-google-oauth');
+  let googleAuthData = null;
+  const prepareGoogleAuth = async () => {
+    if (!googleAuthData) googleAuthData = await request('/api/oauth/antigravity/authorize');
+    if (!googleAuthData?.authUrl) throw new Error('OAuth URL tidak tersedia');
+    return googleAuthData;
+  };
   if (btnStartGoogle) {
     btnStartGoogle.onclick = async () => {
       btnStartGoogle.disabled = true;
       btnStartGoogle.textContent = 'Menyiapkan URL Izin Google...';
       try {
-        const authData = await request('/api/oauth/antigravity/authorize');
+        const authData = await prepareGoogleAuth();
         if (authData.authUrl) {
           window.open(authData.authUrl, '_blank');
           btnStartGoogle.textContent = '🚀 Buka Ulang Izin Google';
@@ -3339,6 +3358,19 @@ async function openProviderModal(provId = 'openai') {
       } catch (err) {
         btnStartGoogle.textContent = `Gagal: ${err.message}`;
         btnStartGoogle.disabled = false;
+      }
+    };
+  }
+  if (btnCopyGoogle) {
+    btnCopyGoogle.onclick = async () => {
+      try {
+        const authData = await prepareGoogleAuth();
+        await copyText(authData.authUrl);
+        btnCopyGoogle.textContent = '✅ Link Tersalin';
+        setTimeout(() => { btnCopyGoogle.textContent = '📋 Salin Link OAuth'; }, 1600);
+      } catch (err) {
+        btnCopyGoogle.textContent = `Gagal: ${err.message}`;
+        setTimeout(() => { btnCopyGoogle.textContent = '📋 Salin Link OAuth'; }, 2000);
       }
     };
   }
@@ -3478,11 +3510,18 @@ async function openProviderModal(provId = 'openai') {
   const btnStartClaude = form.querySelector('#btn-start-claude-oauth');
   if (btnStartClaude) {
     let claudeVerifier = '';
+    let claudeAuthData = null;
+    const prepareClaudeAuth = async () => {
+      if (!claudeAuthData) claudeAuthData = await request('/api/oauth/claude/authorize');
+      if (!claudeAuthData?.authUrl) throw new Error('OAuth URL tidak tersedia');
+      claudeVerifier = claudeAuthData.codeVerifier || claudeVerifier;
+      return claudeAuthData;
+    };
     btnStartClaude.onclick = async () => {
       btnStartClaude.disabled = true;
       btnStartClaude.textContent = 'Menyiapkan URL Claude...';
       try {
-        const authData = await request('/api/oauth/claude/authorize');
+        const authData = await prepareClaudeAuth();
         if (authData.authUrl) {
           claudeVerifier = authData.codeVerifier;
           window.open(authData.authUrl, '_blank');
@@ -3494,6 +3533,35 @@ async function openProviderModal(provId = 'openai') {
         btnStartClaude.disabled = false;
       }
     };
+
+    const btnCopyClaude = form.querySelector('#btn-copy-claude-oauth');
+    if (btnCopyClaude) {
+      btnCopyClaude.onclick = async () => {
+        try {
+          const authData = await prepareClaudeAuth();
+          await copyText(authData.authUrl);
+          btnCopyClaude.textContent = '✅ Link Tersalin';
+          setTimeout(() => { btnCopyClaude.textContent = '📋 Salin Link OAuth'; }, 1600);
+        } catch (err) {
+          btnCopyClaude.textContent = `Gagal: ${err.message}`;
+          setTimeout(() => { btnCopyClaude.textContent = '📋 Salin Link OAuth'; }, 2000);
+        }
+      };
+    }
+    const btnCopyVerifier = form.querySelector('#btn-copy-claude-verifier');
+    if (btnCopyVerifier) {
+      btnCopyVerifier.onclick = async () => {
+        try {
+          await prepareClaudeAuth();
+          await copyText(claudeVerifier);
+          btnCopyVerifier.textContent = '✅ Verifier Tersalin';
+          setTimeout(() => { btnCopyVerifier.textContent = '📋 Salin PKCE Verifier'; }, 1600);
+        } catch (err) {
+          btnCopyVerifier.textContent = `Gagal: ${err.message}`;
+          setTimeout(() => { btnCopyVerifier.textContent = '📋 Salin PKCE Verifier'; }, 2000);
+        }
+      };
+    }
 
     const btnExchangeClaude = form.querySelector('#btn-exchange-claude-code');
     if (btnExchangeClaude) {
@@ -3512,10 +3580,13 @@ async function openProviderModal(provId = 'openai') {
         statusEl.textContent = 'Menghubungkan ke Anthropic...';
 
         try {
+          const verifierInput = form.querySelector('#claude-code-verifier-input');
+          const verifier = (verifierInput?.value || claudeVerifier).trim();
+          if (!verifier) throw new Error('PKCE verifier diperlukan; salin dari tab/browser yang membuat link OAuth');
           const res = await fetch(`${apiBase}/api/oauth/claude/exchange`, {
             method: 'POST',
             headers: { ...headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: rawCode, codeVerifier: claudeVerifier })
+            body: JSON.stringify({ code: rawCode, codeVerifier: verifier })
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Exchange token gagal');
