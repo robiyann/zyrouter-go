@@ -65,6 +65,12 @@ func (h *ChatHandler) GetActiveProviderPrefix(provider string, connData map[stri
 				return strings.TrimSpace(strings.ToLower(customPref))
 			}
 		}
+		// Custom provider nodes store their active client prefix in node data.
+		// Without this lookup, policy validation sees the long node ID as the
+		// prefix and rejects valid requests with HTTP 403.
+		if _, nodeData, err := h.Repo.GetProviderNodeByID(provLower); err == nil && nodeData != nil && strings.TrimSpace(nodeData.Prefix) != "" {
+			return strings.TrimSpace(strings.ToLower(nodeData.Prefix))
+		}
 	}
 	return providers.GetDefaultProviderAlias(provLower)
 }
