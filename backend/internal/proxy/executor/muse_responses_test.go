@@ -38,3 +38,12 @@ func TestResponsesToChatBody(t *testing.T) {
 		t.Fatalf("expected converted content OK, got %v", message["content"])
 	}
 }
+
+func TestMuseResponsesPathPreservesOpenCodeZenPrefix(t *testing.T) {
+	if got := museResponsesPath("/zen/v1/chat/completions"); got != "/zen/v1/responses" {
+		t.Fatalf("unexpected relay path: %s", got)
+	}
+	if got := museResponsesURL("https://opencode.ai/zen/v1"); got != "https://opencode.ai/zen/v1/responses" {
+		t.Fatalf("unexpected direct URL: %s", got)
+	}
+}

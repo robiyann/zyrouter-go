@@ -30,19 +30,12 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 	}
 
 	cfg := *req.Config
-	usingEdgeRelay := cfg.StaticHeaders["x-relay-path"] != ""
+	relayPath, usingEdgeRelay := cfg.StaticHeaders["x-relay-path"]
 	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, false)
-	// Edge relays keep their own URL and route by x-relay-path instead of the
-	// upstream URL path. Current deployed relays only expose chat completions,
-	// so bypass them for Muse Spark and call Zen directly instead of returning
-	// the relay's 404. HTTP proxy pools still apply through req.Client.
+	// Edge relays are generic; preserve the upstream path prefix (OpenCode uses
+	// /zen/v1, not just /v1) and swap only the final endpoint.
 	if usingEdgeRelay {
-		cfg.BaseURL = "https://opencode.ai/zen/v1/responses"
-		for key := range cfg.StaticHeaders {
-			if strings.HasPrefix(strings.ToLower(key), "x-relay-") {
-				delete(cfg.StaticHeaders, key)
-			}
-		}
+		cfg.StaticHeaders["x-relay-path"] = museResponsesPath(relayPath)
 	} else {
 		cfg.BaseURL = museResponsesURL(cfg.BaseURL)
 	}
@@ -86,6 +79,20 @@ func museResponsesURL(baseURL string) string {
 		return baseURL
 	}
 	return baseURL + "/responses"
+}
+
+func museResponsesPath(path string) string {
+	path = strings.TrimRight(path, "/")
+	if strings.HasSuffix(path, "/chat/completions") {
+		return strings.TrimSuffix(path, "/chat/completions") + "/responses"
+	}
+	if strings.HasSuffix(path, "/v1") {
+		return path + "/responses"
+	}
+	if strings.HasSuffix(path, "/responses") {
+		return path
+	}
+	return path + "/responses"
 }
 
 func chatToResponsesBody(body []byte) ([]byte, error) {
