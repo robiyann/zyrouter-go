@@ -30,11 +30,19 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 	}
 
 	cfg := *req.Config
+	usingEdgeRelay := cfg.StaticHeaders["x-relay-path"] != ""
 	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, false)
 	// Edge relays keep their own URL and route by x-relay-path instead of the
-	// upstream URL path.
-	if _, ok := cfg.StaticHeaders["x-relay-path"]; ok {
-		cfg.StaticHeaders["x-relay-path"] = "/v1/responses"
+	// upstream URL path. Current deployed relays only expose chat completions,
+	// so bypass them for Muse Spark and call Zen directly instead of returning
+	// the relay's 404. HTTP proxy pools still apply through req.Client.
+	if usingEdgeRelay {
+		cfg.BaseURL = "https://opencode.ai/zen/v1/responses"
+		for key := range cfg.StaticHeaders {
+			if strings.HasPrefix(strings.ToLower(key), "x-relay-") {
+				delete(cfg.StaticHeaders, key)
+			}
+		}
 	} else {
 		cfg.BaseURL = museResponsesURL(cfg.BaseURL)
 	}
