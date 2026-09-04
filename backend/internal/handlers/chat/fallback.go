@@ -340,6 +340,11 @@ func (h *ChatHandler) tryForwardWithConnection(
 		if errors.As(fwdErr, &ue) {
 			statusCode = ue.StatusCode
 			errBodyStr = string(ue.Body)
+		} else if isRetryableConnectionError(fwdErr) {
+			// A transport timeout/refusal has no HTTP status, but it is still a
+			// gateway failure from the client's perspective. Do not expose status 0
+			// in the usage ledger or console stream.
+			statusCode = http.StatusBadGateway
 		}
 		if projectProbeCached(connectionID) {
 			log.Debug("fallback", "upstream skipped (cached no-project)", "provider", provider, "model", model, "conn", connectionID, "error", fwdErr)
