@@ -2327,10 +2327,13 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
       btn.className = 'model-test-btn testing';
       btn.textContent = 'Testing...';
       const start = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       try {
         const res = await fetch(`${apiBase}/chat/completions`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             model: modelId,
             messages: [{ role: 'user', content: 'hi' }],
@@ -2350,8 +2353,10 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
         }
       } catch (err) {
         btn.className = 'model-test-btn error';
-        btn.textContent = 'Network Err';
-        btn.title = err.message;
+        btn.textContent = err.name === 'AbortError' ? 'Timeout' : 'Network Err';
+        btn.title = err.name === 'AbortError' ? 'Model test timed out after 30 seconds' : err.message;
+      } finally {
+        clearTimeout(timeoutId);
       }
     };
   });
@@ -6590,7 +6595,8 @@ async function waitForVercelDeployJob(jobId, statusContainer) {
     `;
   };
 
-  while (true) {
+  const deadline = Date.now() + 30 * 60 * 1000;
+  while (Date.now() < deadline) {
     const response = await fetch(`${apiBase}/api/proxy-pools/vercel-deploy/jobs/${encodeURIComponent(jobId)}`, { headers: getHeaders() });
     const job = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(job.error?.message || job.error || 'Unable to read deployment job');
@@ -6601,6 +6607,7 @@ async function waitForVercelDeployJob(jobId, statusContainer) {
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  throw new Error('Vercel deployment job timed out after 30 minutes');
 }
 
 function bindDeployButtons() {
