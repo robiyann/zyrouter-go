@@ -4805,7 +4805,7 @@ function renderPools(payload) {
     let d = {};
     try { d = typeof item.data === 'string' ? JSON.parse(item.data) : (item.data || {}); } catch {}
     const status = String(item.testStatus || d.testStatus || '').toLowerCase();
-    return status === 'error' || status === 'failed';
+    return status === 'error' || status === 'failed' || Boolean(d.lastError);
   });
 
   // Type counts
@@ -6968,7 +6968,7 @@ function bindDeployButtons() {
         let d = {};
         try { d = typeof pool.data === 'string' ? JSON.parse(pool.data) : (pool.data || {}); } catch {}
         const status = String(pool.testStatus || d.testStatus || '').toLowerCase();
-        return status === 'error' || status === 'failed';
+        return status === 'error' || status === 'failed' || Boolean(d.lastError);
       });
       if (errorPools.length === 0) return;
       const confirmed = await showConfirmModal({
