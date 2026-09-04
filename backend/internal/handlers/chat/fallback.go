@@ -25,6 +25,8 @@ import (
 	"zyrouter/backend/internal/usagetracker"
 )
 
+const maxFallbackAttempts = 10
+
 // handleAccountFallback attempts to forward a request with automatic account fallback.
 func (h *ChatHandler) handleAccountFallback(
 	ctx context.Context,
@@ -75,6 +77,7 @@ func (h *ChatHandler) handleAccountFallback(
 
 	var excludeIDs []string
 	var lastErr error
+	attempts := 0
 	// Resolve the account once through the normal selector. This is important
 	// for provider-level round-robin: the old loop pinned every attempt to the
 	// priority-ordered account list, so successful requests stayed on account 1.
@@ -96,6 +99,10 @@ func (h *ChatHandler) handleAccountFallback(
 	}
 
 	for _, c := range orderedConns {
+		if attempts >= maxFallbackAttempts {
+			log.Warn("fallback", "attempt limit reached", "provider", providerLabel, "model", modelLabel, "attempts", attempts, "maxAttempts", maxFallbackAttempts)
+			break
+		}
 		if slices.Contains(excludeIDs, c.ID) {
 			continue
 		}
@@ -113,6 +120,7 @@ func (h *ChatHandler) handleAccountFallback(
 		if err != nil || connObj == nil {
 			continue
 		}
+		attempts++
 		apiKey := extractAPIKey(connData)
 		if apiKey == "" {
 			providerCfg, pErr := h.getProviderConfig(provider, connData)
