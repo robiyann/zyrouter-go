@@ -4801,6 +4801,12 @@ let cachedPoolsPayload = { proxyPools: [] };
 function renderPools(payload) {
   if (payload) cachedPoolsPayload = payload;
   const allRows = cachedPoolsPayload.proxyPools || [];
+  const errorPools = allRows.filter((item) => {
+    let d = {};
+    try { d = typeof item.data === 'string' ? JSON.parse(item.data) : (item.data || {}); } catch {}
+    const status = String(item.testStatus || d.testStatus || '').toLowerCase();
+    return status === 'error' || status === 'failed';
+  });
 
   // Type counts
   const typeCounts = { all: allRows.length, vercel: 0, cloudflare: 0, deno: 0, http: 0 };
@@ -4931,6 +4937,12 @@ function renderPools(payload) {
             <button class="solid-button" id="btn-test-all-pools" style="font-size:11px; padding:8px 14px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 0 16px rgba(200,255,99,0.2);">
               <span class="material-symbols-outlined" style="font-size:15px;">health_and_safety</span>
               Health Check All (${allRows.length})
+            </button>
+          ` : ''}
+          ${errorPools.length > 0 ? `
+            <button class="danger-button" id="btn-delete-error-pools" style="font-size:10.5px; padding:7px 11px; display:inline-flex; align-items:center; gap:5px;">
+              <span class="material-symbols-outlined" style="font-size:14px;">delete_sweep</span>
+              Delete Errors (${errorPools.length})
             </button>
           ` : ''}
           <div class="deploy-actions" style="display:flex; gap:6px;">
@@ -6946,6 +6958,50 @@ function bindDeployButtons() {
 
       testAllBtn.disabled = false;
       testAllBtn.innerHTML = origHtml;
+    };
+  }
+
+  const deleteErrorsBtn = document.querySelector('#btn-delete-error-pools');
+  if (deleteErrorsBtn) {
+    deleteErrorsBtn.onclick = async () => {
+      const errorPools = (cachedPoolsPayload.proxyPools || []).filter((pool) => {
+        let d = {};
+        try { d = typeof pool.data === 'string' ? JSON.parse(pool.data) : (pool.data || {}); } catch {}
+        const status = String(pool.testStatus || d.testStatus || '').toLowerCase();
+        return status === 'error' || status === 'failed';
+      });
+      if (errorPools.length === 0) return;
+      const confirmed = await showConfirmModal({
+        title: 'Delete Failed Proxy Pools',
+        kicker: 'BULK DELETE',
+        message: `Delete all ${errorPools.length} proxy pools with test status ERROR? This action cannot be undone.`,
+        confirmText: `Delete ${errorPools.length} Pools`,
+        danger: true
+      });
+      if (!confirmed) return;
+
+      deleteErrorsBtn.disabled = true;
+      const originalText = deleteErrorsBtn.innerHTML;
+      deleteErrorsBtn.innerHTML = '<span class="spinner-icon"></span> Deleting...';
+      let deleted = 0;
+      try {
+        for (const pool of errorPools) {
+          const response = await fetch(`${apiBase}/api/proxy-pools/${encodeURIComponent(pool.id)}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+          });
+          if (!response.ok) throw new Error(`Failed deleting ${pool.id}: HTTP ${response.status}`);
+          deleted++;
+        }
+        showToast(`Deleted ${deleted} failed proxy pools`, 'success');
+        await renderView('pools');
+      } catch (err) {
+        showToast(`Bulk delete stopped after ${deleted}: ${err.message}`, 'error');
+        await renderView('pools');
+      } finally {
+        deleteErrorsBtn.disabled = false;
+        deleteErrorsBtn.innerHTML = originalText;
+      }
     };
   }
 
