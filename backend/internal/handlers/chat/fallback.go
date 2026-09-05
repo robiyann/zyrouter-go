@@ -249,6 +249,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 	log.Info("router", "dispatch", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
 
 	pipedBody := h.applyTokenSavers(body)
+	pipedBody = sanitizeReasoningModelBody(model, pipedBody)
 	start := time.Now()
 	metrics := &streamMetrics{}
 	var fwdErr error
