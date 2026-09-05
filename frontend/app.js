@@ -2338,7 +2338,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
             model: modelId,
             messages: [{ role: 'user', content: 'hi' }],
             stream: false,
-            max_tokens: 5
+            max_tokens: 16
           })
         });
         const latency = Date.now() - start;
@@ -6547,7 +6547,7 @@ function bindAliasDeckActions() {
             model: alias,
             messages: [{ role: 'user', content: 'hi' }],
             stream: false,
-            max_tokens: 5
+            max_tokens: 16
           })
         });
         const latency = Date.now() - start;
