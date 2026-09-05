@@ -322,9 +322,14 @@ func (h *ChatHandler) tryForwardWithConnection(
 		return h.forwardRequest(ctx, w, providerCfg, apiKey, nextBody, isStream, translateResponse, metrics)
 	}
 	fwdErr = forward(pipedBody)
-	if retryBody, ok := retryUnsupportedParameters(fwdErr, pipedBody); ok {
-		log.Info("router", "retrying after provider rejected unsupported parameters", "provider", provider, "model", model)
-		fwdErr = forward(retryBody)
+	for parameterRetry := 0; parameterRetry < 3; parameterRetry++ {
+		retryBody, ok := retryUnsupportedParameters(fwdErr, pipedBody)
+		if !ok {
+			break
+		}
+		log.Info("router", "retrying after provider rejected unsupported parameters", "provider", provider, "model", model, "attempt", parameterRetry+1)
+		pipedBody = retryBody
+		fwdErr = forward(pipedBody)
 	}
 
 	var ue *upstreamError
