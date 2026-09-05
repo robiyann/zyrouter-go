@@ -179,6 +179,47 @@ func isRetryableConnectionError(err error) bool {
 	return errors.As(err, &networkErr)
 }
 
+// retryUnsupportedParameters returns one provider-compatible request variant
+// only when the provider explicitly identifies unsupported request fields.
+// This is provider-aware at runtime and avoids guessing from a model name.
+func retryUnsupportedParameters(err error, body []byte) ([]byte, bool) {
+	var ue *upstreamError
+	if !errors.As(err, &ue) || ue.StatusCode != http.StatusBadRequest {
+		return nil, false
+	}
+	errorText := strings.ToLower(string(ue.Body))
+	if !strings.Contains(errorText, "unsupported") && !strings.Contains(errorText, "not supported") && !strings.Contains(errorText, "max_tokens") {
+		return nil, false
+	}
+	var request map[string]any
+	if json.Unmarshal(body, &request) != nil {
+		return nil, false
+	}
+	changed := false
+	for _, param := range []string{"temperature", "top_p", "presence_penalty", "frequency_penalty", "stop"} {
+		if strings.Contains(errorText, param) {
+			if _, exists := request[param]; exists {
+				delete(request, param)
+				changed = true
+			}
+		}
+	}
+	if strings.Contains(errorText, "max_tokens") {
+		if value, ok := request["max_tokens"].(float64); ok && value > 0 && value < 16 {
+			request["max_tokens"] = 16
+			changed = true
+		}
+	}
+	if !changed {
+		return nil, false
+	}
+	out, marshalErr := json.Marshal(request)
+	if marshalErr != nil {
+		return nil, false
+	}
+	return out, true
+}
+
 // tryForwardWithConnection attempts a single upstream request using the given connection data.
 func (h *ChatHandler) tryForwardWithConnection(
 	ctx context.Context,
@@ -249,7 +290,6 @@ func (h *ChatHandler) tryForwardWithConnection(
 	log.Info("router", "dispatch", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
 
 	pipedBody := h.applyTokenSavers(body)
-	pipedBody = sanitizeReasoningModelBody(model, pipedBody)
 	start := time.Now()
 	metrics := &streamMetrics{}
 	var fwdErr error
@@ -261,23 +301,30 @@ func (h *ChatHandler) tryForwardWithConnection(
 	}()
 	httpClient := h.getClientForConnection(connData)
 
-	if exec := executor.Get(provider); exec != nil {
-		fwdErr = exec(w, &executor.Request{
-			Ctx:           ctx,
-			Client:        httpClient,
-			Config:        providerCfg,
-			APIKey:        apiKey,
-			Body:          pipedBody,
-			IsStream:      isStream,
-			TranslateResp: translateResponse,
-			ResponseBuf:   &metrics.ResponseBuf,
-			StartTime:     start,
-			TTFT:          &metrics.TTFT,
-		})
-	} else if providerCfg.IsGeminiNative() {
-		fwdErr = h.forwardGeminiNativeRequest(ctx, w, provider, providerCfg, apiKey, connectionID, pipedBody, isStream, translateResponse, httpClient, metrics)
-	} else {
-		fwdErr = h.forwardRequest(ctx, w, providerCfg, apiKey, pipedBody, isStream, translateResponse, metrics)
+	forward := func(nextBody []byte) error {
+		if exec := executor.Get(provider); exec != nil {
+			return exec(w, &executor.Request{
+				Ctx:           ctx,
+				Client:        httpClient,
+				Config:        providerCfg,
+				APIKey:        apiKey,
+				Body:          nextBody,
+				IsStream:      isStream,
+				TranslateResp: translateResponse,
+				ResponseBuf:   &metrics.ResponseBuf,
+				StartTime:     start,
+				TTFT:          &metrics.TTFT,
+			})
+		}
+		if providerCfg.IsGeminiNative() {
+			return h.forwardGeminiNativeRequest(ctx, w, provider, providerCfg, apiKey, connectionID, nextBody, isStream, translateResponse, httpClient, metrics)
+		}
+		return h.forwardRequest(ctx, w, providerCfg, apiKey, nextBody, isStream, translateResponse, metrics)
+	}
+	fwdErr = forward(pipedBody)
+	if retryBody, ok := retryUnsupportedParameters(fwdErr, pipedBody); ok {
+		log.Info("router", "retrying after provider rejected unsupported parameters", "provider", provider, "model", model)
+		fwdErr = forward(retryBody)
 	}
 
 	var ue *upstreamError
