@@ -8,6 +8,12 @@ Zyrouter currently ships as a Go proxy engine, Admin Dashboard, and edge proxy d
 
 The backend also exposes a server-controlled Client API contract for future client key management. The Client Dashboard UI is intentionally out of scope for the current implementation phase.
 
+### Public model contract (current)
+
+- Provider model fetch is an Admin Dashboard helper only. Its results remain private inventory until an admin publishes an alias.
+- `modelAliases` is the only public model registry. Every client-visible model ID must be a bare alias mapped to exactly one provider and one upstream model.
+- Client requests containing provider prefixes or raw upstream model IDs are rejected. `/models` and `/v1/models` expose published aliases only.
+
 ---
 
 ## 1. Executive Summary & Visi Produk
