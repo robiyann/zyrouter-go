@@ -361,7 +361,7 @@ func (r *Repo) GetUserBySession(rawToken string) (*models.User, error) {
 
 func (r *Repo) CreateUserApiKey(userID, accountTypeID, id, rawKey, name string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.Exec(`INSERT INTO apiKeys (id, key, keyHash, name, isActive, createdAt, userId, accountTypeId) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`, id, rawKey[:minInt(12, len(rawKey))], HashUserSecret(rawKey), name, now, userID, accountTypeID)
+	_, err := r.db.Exec(`INSERT INTO apiKeys (id, key, keyHash, name, isActive, createdAt, userId, accountTypeId) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`, id, keyPrefix(rawKey), HashUserSecret(rawKey), name, now, userID, accountTypeID)
 	return err
 }
 
@@ -404,7 +404,7 @@ func (r *Repo) RotateUserApiKey(userID, accountTypeID, id, rawKey, name string) 
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := tx.Exec(`INSERT INTO apiKeys (id,key,keyHash,name,isActive,createdAt,userId,accountTypeId) VALUES (?,?,?,?,1,?,?,?)`, id, rawKey[:minInt(12, len(rawKey))], HashUserSecret(rawKey), name, now, userID, accountTypeID); err != nil {
+	if _, err := tx.Exec(`INSERT INTO apiKeys (id,key,keyHash,name,isActive,createdAt,userId,accountTypeId) VALUES (?,?,?,?,1,?,?,?)`, id, keyPrefix(rawKey), HashUserSecret(rawKey), name, now, userID, accountTypeID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -480,6 +480,8 @@ func boolInt(v bool) int {
 	}
 	return 0
 }
+
+func keyPrefix(key string) string { return key[:minInt(12, len(key))] }
 func minInt(a, b int) int {
 	if a < b {
 		return a
