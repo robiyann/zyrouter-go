@@ -6,7 +6,7 @@ const html = await readFile(new URL('../frontend/index.html', import.meta.url), 
 
 for (const endpoint of [
   '/api/providers', '/api/combos', '/api/keys', '/api/settings',
-  '/api/proxy-pools', '/api/model-aliases', '/api/admin/model-policy/preview', '/admin/health/reset', '/usage/stream', '/translator/console-logs', '/translator/console-logs/stream',
+  '/api/proxy-pools', '/api/model-aliases', '/api/admin/model-policy/preview', '/api/admin/security/summary', '/admin/health/reset', '/usage/stream', '/translator/console-logs', '/translator/console-logs/stream',
   '/models', '/chat/completions'
 ]) {
   assert.match(app, new RegExp(endpoint.replace('/', '\/')), `missing frontend endpoint: ${endpoint}`);

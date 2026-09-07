@@ -92,3 +92,23 @@ func TestModelPolicyPreviewUsesPublishedAliases(t *testing.T) {
 		t.Fatalf("unexpected policy preview: status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestSecuritySummaryIsAggregateOnly(t *testing.T) {
+	file, err := os.CreateTemp("", "admin-security-*.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	defer os.Remove(file.Name())
+	database, err := db.OpenDatabase(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	h := NewAdminHandler(db.NewRepo(database))
+	rec := httptest.NewRecorder()
+	h.HandleSecuritySummary(rec, httptest.NewRequest(http.MethodGet, "/api/admin/security/summary", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"legacyGatewayPlaintext":0`) || strings.Contains(rec.Body.String(), "keyHash") {
+		t.Fatalf("unexpected or sensitive security summary: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}

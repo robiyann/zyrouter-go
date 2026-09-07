@@ -925,6 +925,35 @@ func (h *AdminHandler) HandlePreviewModelPolicy(w http.ResponseWriter, r *http.R
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
+// HandleSecuritySummary returns aggregate security state without returning
+// secrets, hashes, credentials, or raw log payloads.
+func (h *AdminHandler) HandleSecuritySummary(w http.ResponseWriter, r *http.Request) {
+	queries := map[string]string{
+		"totalKeys":              `SELECT COUNT(*) FROM apiKeys`,
+		"hashedKeys":             `SELECT COUNT(*) FROM apiKeys WHERE keyHash IS NOT NULL AND trim(keyHash)<>''`,
+		"legacyGatewayPlaintext": `SELECT COUNT(*) FROM apiKeys WHERE userId IS NULL AND (clientId IS NULL OR trim(clientId)='') AND keyHash IS NULL AND key IS NOT NULL`,
+		"legacyGatewayHashed":    `SELECT COUNT(*) FROM apiKeys WHERE userId IS NULL AND (clientId IS NULL OR trim(clientId)='') AND keyHash IS NOT NULL`,
+		"clientKeys":             `SELECT COUNT(*) FROM apiKeys WHERE clientId IS NOT NULL AND trim(clientId)<>''`,
+		"userKeys":               `SELECT COUNT(*) FROM apiKeys WHERE userId IS NOT NULL`,
+		"inactiveKeys":           `SELECT COUNT(*) FROM apiKeys WHERE isActive=0`,
+	}
+	result := make(map[string]any, len(queries)+1)
+	for name, query := range queries {
+		var count int
+		if err := h.repo.RawDB().QueryRow(query).Scan(&count); err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load security summary")
+			return
+		}
+		result[name] = count
+	}
+	var marker string
+	if err := h.repo.RawDB().QueryRow(`SELECT COALESCE(value,'') FROM _meta WHERE key = 'migration.api_keys_hash.v1'`).Scan(&marker); err != nil {
+		marker = ""
+	}
+	result["migrationMarker"] = marker
+	handlerutil.WriteJSON(w, http.StatusOK, result)
+}
+
 // ==========================================
 // Custom Models Handlers
 // ==========================================

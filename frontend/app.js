@@ -4825,6 +4825,7 @@ let cachedPoolsPayload = { proxyPools: [] };
 
 function renderAuthLogs(payload = {}) {
   const logs = Array.isArray(payload.logs) ? payload.logs : [];
+  const security = payload.securitySummary || {};
   const rows = logs.length ? logs.map((entry) => `
     <tr>
       <td>${escapeHtml(new Date(entry.timestamp || Date.now()).toLocaleString())}</td>
@@ -4841,6 +4842,12 @@ function renderAuthLogs(payload = {}) {
       <div class="section-header" style="margin-bottom:12px;">
         <div><span class="kicker">SECURITY EVENTS</span><h2>Admin Auth Log</h2><p>Login success, password failure, lockout, dan akses admin yang ditolak. Credential tidak disimpan.</p></div>
         <button type="button" class="secondary-button" id="btn-refresh-authlogs">Refresh</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin-bottom:12px;">
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">MIGRATION</span><strong style="display:block; margin-top:4px; color:var(--lime);">${escapeHtml(security.migrationMarker || 'not detected')}</strong></div>
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">PLAINTEXT LEGACY</span><strong style="display:block; margin-top:4px; color:${Number(security.legacyGatewayPlaintext || 0) ? 'var(--danger)' : 'var(--lime)'};">${Number(security.legacyGatewayPlaintext || 0).toLocaleString()}</strong></div>
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">HASHED KEYS</span><strong style="display:block; margin-top:4px; color:var(--text-bright);">${Number(security.hashedKeys || 0).toLocaleString()}</strong></div>
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">INACTIVE</span><strong style="display:block; margin-top:4px; color:var(--muted);">${Number(security.inactiveKeys || 0).toLocaleString()}</strong></div>
       </div>
       <div class="data-table-container">
         <table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>IP Address</th><th>Request</th><th>Status</th><th>User Agent</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
@@ -5086,7 +5093,13 @@ async function renderView(name) {
         keys: () => request('/api/keys'),
         usage: () => request('/api/usage/stats?period=all&days=all'),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
-        authlogs: () => request('/api/auth-logs?limit=200'),
+        authlogs: async () => {
+          const [logs, securitySummary] = await Promise.all([
+            request('/api/auth-logs?limit=200'),
+            request('/api/admin/security/summary').catch(() => ({}))
+          ]);
+          return { ...logs, securitySummary };
+        },
         pools: () => request('/api/proxy-pools'),
         aliases: () => request('/api/model-aliases'),
         settings: () => request('/api/settings')
