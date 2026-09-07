@@ -154,11 +154,12 @@ API key production idealnya menyimpan hash, prefix tampilan, client ID, policy I
 
 ### Phase 4B — Admin Model Management UI
 
-- Keep Admin-only `Fetch from /models` as an inventory helper.
-- Show fetched models as unpublished until the admin creates an alias.
-- Use explicit provider + upstream model fields for alias creation.
-- Add alias conflict, invalid target, active state, capability, and route-test states.
-- Make combo and API-key policy pickers use published aliases only.
+- [x] Keep Admin-only `Fetch from /models` as an inventory helper.
+- [x] Show fetched models as unpublished until the admin creates an alias.
+- [x] Use explicit provider + upstream model fields for alias creation.
+- [x] Add alias conflict, invalid target, active state, capability, and route-test states.
+- [x] Make combo and API-key policy pickers use published aliases only.
+- [x] Add admin authorization preview before saving API-key policy.
 
 ### Phase 5 — Context Integrity
 
