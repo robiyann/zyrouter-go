@@ -773,6 +773,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
               repeating-linear-gradient(0deg, transparent 0 39px, rgba(38, 50, 62, 0.12) 40px);
   border: 1px solid var(--line-subtle);
   user-select: none;
+  touch-action: none;
 }
 
 .cyber-mesh-container {
@@ -784,6 +785,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   box-sizing: border-box;
   transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1);
   transform-origin: center center;
+}
+
+@media (min-width: 1101px) {
+  .room-shell.sidebar-collapsed {
+    grid-template-columns: 68px 1fr;
+  }
+
+  .room-shell.sidebar-collapsed .dock {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .room-shell.sidebar-collapsed .brand-text,
+  .room-shell.sidebar-collapsed .dock-label,
+  .room-shell.sidebar-collapsed .nav-group-title,
+  .room-shell.sidebar-collapsed .nav-badge,
+  .room-shell.sidebar-collapsed .engine-status-card {
+    display: none;
+  }
+
+  .room-shell.sidebar-collapsed .sidebar-brand {
+    justify-content: center;
+  }
+
+  .room-shell.sidebar-collapsed .dock-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }
 
 .mesh-clients-col {
@@ -1204,12 +1234,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   margin-bottom: 14px;
 }
 
 .data-table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   text-align: left;
   font-size: 11.5px;
@@ -2047,6 +2080,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: flex;
   align-items: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
   padding: 10px 14px;
   background: var(--surface);
@@ -2061,6 +2095,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font: 600 8.5px var(--mono);
   letter-spacing: 0.6px;
   text-transform: uppercase;
+  min-width: 0;
+  flex: 1 1 180px;
 }
 
 .filter-bar input, .filter-bar select {
@@ -2070,6 +2106,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   color: var(--text);
   padding: 5px 8px;
   font: 10px var(--mono);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.filter-bar button {
+  flex: 0 0 auto;
+  min-height: 30px;
 }
 .usage-summary {
   display: grid;
@@ -2880,6 +2923,56 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
   .form-grid-2 {
     grid-template-columns: 1fr;
+  }
+
+  .dock {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(280px, 86vw);
+    height: 100vh;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    flex-direction: column;
+    align-items: stretch;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+    padding: 16px 12px;
+    z-index: 50;
+  }
+
+  .dock.mobile-open {
+    transform: translateX(0);
+    box-shadow: 20px 0 60px rgba(0, 0, 0, 0.55);
+  }
+
+  .dock.mobile-open .sidebar-scroll {
+    display: grid;
+    overflow-y: auto;
+  }
+
+  .dock.mobile-open .nav-group-title {
+    display: block;
+  }
+
+  .dock.mobile-open .dock-nav {
+    display: grid;
+  }
+
+  .dock.mobile-open .sidebar-footer {
+    display: flex;
+  }
+
+  .room-header {
+    padding-left: 12px;
+  }
+
+  .header-tools .command-button {
+    min-width: 40px;
+    min-height: 36px;
+  }
+
+  .filter-bar button {
+    flex: 1 1 140px;
   }
 }
 

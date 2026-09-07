@@ -8049,6 +8049,10 @@ let panStartX = 0;
 let panStartY = 0;
 let panOffsetX = 0;
 let panOffsetY = 0;
+const meshPointers = new Map();
+let meshPinchStartDistance = 0;
+let meshPinchStartZoom = 1;
+let meshControlsInitialized = false;
 function updateMeshZoom(newZoom) {
   meshZoom = Math.min(Math.max(newZoom, 0.4), 2.5);
   const badge = document.querySelector('#mesh-zoom-level-badge');
@@ -8061,6 +8065,8 @@ function updateMeshZoom(newZoom) {
 }
 
 function initMeshZoomPanControls() {
+  if (meshControlsInitialized) return;
+  meshControlsInitialized = true;
   const zoomInBtn = document.querySelector('#btn-mesh-zoom-in');
   const zoomOutBtn = document.querySelector('#btn-mesh-zoom-out');
   const zoomResetBtn = document.querySelector('#btn-mesh-zoom-reset');
@@ -8096,16 +8102,33 @@ function initMeshZoomPanControls() {
       updateMeshZoom(meshZoom + delta);
     }, { passive: false });
 
-    // Drag / Pan support
-    viewport.addEventListener('mousedown', (e) => {
+    // Pointer gestures support mouse drag and two-finger pinch on touchscreens.
+    viewport.addEventListener('pointerdown', (e) => {
       if (e.target.closest('button') || e.target.closest('.mesh-node')) return;
-      isPanningMesh = true;
-      panStartX = e.clientX - panOffsetX;
-      panStartY = e.clientY - panOffsetY;
-      viewport.style.cursor = 'grabbing';
+      meshPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      viewport.setPointerCapture?.(e.pointerId);
+      if (meshPointers.size === 1) {
+        isPanningMesh = true;
+        panStartX = e.clientX - panOffsetX;
+        panStartY = e.clientY - panOffsetY;
+        viewport.style.cursor = 'grabbing';
+      } else if (meshPointers.size === 2) {
+        const points = [...meshPointers.values()];
+        meshPinchStartDistance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+        meshPinchStartZoom = meshZoom;
+        isPanningMesh = false;
+      }
     });
 
-    window.addEventListener('mousemove', (e) => {
+    viewport.addEventListener('pointermove', (e) => {
+      if (!meshPointers.has(e.pointerId)) return;
+      meshPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (meshPointers.size >= 2 && meshPinchStartDistance > 0) {
+        const points = [...meshPointers.values()];
+        const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+        updateMeshZoom(meshPinchStartZoom * (distance / meshPinchStartDistance));
+        return;
+      }
       if (!isPanningMesh) return;
       panOffsetX = e.clientX - panStartX;
       panOffsetY = e.clientY - panStartY;
@@ -8116,14 +8139,35 @@ function initMeshZoomPanControls() {
       }
     });
 
-    window.addEventListener('mouseup', () => {
-      if (isPanningMesh) {
+    const finishPointer = (e) => {
+      meshPointers.delete(e.pointerId);
+      if (meshPointers.size < 2) meshPinchStartDistance = 0;
+      if (meshPointers.size === 0) {
         isPanningMesh = false;
-        if (viewport) viewport.style.cursor = 'default';
+        viewport.style.cursor = 'default';
         drawMeshLines();
       }
-    });
+    };
+    viewport.addEventListener('pointerup', finishPointer);
+    viewport.addEventListener('pointercancel', finishPointer);
   }
+}
+
+function initSidebarToggle() {
+  const shell = document.querySelector('.room-shell');
+  const toggle = document.querySelector('#btn-sidebar-toggle');
+  const dock = document.querySelector('.dock');
+  if (!shell || !toggle || !dock) return;
+  toggle.onclick = () => {
+    if (window.matchMedia('(max-width: 1100px)').matches) {
+      dock.classList.toggle('mobile-open');
+    } else {
+      shell.classList.toggle('sidebar-collapsed');
+    }
+  };
+  dock.querySelectorAll('.dock-item').forEach((item) => {
+    item.addEventListener('click', () => dock.classList.remove('mobile-open'));
+  });
 }
 
 window.addEventListener('resize', () => {
@@ -8356,6 +8400,7 @@ async function bootstrapDashboardAuth() {
 
 const initialView = window.location.hash.slice(1);
 initMeshZoomPanControls();
+initSidebarToggle();
 bootstrapDashboardAuth();
 window.addEventListener('load', () => {
   initMeshZoomPanControls();
