@@ -50,7 +50,8 @@ func TestE2E_Streaming_MetricsAndUsage(t *testing.T) {
 	handler := NewChatHandler(repo)
 
 	// 3. Construct HTTP request
-	reqBody := `{"model":"bn/claude-sonnet-4.5","messages":[{"role":"user","content":"Hello world, please generate a response"}],"stream":true}`
+	// Public requests use the published alias; the provider route is internal.
+	reqBody := `{"model":"fast-node","messages":[{"role":"user","content":"Hello world, please generate a response"}],"stream":true}`
 	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -160,7 +161,7 @@ func TestE2E_NonStreaming_PromptTokensDetails(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"Hi"}],"stream":false}`
+	reqBody := `{"model":"fast-openai","messages":[{"role":"user","content":"Hi"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

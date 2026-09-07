@@ -18,6 +18,13 @@ Spesifikasi lengkap seluruh endpoint API yang disediakan oleh **Zyrouter Go Engi
 - **Payload:** Standard Claude Payload (`model`, `messages`, `system`, `max_tokens`, `stream`, etc.)
 - **Response:** JSON response atau SSE Stream format Claude.
 
+### 1.2.1. Public model naming policy
+
+- Client model IDs are admin-published aliases only. Raw upstream model IDs are not public.
+- Any client model value containing `/` is rejected with `403 provider_prefix_forbidden`.
+- A non-alias upstream model is rejected with `403 model_alias_required`.
+- A public alias maps to exactly one provider and one upstream model. Duplicate aliases are rejected during admin configuration; runtime never guesses between providers.
+
 ### 1.3. `POST /messages/count_tokens` / `POST /v1/messages/count_tokens`
 - **Tujuan:** Menghitung estimasi token untuk request payload Claude.
 
@@ -62,6 +69,14 @@ Semua endpoint berikut memerlukan admin session atau API key non-client.
 - `POST /api/keys` — Buat API Key baru beserta restriksi (`allowedModels`, `allowedPrefixes`, `allowedProviders`, `rateLimit`).
 - `PUT /api/keys/{id}` — Update nama, status aktif/non-aktif, atau ubah restriksi.
 - `DELETE /api/keys/{id}` — Hapus / revoke API Key.
+
+### 3.4. Admin model inventory and aliases
+
+- `GET /api/providers/{id}/models` — Admin-only upstream discovery helper. It is never used as the public model catalog and does not publish models automatically.
+- `GET /api/model-aliases` — List the manually published client aliases.
+- `POST /api/model-aliases` — Publish/update one bare alias mapped to one provider/upstream model.
+- `DELETE /api/model-aliases/{alias}` — Remove a published alias.
+- `GET /models` and `GET /v1/models` — Return active published aliases only.
 
 ### 3.4. Settings & Token Savers (`/api/settings`)
 - `GET /api/settings` — Ambil seluruh setting global (RTK, Caveman, Ponytail, Fusion tuning).

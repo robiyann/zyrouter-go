@@ -58,4 +58,12 @@ func TestAdminAPIKeyIsHashedAndNotRevealable(t *testing.T) {
 	if reveal.Code != http.StatusGone || strings.Contains(reveal.Body.String(), response.Key) {
 		t.Fatalf("reveal endpoint exposed or misreported secret: status=%d body=%s", reveal.Code, reveal.Body.String())
 	}
+	if err := h.repo.SetModelAliasRecord("fast-gemini", "google", "gemini-2.5-pro", nil, []string{"chat"}, 1); err != nil {
+		t.Fatal(err)
+	}
+	aliases := httptest.NewRecorder()
+	h.HandleGetModelAliases(aliases, httptest.NewRequest(http.MethodGet, "/api/model-aliases", nil))
+	if aliases.Code != http.StatusOK || !strings.Contains(aliases.Body.String(), `"alias":"fast-gemini"`) {
+		t.Fatalf("structured alias listing failed: status=%d body=%s", aliases.Code, aliases.Body.String())
+	}
 }

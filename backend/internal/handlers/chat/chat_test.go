@@ -70,6 +70,14 @@ func setupChatTestDB(t *testing.T) (*sql.DB, func()) {
 		cleanup()
 		t.Fatalf("failed to seed model alias: %v", err)
 	}
+	if _, err := database.Exec(`INSERT INTO kv (scope, key, value) VALUES
+		('modelAliases', 'fast-openai', '"openai/gpt-4o"'),
+		('modelAliases', 'fast-groq', '"groq/qwen3-32b"'),
+		('modelAliases', 'fast-groq-llama', '"groq/llama-3-70b"'),
+		('modelAliases', 'fast-node', '"bn/claude-sonnet-4.5"')`); err != nil {
+		cleanup()
+		t.Fatalf("failed to seed additional model aliases: %v", err)
+	}
 
 	// Seed combo used by resolve tests
 	comboModels, _ := json.Marshal([]string{"deepseek/deepseek-chat"})
@@ -82,19 +90,19 @@ func setupChatTestDB(t *testing.T) (*sql.DB, func()) {
 }
 
 func TestValidateRequestPolicyUsesResolvedConnection(t *testing.T) {
-	restrictions := `{"allowedPrefixes":["deepseek/*"],"allowedProviders":["conn-1"]}`
+	restrictions := `{"allowedModels":["fast-model"],"allowedProviders":["conn-1"]}`
 	key := &models.APIKey{IsActive: 1, Restrictions: &restrictions}
 	h := NewChatHandler(nil)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 
 	allowed := &ModelInfo{Provider: "deepseek", Model: "deepseek-chat", ConnectionID: "conn-1"}
-	if err := h.validateRequestPolicy(req, "deepseek/deepseek-chat", allowed); err != nil {
+	if err := h.validateRequestPolicy(req, "fast-model", allowed); err != nil {
 		t.Fatalf("expected resolved request to be allowed: %v", err)
 	}
 
 	wrongConnection := &ModelInfo{Provider: "deepseek", Model: "deepseek-chat", ConnectionID: "conn-2"}
-	if err := h.validateRequestPolicy(req, "deepseek/deepseek-chat", wrongConnection); err == nil {
+	if err := h.validateRequestPolicy(req, "fast-model", wrongConnection); err == nil {
 		t.Fatal("expected unlisted connection to be denied")
 	}
 }
@@ -108,7 +116,7 @@ func TestChatRequestRateLimitReturns429(t *testing.T) {
 	}
 	restrictions := `{"rateLimit":{"requestsPerMinute":1}}`
 	key := &models.APIKey{Key: "limited-key", IsActive: 1, Restrictions: &restrictions}
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"fast-model","messages":[{"role":"user","content":"hello"}]}`))
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 	rec := httptest.NewRecorder()
 	NewChatHandler(db.NewRepo(database)).HandleChatCompletions(rec, req)
@@ -281,7 +289,7 @@ func TestHandleChatCompletions_NonStreaming(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -376,7 +384,7 @@ func TestHandleMessages_ClaudeFormat(t *testing.T) {
 	handler := NewChatHandler(repo)
 
 	// Send a Claude-format request
-	claudeBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"max_tokens":100,"stream":false}`
+	claudeBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"max_tokens":100,"stream":false}`
 	req := httptest.NewRequest("POST", "/messages", strings.NewReader(claudeBody))
 	rec := httptest.NewRecorder()
 
@@ -427,7 +435,7 @@ func TestHandleChatCompletions_Streaming(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":true}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":true}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -476,7 +484,7 @@ func TestHandleChatCompletions_UpstreamError(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -534,7 +542,7 @@ func TestHandleChatCompletions_AccountFallback_401(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -595,7 +603,7 @@ func TestHandleChatCompletions_AccountFallback_429(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -734,7 +742,7 @@ func TestHandleChatCompletions_NoConnection(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-openai","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -821,7 +829,7 @@ func TestHandleMessages_ClaudeStreamTranslation(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	claudeBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"stream":true}`
+	claudeBody := `{"model":"fast-model","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"stream":true}`
 	req := httptest.NewRequest("POST", "/messages", strings.NewReader(claudeBody))
 	rec := httptest.NewRecorder()
 
@@ -844,7 +852,7 @@ func TestHandleMessages_NoConnection(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	claudeBody := `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	claudeBody := `{"model":"fast-openai","messages":[{"role":"user","content":"hi"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/messages", strings.NewReader(claudeBody))
 	rec := httptest.NewRecorder()
 
@@ -948,7 +956,7 @@ func TestResolveModel_PrefixProvider_NoConnection(t *testing.T) {
 	}
 
 	// Verify the full handler returns 404 since no connection exists
-	reqBody := `{"model":"bn/claude-sonnet-4.5","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-node","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 	handler.HandleChatCompletions(rec, req)
@@ -1040,12 +1048,16 @@ func TestHandleChatCompletions_ComboFallback(t *testing.T) {
 	}
 
 	// Insert a combo where the first model fails and the second succeeds
-	comboModels, _ := json.Marshal([]string{"deepseek/deepseek-chat", "groq/qwen3-32b"})
+	comboModels, _ := json.Marshal([]string{"fast-model", "fast-groq"})
 	_, err = database.Exec(`INSERT INTO combos (id, name, models, createdAt, updatedAt) VALUES
 		('combo-fallback', 'combo-fallback-test', ?, '2026-07-18T00:00:00Z', '2026-07-18T00:00:00Z')`,
 		string(comboModels))
 	if err != nil {
 		t.Fatalf("failed to insert combo: %v", err)
+	}
+	_, err = database.Exec(`INSERT INTO kv (scope, key, value) VALUES ('modelAliases', 'combo-fallback-test', '"combo:combo-fallback-test"')`)
+	if err != nil {
+		t.Fatalf("failed to alias combo: %v", err)
 	}
 
 	repo := db.NewRepo(database)
@@ -1107,12 +1119,16 @@ func TestHandleChatCompletions_ComboAllFail(t *testing.T) {
 	}
 
 	// Insert a combo where all models fail
-	comboModels, _ := json.Marshal([]string{"deepseek/deepseek-chat", "groq/llama-3-70b"})
+	comboModels, _ := json.Marshal([]string{"fast-model", "fast-groq-llama"})
 	_, err = database.Exec(`INSERT INTO combos (id, name, models, createdAt, updatedAt) VALUES
 		('combo-allfail', 'combo-allfail-test', ?, '2026-07-18T00:00:00Z', '2026-07-18T00:00:00Z')`,
 		string(comboModels))
 	if err != nil {
 		t.Fatalf("failed to insert combo: %v", err)
+	}
+	_, err = database.Exec(`INSERT INTO kv (scope, key, value) VALUES ('modelAliases', 'combo-allfail-test', '"combo:combo-allfail-test"')`)
+	if err != nil {
+		t.Fatalf("failed to alias combo: %v", err)
 	}
 
 	repo := db.NewRepo(database)
@@ -1215,7 +1231,7 @@ func TestHandleChatCompletions_PrefixProvider(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"bn/claude-sonnet-4.5","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-node","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 
@@ -1257,7 +1273,7 @@ func TestAccountFallback_NonRetryableError(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 	handler.HandleChatCompletions(rec, req)
@@ -1312,7 +1328,7 @@ func TestAccountFallback_AllExhaustedRetryable(t *testing.T) {
 	repo := db.NewRepo(database)
 	handler := NewChatHandler(repo)
 
-	reqBody := `{"model":"deepseek/deepseek-chat","messages":[{"role":"user","content":"hello"}],"stream":false}`
+	reqBody := `{"model":"fast-model","messages":[{"role":"user","content":"hello"}],"stream":false}`
 	req := httptest.NewRequest("POST", "/chat/completions", strings.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 	handler.HandleChatCompletions(rec, req)

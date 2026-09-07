@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/log"
 	"zyrouter/backend/internal/middleware"
-	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/providers"
 	"zyrouter/backend/internal/translator"
 	"zyrouter/backend/internal/updater"
@@ -43,14 +43,21 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing model")
 		return
 	}
+	// Public requests must resolve through an admin-created alias before any
+	// synthetic-request bypass is considered.
+	if _, err := h.resolveClientModel(reqBody.Model); err != nil {
+		status := modelResolutionStatus(err)
+		handlerutil.WriteJSONError(w, status, err.Error())
+		return
+	}
 	// Bypass synthetic requests (Claude Code naming, warmup, keepalive)
 	if handleBypassRequest(w, body, reqBody.Model, reqBody.Stream) {
 		return
 	}
 
-	modelInfo, err := h.resolveModel(reqBody.Model)
+	modelInfo, err := h.resolveClientModel(reqBody.Model)
 	if err != nil {
-		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		handlerutil.WriteJSONError(w, modelResolutionStatus(err), err.Error())
 		return
 	}
 	if err := h.validateRequestPolicy(r, reqBody.Model, modelInfo); err != nil {
@@ -144,10 +151,10 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modelInfo, err := h.resolveModel(reqBody.Model)
+	modelInfo, err := h.resolveClientModel(reqBody.Model)
 	if err != nil {
 		log.Error("chat", "resolve model failed", "error", err, "model", reqBody.Model)
-		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		handlerutil.WriteJSONError(w, modelResolutionStatus(err), err.Error())
 		return
 	}
 	if err := h.validateRequestPolicy(r, reqBody.Model, modelInfo); err != nil {
@@ -218,6 +225,9 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	if key == nil || info == nil {
 		return nil
 	}
+	if strings.Contains(requested, "/") {
+		return auth.ErrProviderPrefixForbidden
+	}
 	// Verified user keys are alias-only. Their access is resolved from the
 	// account type, never from mutable restrictions copied onto the key.
 	if key.UserID != nil && strings.TrimSpace(*key.UserID) != "" {
@@ -245,20 +255,9 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	}
 
 	validateOne := func(requestedModel string, modelInfo *ModelInfo) error {
-		// Only the provider's single active prefix is valid for model policy.
-		activePrefix := h.GetActiveProviderPrefix(modelInfo.Provider, nil)
-		activeModel := activePrefix + "/" + modelInfo.Model
-		requestedPrefix := ""
-		if parts := strings.SplitN(requestedModel, "/", 2); len(parts) == 2 {
-			requestedPrefix = strings.ToLower(strings.TrimSpace(parts[0]))
-		}
-		if requestedPrefix != "" && !strings.EqualFold(requestedPrefix, activePrefix) {
-			return fmt.Errorf("%w: '%s' (use prefix '%s')", auth.ErrModelNotAllowed, requestedModel, activePrefix)
-		}
+		// API-key model policy is expressed against the public alias. The
+		// internal provider/upstream target is never a client policy namespace.
 		modelAllowed := key.IsModelAllowed(requestedModel)
-		if requestedPrefix == "" {
-			modelAllowed = key.IsModelAllowed(activeModel)
-		}
 		if !modelAllowed {
 			return fmt.Errorf("%w: '%s'", auth.ErrModelNotAllowed, requestedModel)
 		}
@@ -381,8 +380,15 @@ func (h *ChatHandler) HandleTriggerUpdate(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// HandleModels responds with the list of available model identifiers with strict provider prefixes.
+// HandleModels responds with the admin-published public alias catalog only.
 func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
+	h.handlePublishedAliasModels(w, r)
+	return
+}
+
+// handlePublishedAliasModels exposes only the admin-published alias registry.
+// Provider inventories and raw provider/model identifiers are never public.
+func (h *ChatHandler) handlePublishedAliasModels(w http.ResponseWriter, r *http.Request) {
 	type modelObj struct {
 		ID                  string `json:"id"`
 		Object              string `json:"object"`
@@ -391,299 +397,54 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 		ContextLength       int    `json:"context_length,omitempty"`
 		MaxCompletionTokens int    `json:"max_completion_tokens,omitempty"`
 	}
-
+	aliases, err := h.Repo.GetModelAliases()
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load published model aliases")
+		return
+	}
 	apiKey := middleware.GetAuthenticatedApiKey(r)
-	now := time.Now().Unix()
-	if apiKey != nil && apiKey.UserID != nil && strings.TrimSpace(*apiKey.UserID) != "" {
-		typeID := ""
-		if apiKey.AccountTypeID != nil {
-			typeID = *apiKey.AccountTypeID
-		}
-		aliases, err := h.Repo.GetAccountTypeModels(typeID)
-		if err != nil {
+	allowedAccountAliases := map[string]bool(nil)
+	if apiKey != nil && apiKey.UserID != nil && strings.TrimSpace(*apiKey.UserID) != "" && apiKey.AccountTypeID != nil && *apiKey.AccountTypeID != "administrator" {
+		list, listErr := h.Repo.GetAccountTypeModels(*apiKey.AccountTypeID)
+		if listErr != nil {
 			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load account model permissions")
 			return
 		}
-		if typeID == "administrator" {
-			all, aliasErr := h.Repo.GetModelAliases()
-			if aliasErr != nil {
-				handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load model aliases")
-				return
-			}
-			aliases = aliases[:0]
-			for alias := range all {
-				aliases = append(aliases, string(alias))
-			}
+		allowedAccountAliases = make(map[string]bool, len(list))
+		for _, alias := range list {
+			allowedAccountAliases[alias] = true
 		}
-		data := make([]modelObj, 0, len(aliases))
-		for _, alias := range aliases {
-			data = append(data, modelObj{ID: alias, Object: "model", Created: now, OwnedBy: "zyrouter"})
-		}
-		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
-		return
 	}
-	connectionProviderMap := make(map[string]string)
-
-	seen := make(map[string]bool)
-	var data []modelObj
-	addModel := func(id, owner string, connectionID ...string) {
-		if id == "" || seen[id] {
-			return
+	ordered := make([]string, 0, len(aliases))
+	for alias := range aliases {
+		ordered = append(ordered, string(alias))
+	}
+	sort.Strings(ordered)
+	data := make([]modelObj, 0, len(ordered))
+	for _, alias := range ordered {
+		if allowedAccountAliases != nil && !allowedAccountAliases[alias] {
+			continue
 		}
-		// Enforce API Key Restrictions if authenticated via client key
+		info, resolveErr := h.resolveModel(alias)
+		if resolveErr != nil || info == nil {
+			continue
+		}
 		if apiKey != nil {
-			providerTarget := owner
-			if len(connectionID) > 0 && connectionID[0] != "" {
-				providerTarget = connectionID[0]
+			if !apiKey.IsModelAllowed(alias) {
+				continue
 			}
-			providerAllowed := apiKey.IsProviderAllowed(providerTarget)
-			if len(connectionID) > 0 && connectionID[0] != "" {
-				providerAllowed = providerAllowed || apiKey.IsProviderAllowed(owner)
-				if connectionProvider, ok := connectionProviderMap[connectionID[0]]; ok {
-					providerAllowed = providerAllowed || apiKey.IsProviderAllowed(connectionProvider)
-				}
+			providerTarget := info.ConnectionID
+			if providerTarget == "" {
+				providerTarget = info.Provider
 			}
-			if !apiKey.IsModelAllowed(id) || !providerAllowed {
-				return
+			if !apiKey.IsProviderAllowed(providerTarget) && !apiKey.IsProviderAllowed(info.Provider) {
+				continue
 			}
 		}
-		seen[id] = true
-		ctxLen, maxOut := providers.GetModelTokenLimits(id)
-		data = append(data, modelObj{
-			ID:                  id,
-			Object:              "model",
-			Created:             now,
-			OwnedBy:             owner,
-			ContextLength:       ctxLen,
-			MaxCompletionTokens: maxOut,
-		})
+		ctxLen, maxOut := providers.GetModelTokenLimits(info.Model)
+		data = append(data, modelObj{ID: alias, Object: "model", Created: time.Now().Unix(), OwnedBy: "zyrouter", ContextLength: ctxLen, MaxCompletionTokens: maxOut})
 	}
-
-	// 1. Gather Provider Nodes lookup map
-	nodeMap := make(map[string]*models.ProviderNode)
-	nodePrefixMap := make(map[string]string)
-	if nodes, err := h.Repo.GetProviderNodes(); err == nil {
-		for _, n := range nodes {
-			nodeMap[n.ID] = n
-			var nd map[string]any
-			if json.Unmarshal([]byte(n.Data), &nd) == nil {
-				if p, ok := nd["prefix"].(string); ok && strings.TrimSpace(p) != "" {
-					nodePrefixMap[n.ID] = strings.TrimSpace(strings.ToLower(p))
-				}
-			}
-			if nodePrefixMap[n.ID] == "" && n.Name != nil && strings.TrimSpace(*n.Name) != "" {
-				nodePrefixMap[n.ID] = strings.TrimSpace(strings.ToLower(*n.Name))
-			}
-		}
-	}
-
-	// 2. Fetch custom provider prefixes from kv
-	customPrefixes := make(map[string]string)
-	if prefMap, err := h.Repo.GetProviderPrefixes(); err == nil {
-		for prov, pref := range prefMap {
-			customPrefixes[strings.ToLower(prov)] = strings.TrimSpace(strings.ToLower(pref))
-		}
-	}
-
-	// Helper to determine outputAlias for a provider/connection
-	getOutputAlias := func(prov string, connData map[string]any) string {
-		provLower := strings.ToLower(prov)
-		// Check if provider is a providerNode (OpenAI / Anthropic compatible)
-		if pref, ok := nodePrefixMap[prov]; ok && pref != "" {
-			return pref
-		}
-		// Check connection data prefix
-		if connData != nil {
-			if p, ok := connData["prefix"].(string); ok && strings.TrimSpace(p) != "" {
-				return strings.TrimSpace(strings.ToLower(p))
-			}
-		}
-		// Check global custom prefix mapping from kv
-		if p, ok := customPrefixes[provLower]; ok && p != "" {
-			return p
-		}
-		// Return designated default alias (e.g. opencode -> oc, antigravity -> ag)
-		return providers.GetDefaultProviderAlias(provLower)
-	}
-
-	// 3. Process Active Provider Connections (isActive == 1)
-	activeProviders := make(map[string]bool)
-	activePrefixes := make(map[string]bool)
-
-	conns, _ := h.Repo.GetProviderConnections("", true)
-	for _, conn := range conns {
-		connectionProviderMap[conn.ID] = conn.Provider
-		provLower := strings.ToLower(conn.Provider)
-		if !providers.IsProviderEnabled(provLower) {
-			continue
-		}
-		var connData map[string]any
-		_ = json.Unmarshal([]byte(conn.Data), &connData)
-
-		outputAlias := getOutputAlias(conn.Provider, connData)
-		activeProviders[provLower] = true
-		activePrefixes[outputAlias] = true
-
-		// Aliases/synonyms for known providers
-		if provLower == "github" || provLower == "copilot" {
-			activeProviders["github"] = true
-			activeProviders["copilot"] = true
-			activeProviders["gh"] = true
-			activePrefixes[outputAlias] = true
-		} else if provLower == "antigravity" {
-			activeProviders["antigravity"] = true
-			activeProviders["ag"] = true
-			activePrefixes[outputAlias] = true
-		} else if provLower == "codex" {
-			activeProviders["codex"] = true
-			activeProviders["cx"] = true
-			activePrefixes[outputAlias] = true
-		} else if provLower == "opencode" {
-			activeProviders["opencode"] = true
-			activeProviders["opencode-go"] = true
-			activePrefixes[outputAlias] = true
-		}
-
-		// Add official models for this active provider (strictly with outputAlias prefix)
-		if officialList := providers.GetOfficialModels(provLower); len(officialList) > 0 {
-			for _, m := range officialList {
-				cleanModel := m
-				if strings.HasPrefix(cleanModel, outputAlias+"/") {
-					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
-				}
-				addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
-			}
-		}
-
-		// Add connection-specific models (customModels, defaultModel, deployment)
-		if connData != nil {
-			if defModel, ok := connData["defaultModel"].(string); ok && defModel != "" {
-				cleanModel := defModel
-				if strings.HasPrefix(cleanModel, outputAlias+"/") {
-					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
-				}
-				addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
-			}
-			if deployment, ok := connData["deployment"].(string); ok && deployment != "" {
-				cleanModel := deployment
-				if strings.HasPrefix(cleanModel, outputAlias+"/") {
-					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
-				}
-				addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
-			}
-			if custModels, ok := connData["customModels"].([]any); ok {
-				for _, cm := range custModels {
-					if cms, ok := cm.(string); ok && cms != "" {
-						cleanModel := cms
-						if strings.HasPrefix(cleanModel, outputAlias+"/") {
-							cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
-						}
-						addModel(outputAlias+"/"+cleanModel, conn.Provider, conn.ID)
-					}
-				}
-			}
-		}
-	}
-
-	// Public/no-auth providers do not require a providerConnections row. Keep
-	// their official models visible to the dashboard and API policy builder so
-	// active OpenCode Zen models can be explicitly allowlisted.
-	for provider, cfg := range providers.KnownProviders {
-		if !cfg.NoAuth && cfg.DefaultAPIKey == "" || !providers.IsProviderEnabled(provider) {
-			continue
-		}
-		outputAlias := getOutputAlias(provider, nil)
-		activeProviders[provider] = true
-		activePrefixes[outputAlias] = true
-		for _, model := range providers.GetOfficialModels(provider) {
-			cleanModel := model
-			if strings.HasPrefix(cleanModel, outputAlias+"/") {
-				cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
-			}
-			addModel(outputAlias+"/"+cleanModel, provider)
-		}
-	}
-
-	// 4. Custom Provider Nodes (OpenAI-compatible / Anthropic-compatible endpoints)
-	for _, node := range nodeMap {
-		prefix := nodePrefixMap[node.ID]
-		if prefix == "" {
-			continue
-		}
-		activePrefixes[prefix] = true
-		activeProviders[strings.ToLower(node.ID)] = true
-
-		var nodeData map[string]any
-		if json.Unmarshal([]byte(node.Data), &nodeData) == nil {
-			if modelsList, ok := nodeData["models"].([]any); ok {
-				for _, m := range modelsList {
-					if ms, ok := m.(string); ok && ms != "" {
-						cleanModel := ms
-						if strings.HasPrefix(cleanModel, prefix+"/") {
-							cleanModel = strings.TrimPrefix(cleanModel, prefix+"/")
-						}
-						addModel(prefix+"/"+cleanModel, node.ID, node.ID)
-					}
-				}
-			}
-		}
-	}
-
-	// 5. Custom Models from DB (e.g. added via + Add Model)
-	if customList, err := h.Repo.GetCustomModels(); err == nil {
-		for _, cm := range customList {
-			provAliasLower := strings.ToLower(cm.ProviderAlias)
-			outputAlias := getOutputAlias(cm.ProviderAlias, nil)
-			if len(activeProviders) == 0 || activeProviders[provAliasLower] || activePrefixes[outputAlias] {
-				cleanModel := cm.ID
-				if strings.HasPrefix(cleanModel, outputAlias+"/") {
-					cleanModel = strings.TrimPrefix(cleanModel, outputAlias+"/")
-				}
-				owner := cm.ProviderAlias
-				if canonical := h.resolveProviderPrefix(cm.ProviderAlias); canonical != "" {
-					owner = canonical
-				}
-				addModel(outputAlias+"/"+cleanModel, owner)
-			}
-		}
-	}
-
-	// 6. Explicit Model Aliases from DB (e.g. gpt-4o -> codex/gpt-4o)
-	// 6. Explicit Model Aliases from DB (emitted with their resolved target prefix)
-	if aliases, err := h.Repo.GetModelAliases(); err == nil {
-		for _, target := range aliases {
-			targetLower := strings.ToLower(target)
-			var targetProv string
-			if strings.Contains(targetLower, "/") {
-				targetProv = strings.Split(targetLower, "/")[0]
-			} else {
-				targetProv = targetLower
-			}
-
-			// Only expose if target provider/prefix is active
-			if len(activeProviders) == 0 || activeProviders[targetProv] || activePrefixes[targetProv] {
-				if strings.Contains(target, "/") {
-					addModel(target, targetProv)
-				}
-			}
-		}
-	}
-
-	// 7. Combos from DB (e.g. combo-fast-code)
-	if combos, err := h.Repo.GetCombos(); err == nil {
-		for _, c := range combos {
-			addModel(c.Name, "combo")
-		}
-	}
-
-	if data == nil {
-		data = []modelObj{}
-	}
-
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-		"object": "list",
-		"data":   data,
-	})
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 }
 
 // HandleModelsInfo returns metadata for a specific model.
@@ -695,9 +456,9 @@ func (h *ChatHandler) HandleModelsInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modelInfo, err := h.resolveModel(modelID)
+	modelInfo, err := h.resolveClientModel(modelID)
 	if err != nil {
-		handlerutil.WriteJSONError(w, http.StatusNotFound, fmt.Sprintf("model not found: %s", modelID))
+		handlerutil.WriteJSONError(w, modelResolutionStatus(err), err.Error())
 		return
 	}
 
@@ -706,7 +467,7 @@ func (h *ChatHandler) HandleModelsInfo(w http.ResponseWriter, r *http.Request) {
 	info := map[string]any{
 		"id":                    modelID,
 		"object":                "model",
-		"owned_by":              modelInfo.Provider,
+		"owned_by":              "zyrouter",
 		"endpoint":              "/v1/chat/completions",
 		"context_length":        ctxLen,
 		"max_completion_tokens": maxOut,

@@ -73,6 +73,16 @@ Minimal pertahankan generic adapter OpenAI-compatible, Anthropic, dan Gemini. Pr
 
 Prefix policy harus disiapkan sekarang walaupun Client Dashboard dibuat nanti.
 
+### Public model invariant (final)
+
+- Provider model discovery may be used by the Admin Dashboard only; fetched results remain internal and are never auto-published.
+- Every model visible to a client must be an admin-managed entry in `modelAliases`.
+- A public alias is bare (no `/`) and maps to exactly one provider and one upstream model.
+- Every client request containing a provider prefix (`provider/model`) is rejected; no prefix fallback or provider guessing is allowed.
+- A raw upstream model without a published alias is rejected with `model_alias_required`.
+- Duplicate public IDs are rejected during admin configuration, not deferred to runtime ambiguity handling.
+- Combos reference published aliases only; if exposed as a model identifier, the combo itself also requires a published alias.
+
 - Client tidak boleh mengubah `allowedPrefixes` sendiri.
 - Policy ditentukan admin/server-side.
 - API key mewarisi policy.
@@ -134,10 +144,21 @@ API key production idealnya menyimpan hash, prefix tampilan, client ID, policy I
 ### Phase 4 — Prefix Governance
 
 - Audit prefix resolver.
-- Enforce prefix setelah model resolution.
+- Enforce alias-only public resolution before bypass, resolver, combo, and fallback paths.
+- Reject every public provider-prefixed model request.
+- Keep provider prefix and upstream route only as internal routing data.
+- Expose only published aliases from `/models`, `/v1/models`, and model info endpoints.
 - Terapkan policy ke direct model, alias, combo, dan fallback.
 - Tambahkan model/provider restriction tests.
 - Tambahkan schema client policy tanpa membangun UI client.
+
+### Phase 4B — Admin Model Management UI
+
+- Keep Admin-only `Fetch from /models` as an inventory helper.
+- Show fetched models as unpublished until the admin creates an alias.
+- Use explicit provider + upstream model fields for alias creation.
+- Add alias conflict, invalid target, active state, capability, and route-test states.
+- Make combo and API-key policy pickers use published aliases only.
 
 ### Phase 5 — Context Integrity
 

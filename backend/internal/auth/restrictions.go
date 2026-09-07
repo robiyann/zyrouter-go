@@ -10,12 +10,14 @@ import (
 )
 
 var (
-	ErrKeyInactive        = errors.New("api key is disabled")
-	ErrInvalidKeyPolicy   = errors.New("api key has invalid restrictions")
-	ErrKeyExpired         = errors.New("api key has expired")
-	ErrRateLimitExceeded  = errors.New("api key rate limit exceeded")
-	ErrModelNotAllowed    = errors.New("api key is not permitted to access this model")
-	ErrProviderNotAllowed = errors.New("api key is not permitted to access this provider")
+	ErrKeyInactive             = errors.New("api key is disabled")
+	ErrInvalidKeyPolicy        = errors.New("api key has invalid restrictions")
+	ErrKeyExpired              = errors.New("api key has expired")
+	ErrRateLimitExceeded       = errors.New("api key rate limit exceeded")
+	ErrModelNotAllowed         = errors.New("api key is not permitted to access this model")
+	ErrProviderNotAllowed      = errors.New("api key is not permitted to access this provider")
+	ErrProviderPrefixForbidden = errors.New("provider_prefix_forbidden")
+	ErrModelAliasRequired      = errors.New("model_alias_required")
 )
 
 // ValidateKeyPolicy checks whether the key is active and permitted to use the requested model and provider.

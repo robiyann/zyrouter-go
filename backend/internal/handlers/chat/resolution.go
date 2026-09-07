@@ -2,11 +2,13 @@ package chat
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlers/shared"
 	"zyrouter/backend/internal/log"
@@ -45,6 +47,47 @@ func NewChatHandler(repo *db.Repo, ts ...*shared.TokenSaverConfig) *ChatHandler 
 // Exported so other handlers (media, responses, etc.) can resolve model names.
 func (h *ChatHandler) ResolveModel(modelStr string) (*ModelInfo, error) {
 	return h.resolveModel(modelStr)
+}
+
+// resolveClientModel is the only resolver used for public client requests.
+// Provider/model strings remain an internal routing representation, never a
+// public model namespace. Every public model ID must be an admin-created alias.
+func (h *ChatHandler) resolveClientModel(modelStr string) (*ModelInfo, error) {
+	modelStr = strings.TrimSpace(modelStr)
+	if modelStr == "" {
+		return nil, fmt.Errorf("missing model")
+	}
+	if strings.Contains(modelStr, "/") {
+		return nil, auth.ErrProviderPrefixForbidden
+	}
+	target, err := h.Repo.GetModelAlias(modelStr)
+	if err != nil {
+		return nil, fmt.Errorf("load model alias: %w", err)
+	}
+	if strings.TrimSpace(target) == "" {
+		return nil, auth.ErrModelAliasRequired
+	}
+	return h.resolveModel(modelStr)
+}
+
+func modelResolutionStatus(err error) int {
+	if errors.Is(err, auth.ErrProviderPrefixForbidden) || errors.Is(err, auth.ErrModelAliasRequired) {
+		return http.StatusForbidden
+	}
+	return http.StatusBadRequest
+}
+
+// resolveAliasProvider accepts canonical provider IDs for admin-created alias
+// targets. Public requests never use this path because they must be aliases.
+func (h *ChatHandler) resolveAliasProvider(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if canonical, ok := providers.ProviderAliasMap[value]; ok {
+		return canonical
+	}
+	if _, ok := providers.KnownProviders[value]; ok {
+		return value
+	}
+	return h.resolveProviderPrefix(value)
 }
 
 // GetActiveProviderPrefix returns the single active prefix for a given provider.
@@ -200,6 +243,10 @@ func (h *ChatHandler) resolveModelEntry(entry string) *ModelInfo {
 				}
 			}
 		}
+		if aliasTarget, err := h.Repo.GetModelAlias(entry); err == nil && strings.TrimSpace(aliasTarget) != "" {
+			info, _ := h.resolveModel(entry)
+			return info
+		}
 		return nil
 	}
 	parts := strings.SplitN(entry, "/", 2)
@@ -246,8 +293,15 @@ func (h *ChatHandler) flattenComboModels(models []string) ([]string, error) {
 						continue
 					}
 				}
-				if aliasTarget, err := h.Repo.GetModelAlias(m); err == nil && aliasTarget != "" && strings.Contains(aliasTarget, "/") {
-					m = aliasTarget
+				if aliasTarget, err := h.Repo.GetModelAlias(m); err == nil && strings.TrimSpace(aliasTarget) != "" {
+					// Keep the public alias in the combo list so API-key policy
+					// checks use the client-visible identifier. Routing resolves
+					// it to the internal target at dispatch time.
+					if strings.HasPrefix(aliasTarget, "combo:") {
+						return fmt.Errorf("nested combo aliases are not valid combo members")
+					}
+				} else {
+					return fmt.Errorf("combo member %q is not a published model alias", m)
 				}
 			}
 			if len(out) == 0 || out[len(out)-1] != m {
@@ -271,12 +325,37 @@ func (h *ChatHandler) resolveModel(modelStr string) (*ModelInfo, error) {
 	if modelStr == "" {
 		return nil, fmt.Errorf("missing model")
 	}
+	if record, err := h.Repo.GetModelAliasRecord(modelStr); err == nil && record != nil {
+		if record.IsActive != 1 {
+			return nil, auth.ErrModelAliasRequired
+		}
+		if record.Provider == "__combo__" {
+			return h.resolveComboName(record.UpstreamModel)
+		}
+		provider := h.resolveAliasProvider(record.Provider)
+		if provider == "" {
+			provider = record.Provider
+		}
+		info := &ModelInfo{Provider: provider, Model: record.UpstreamModel}
+		if record.ConnectionID != nil {
+			info.ConnectionID = *record.ConnectionID
+		}
+		if info.ConnectionID == "" {
+			if prefixed := h.resolvePrefixProvider(record.Provider, record.UpstreamModel); prefixed != nil {
+				info = prefixed
+			}
+		}
+		return info, nil
+	}
 
 	// 0. Check exact model alias first (even if string contains "/")
 	if aliasTarget, err := h.Repo.GetModelAlias(modelStr); err == nil && aliasTarget != "" {
+		if strings.HasPrefix(strings.ToLower(aliasTarget), "combo:") {
+			return h.resolveComboName(strings.TrimSpace(aliasTarget[len("combo:"):]))
+		}
 		if strings.Contains(aliasTarget, "/") {
 			parts := strings.SplitN(aliasTarget, "/", 2)
-			provider := h.resolveProviderPrefix(parts[0])
+			provider := h.resolveAliasProvider(parts[0])
 			if provider != "" {
 				if _, ok := providers.KnownProviders[provider]; !ok {
 					if info := h.resolvePrefixProvider(provider, parts[1]); info != nil {
@@ -373,6 +452,38 @@ func (h *ChatHandler) resolveModel(modelStr string) (*ModelInfo, error) {
 	}
 
 	return nil, fmt.Errorf("could not resolve model: %s", modelStr)
+}
+
+func (h *ChatHandler) resolveComboName(name string) (*ModelInfo, error) {
+	combo, err := h.Repo.GetComboByName(name)
+	if err != nil || combo == nil || combo.Models == "" {
+		return nil, fmt.Errorf("published combo alias target is unavailable")
+	}
+	var members []string
+	if err := json.Unmarshal([]byte(combo.Models), &members); err != nil || len(members) == 0 {
+		return nil, fmt.Errorf("published combo alias target is invalid")
+	}
+	for _, member := range members {
+		member = strings.TrimSpace(member)
+		if member == "" || strings.Contains(member, "/") {
+			return nil, fmt.Errorf("published combo alias members must be bare model aliases")
+		}
+		memberTarget, memberErr := h.Repo.GetModelAlias(member)
+		if memberErr != nil || strings.TrimSpace(memberTarget) == "" || strings.HasPrefix(strings.ToLower(memberTarget), "combo:") {
+			return nil, fmt.Errorf("published combo alias member %q is not a direct model alias", member)
+		}
+	}
+	flattened, err := h.flattenComboModels(members)
+	if err != nil || len(flattened) == 0 {
+		return nil, fmt.Errorf("published combo alias target has no valid members")
+	}
+	first := h.resolveModelEntry(flattened[0])
+	if first == nil {
+		return nil, fmt.Errorf("published combo alias target cannot resolve")
+	}
+	first.ComboModels = flattened
+	first.Strategy = combo.Strategy
+	return first, nil
 }
 
 // resolvePrefixProvider checks if a provider name is a providerNode prefix.

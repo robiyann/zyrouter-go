@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"zyrouter/backend/internal/constants"
 )
@@ -38,6 +39,11 @@ func WriteJSONError(w http.ResponseWriter, status int, message string) {
 	if t, ok := errorTypes[status]; ok {
 		errType = t.errType
 		errCode = t.errCode
+	}
+	if strings.Contains(message, "provider_prefix_forbidden") {
+		errCode = "provider_prefix_forbidden"
+	} else if strings.Contains(message, "model_alias_required") {
+		errCode = "model_alias_required"
 	}
 
 	errResp := map[string]any{

@@ -220,7 +220,7 @@ func (r *Repo) ImportDB(backup *DatabaseBackup) error {
 	defer tx.Rollback()
 
 	// 1. Clean existing tables and force API-key migration for imported data.
-	tables := []string{"providerConnections", "providerNodes", "proxyPools", "apiKeys", "combos", "kv"}
+	tables := []string{"providerConnections", "providerNodes", "proxyPools", "apiKeys", "combos", "modelAliases", "kv"}
 	for _, t := range tables {
 		if _, err := tx.Exec("DELETE FROM " + t); err != nil {
 			return fmt.Errorf("wipe table %s: %w", t, err)
@@ -445,6 +445,9 @@ func (r *Repo) ImportDB(backup *DatabaseBackup) error {
 
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	if err := migrateModelAliasesFromKV(r.db); err != nil {
+		return fmt.Errorf("migrate imported model aliases: %w", err)
 	}
 	if _, err := MigrateLegacyGatewayKeys(r.db); err != nil {
 		return fmt.Errorf("migrate imported api keys: %w", err)

@@ -490,6 +490,10 @@ func (h *AdminHandler) HandleCreateCombo(w http.ResponseWriter, r *http.Request)
 	if combo.Strategy == "" {
 		combo.Strategy = "fallback"
 	}
+	if err := h.validateComboAliases(combo.Models); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := h.repo.CreateCombo(&combo); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -505,11 +509,33 @@ func (h *AdminHandler) HandleUpdateCombo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	combo.ID = id
+	if err := h.validateComboAliases(combo.Models); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := h.repo.UpdateCombo(&combo); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, combo)
+}
+
+func (h *AdminHandler) validateComboAliases(raw string) error {
+	var members []string
+	if err := json.Unmarshal([]byte(raw), &members); err != nil || len(members) == 0 {
+		return fmt.Errorf("combo must contain a non-empty JSON array of published model aliases")
+	}
+	for _, member := range members {
+		member = strings.TrimSpace(member)
+		if member == "" || strings.Contains(member, "/") {
+			return fmt.Errorf("combo members must be bare published model aliases")
+		}
+		target, err := h.repo.GetModelAlias(member)
+		if err != nil || strings.TrimSpace(target) == "" {
+			return fmt.Errorf("combo member %q is not a published model alias", member)
+		}
+	}
+	return nil
 }
 
 func (h *AdminHandler) HandleDeleteCombo(w http.ResponseWriter, r *http.Request) {
@@ -775,21 +801,66 @@ func (h *AdminHandler) HandleGetModelAliases(w http.ResponseWriter, r *http.Requ
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-		"aliases": aliases,
-	})
+	records, recordsErr := h.repo.GetModelAliasRecords()
+	if recordsErr != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, recordsErr.Error())
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"aliases": aliases, "records": records})
 }
 
 func (h *AdminHandler) HandleSetModelAlias(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Alias  string `json:"alias"`
-		Target string `json:"target"`
+		Alias         string   `json:"alias"`
+		Target        string   `json:"target"`
+		Provider      string   `json:"provider"`
+		UpstreamModel string   `json:"upstreamModel"`
+		ConnectionID  *string  `json:"connectionId,omitempty"`
+		Capabilities  []string `json:"capabilities,omitempty"`
+		IsActive      *int     `json:"isActive,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := h.repo.SetModelAlias(body.Alias, body.Target); err != nil {
+	if strings.TrimSpace(body.Alias) == "" {
+		body.Alias = chi.URLParam(r, "alias")
+	}
+	body.Alias = strings.TrimSpace(body.Alias)
+	body.Target = strings.TrimSpace(body.Target)
+	if body.Alias == "" || strings.Contains(body.Alias, "/") {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "alias must be a non-empty bare client model ID")
+		return
+	}
+	if strings.HasPrefix(strings.ToLower(body.Target), "combo:") {
+		if strings.TrimSpace(body.Target[len("combo:"):]) == "" {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "combo alias target must name a combo")
+			return
+		}
+	} else if parts := strings.SplitN(body.Target, "/", 2); len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "target must contain exactly one provider mapping and an upstream model ID")
+		return
+	}
+	if r.Method == http.MethodPost {
+		if existing, err := h.repo.GetModelAlias(body.Alias); err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		} else if existing != "" {
+			handlerutil.WriteJSONError(w, http.StatusConflict, "model_alias_conflict: alias already exists; use PUT to update it")
+			return
+		}
+	}
+	var setErr error
+	if strings.TrimSpace(body.Provider) != "" || strings.TrimSpace(body.UpstreamModel) != "" {
+		active := 1
+		if body.IsActive != nil {
+			active = *body.IsActive
+		}
+		setErr = h.repo.SetModelAliasRecord(body.Alias, body.Provider, body.UpstreamModel, body.ConnectionID, body.Capabilities, active)
+	} else {
+		setErr = h.repo.SetModelAlias(body.Alias, body.Target)
+	}
+	if err := setErr; err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

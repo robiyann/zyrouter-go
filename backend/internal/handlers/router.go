@@ -72,6 +72,7 @@ func SetupRoutes(r interface {
 	r.Post("/api/proxy-pools/{id}/test", adminH.HandleTestProxyPool)
 	r.Get("/api/model-aliases", adminH.HandleGetModelAliases)
 	r.Post("/api/model-aliases", adminH.HandleSetModelAlias)
+	r.Put("/api/model-aliases/{alias}", adminH.HandleSetModelAlias)
 	r.Delete("/api/model-aliases/{alias}", adminH.HandleDeleteModelAlias)
 
 	r.Get("/api/custom-models", adminH.HandleGetCustomModels)

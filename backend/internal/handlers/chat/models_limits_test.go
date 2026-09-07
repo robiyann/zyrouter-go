@@ -3,11 +3,13 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/middleware"
 	"zyrouter/backend/internal/models"
@@ -72,7 +74,7 @@ func TestHandleModels_IncludesTokenLimits(t *testing.T) {
 func TestHandleModels_AllowsModelsForAllowedConnectionID(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
-	restrictions := `{"allowedProviders":["conn-allowed"]}`
+	restrictions := `{"allowedProviders":["deepseek"]}`
 	if _, err := database.Exec(`INSERT INTO apiKeys (id, key, name, isActive, restrictions, createdAt) VALUES ('model-key', 'sk-model-key', 'Model Key', 1, ?, '2026-07-18T00:00:00Z')`, restrictions); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestHandleModels_AllowsModelsForAllowedConnectionID(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 	rec := httptest.NewRecorder()
 	NewChatHandler(db.NewRepo(database)).HandleModels(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"deepseek/deepseek-chat"`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"fast-model"`) {
 		t.Fatalf("allowed connection model missing: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -101,7 +103,7 @@ func TestHandleModels_AllowsProviderPolicyForConnectionModel(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 	rec := httptest.NewRecorder()
 	NewChatHandler(db.NewRepo(database)).HandleModels(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"deepseek/deepseek-chat"`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"fast-model"`) {
 		t.Fatalf("provider allowlist should include connection model: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -109,6 +111,9 @@ func TestHandleModels_AllowsProviderPolicyForConnectionModel(t *testing.T) {
 func TestHandleModels_IncludesActiveNoAuthProviderWithoutConnection(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
+	if _, err := database.Exec(`INSERT INTO kv (scope, key, value) VALUES ('modelAliases', 'free-model', '"oc/mimo-v2.5-free"')`); err != nil {
+		t.Fatal(err)
+	}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
@@ -116,22 +121,25 @@ func TestHandleModels_IncludesActiveNoAuthProviderWithoutConnection(t *testing.T
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"id":"oc/mimo-v2.5-free"`) {
-		t.Fatalf("expected active OpenCode no-auth model with oc prefix, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"id":"free-model"`) {
+		t.Fatalf("expected published OpenCode alias, got %s", rec.Body.String())
 	}
 }
 
 func TestValidateRequestPolicy_AllowsProviderAliasForCanonicalModel(t *testing.T) {
 	database, cleanup := setupChatTestDB(t)
 	defer cleanup()
-	restrictions := `{"allowedModels":["oc/mimo-v2.5-free"],"allowedProviders":["opencode"]}`
+	if _, err := database.Exec(`INSERT INTO kv (scope, key, value) VALUES ('modelAliases', 'free-model', '"oc/mimo-v2.5-free"')`); err != nil {
+		t.Fatal(err)
+	}
+	restrictions := `{"allowedModels":["free-model"],"allowedProviders":["opencode"]}`
 	key := &models.APIKey{ID: "alias-key", Key: "sk-alias-key", IsActive: 1, Restrictions: &restrictions}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 	h := NewChatHandler(db.NewRepo(database))
 	info := &ModelInfo{Provider: "opencode", Model: "mimo-v2.5-free"}
-	if err := h.validateRequestPolicy(req, "oc/mimo-v2.5-free", info); err != nil {
-		t.Fatalf("canonical model should allow provider alias: %v", err)
+	if err := h.validateRequestPolicy(req, "free-model", info); err != nil {
+		t.Fatalf("published alias should be allowed: %v", err)
 	}
 }
 
@@ -144,7 +152,7 @@ func TestValidateRequestPolicyRejectsCanonicalProviderPrefix(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ApiKeyContextKey, key))
 	h := NewChatHandler(db.NewRepo(database))
 	info := &ModelInfo{Provider: "opencode", Model: "mimo-v2.5-free"}
-	if err := h.validateRequestPolicy(req, "opencode/mimo-v2.5-free", info); err == nil {
-		t.Fatal("canonical provider name must not be accepted as the model prefix when active prefix is oc")
+	if err := h.validateRequestPolicy(req, "opencode/mimo-v2.5-free", info); !errors.Is(err, auth.ErrProviderPrefixForbidden) {
+		t.Fatalf("provider prefix must always be rejected, got %v", err)
 	}
 }

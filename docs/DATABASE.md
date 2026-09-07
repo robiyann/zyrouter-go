@@ -122,6 +122,18 @@ erDiagram
         string value
     }
 
+    modelAliases {
+        string id PK
+        string alias UK "bare client-visible ID"
+        string provider "internal target provider"
+        string upstreamModel "internal upstream model ID"
+        string connectionId "optional pinned account"
+        int isActive
+        string capabilities "JSON array"
+        string createdAt
+        string updatedAt
+    }
+
     usageHistory {
         int id PK
         string timestamp

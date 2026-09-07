@@ -28,9 +28,9 @@ func (h *ChatHandler) HandleResponses(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing model")
 		return
 	}
-	modelInfo, err := h.resolveModel(input.Model)
+	modelInfo, err := h.resolveClientModel(input.Model)
 	if err != nil {
-		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		handlerutil.WriteJSONError(w, modelResolutionStatus(err), err.Error())
 		return
 	}
 	if len(modelInfo.ComboModels) > 0 {

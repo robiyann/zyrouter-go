@@ -68,6 +68,20 @@ type KeyRestrictions struct {
 	ExpiresAt        *string       `json:"expiresAt,omitempty"`
 }
 
+// ModelAlias is the public model registry entry. Provider and upstreamModel
+// are internal routing fields; Alias is the only client-visible identifier.
+type ModelAlias struct {
+	ID            string   `json:"id"`
+	Alias         string   `json:"alias"`
+	Provider      string   `json:"provider"`
+	UpstreamModel string   `json:"upstreamModel"`
+	ConnectionID  *string  `json:"connectionId,omitempty"`
+	IsActive      int      `json:"isActive"`
+	Capabilities  []string `json:"capabilities,omitempty"`
+	CreatedAt     string   `json:"createdAt"`
+	UpdatedAt     string   `json:"updatedAt"`
+}
+
 // APIKey represents a client-facing authorization key.
 type APIKey struct {
 	ID            string               `json:"id"`

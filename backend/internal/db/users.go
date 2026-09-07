@@ -95,6 +95,25 @@ func (r *Repo) SetAccountTypeModels(accountTypeID string, aliases []string) erro
 	if _, err := r.GetAccountType(accountTypeID); err != nil {
 		return err
 	}
+	cleanAliases := make([]string, 0, len(aliases))
+	seen := make(map[string]bool)
+	for _, alias := range aliases {
+		alias = strings.TrimSpace(alias)
+		if alias == "" || seen[strings.ToLower(alias)] {
+			continue
+		}
+		if strings.Contains(alias, "/") {
+			return fmt.Errorf("account models must use published bare aliases")
+		}
+		if target, err := r.GetModelAlias(alias); err != nil || strings.TrimSpace(target) == "" {
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("model alias %q is not published", alias)
+		}
+		seen[strings.ToLower(alias)] = true
+		cleanAliases = append(cleanAliases, alias)
+	}
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -104,13 +123,7 @@ func (r *Repo) SetAccountTypeModels(accountTypeID string, aliases []string) erro
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	seen := make(map[string]bool)
-	for _, alias := range aliases {
-		alias = strings.TrimSpace(alias)
-		if alias == "" || seen[strings.ToLower(alias)] {
-			continue
-		}
-		seen[strings.ToLower(alias)] = true
+	for _, alias := range cleanAliases {
 		if _, err := tx.Exec(`INSERT INTO accountTypeModels (accountTypeId, alias, createdAt) VALUES (?, ?, ?)`, accountTypeID, alias, now); err != nil {
 			return err
 		}

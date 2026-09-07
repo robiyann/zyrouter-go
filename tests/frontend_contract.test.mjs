@@ -15,9 +15,11 @@ for (const endpoint of [
 assert.match(app, /Authorization: `Bearer \$\{apiKey\}`/);
 assert.match(app, /async function copyText\(value\)/, 'clipboard compatibility helper is required');
 assert.match(app, /document\.execCommand\('copy'\)/, 'clipboard HTTP fallback is required');
-assert.match(app, /data-copy-key-id/, 'API key list must not embed full keys in the DOM');
-assert.match(app, /\/api\/keys\/\$\{encodeURIComponent\(btn\.dataset\.copyKeyId\)\}\/reveal/,
-  'copy action must fetch the full key on demand');
+assert.match(app, /create-only secret/, 'API key list must mark secrets as create-only');
+assert.match(app, /function showOneTimeKeyModal\(key\)/, 'new keys must use a one-time secret flow');
+assert.match(app, /btn-fetch-alias-models/, 'admin model alias form must keep the provider fetch helper');
+assert.match(app, /alias-only/i, 'frontend contract must document alias-only model access');
+assert.doesNotMatch(app, /Edit Prefix/, 'provider prefix must not be exposed as a client-facing management action');
 assert.match(app, /const values = Object\.fromEntries\(new FormData\(form\)\.entries\(\)\);[\s\S]*?submitBtn\.disabled = true;/,
   'deployment form values must be captured before controls are disabled');
 assert.match(app, /Public\/no-auth providers have no providerConnections row/,

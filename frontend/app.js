@@ -1775,7 +1775,7 @@ function renderProviders(payload) {
         <div class="provider-category-head">
           <div>
             <h3>Custom Providers (OpenAI &amp; Anthropic Compatible)</h3>
-            <p style="font-size:11px; color:var(--muted); margin:2px 0 0;">Create custom AI endpoints, local model servers, or vLLM clusters with custom routing prefixes.</p>
+            <p style="font-size:11px; color:var(--muted); margin:2px 0 0;">Create custom AI endpoints, local model servers, or vLLM clusters. Publish client access through Model Aliases.</p>
           </div>
           <div class="group-actions" style="display:flex; gap:8px;">
             <button class="solid-button" id="btn-add-openai-node" type="button" style="font-size:11px; padding:6px 12px;">+ Add OpenAI Compatible</button>
@@ -1830,7 +1830,7 @@ function renderProviders(payload) {
         <div>
           <span class="kicker">ROUTING FABRIC / PROVIDER NODES</span>
           <h2>Provider Catalog &amp; Nodes</h2>
-          <p>Organized by category. Click any provider or node to manage API keys, routing prefix, and custom models.</p>
+          <p>Organized by category. Click any provider or node to manage accounts and internal model inventory. Client access is alias-only.</p>
         </div>
         <div class="top-actions">
           <button class="solid-button" id="btn-open-add-provider"><span>+</span> Connect Provider Account</button>
@@ -1982,16 +1982,9 @@ async function renderProviderDetail(provId) {
               <h2>${escapeHtml(meta.name)}</h2>
               <p style="margin:2px 0 0;">${escapeHtml(meta.desc)}</p>
               <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-                <span class="kicker" style="font-size:8.5px; color:var(--muted);">ROUTING PREFIX:</span>
-                <code class="model-id-code" style="color:var(--lime); font-size:11px; font-weight:600;">${escapeHtml(activePrefix)}/</code>
-                <button class="secondary-button" id="btn-edit-provider-prefix" type="button" style="font-size:9.5px; padding:2px 7px;" title="Change routing prefix">
-                  ✏️ Edit Prefix
-                </button>
-                ${(prefixPayload.prefixes || {})[provId] ? `
-                  <button class="cancel-button" id="btn-reset-provider-prefix" type="button" style="font-size:9.5px; padding:2px 6px;" title="Reset prefix to default">
-                    Reset
-                  </button>
-                ` : ''}
+                <span class="kicker" style="font-size:8.5px; color:var(--muted);">PUBLIC MODEL ACCESS:</span>
+                <span class="table-badge active" style="font-size:8px;">ALIASES ONLY</span>
+                <span style="font-size:9.5px; color:var(--muted);">Provider prefixes are never client-callable.</span>
               </div>
             </div>
           </div>
@@ -2816,66 +2809,6 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
       }
     };
   });
-  // Edit Provider Routing Prefix
-  const editPrefixBtn = document.querySelector('#btn-edit-provider-prefix');
-  if (editPrefixBtn) {
-    editPrefixBtn.onclick = async () => {
-      const newPrefix = await showPromptModal({
-        title: 'Edit Routing Prefix',
-        kicker: `ROUTING / ${meta.name.toUpperCase()}`,
-        message: `Enter the incoming model prefix for ${meta.name}. When clients request "prefix/model" (e.g. "${activePrefix}/gemini-3.7-flash"), Zyrouter will route directly to this provider.`,
-        label: 'Routing Prefix (e.g. ag, antigravity, my-google)',
-        defaultValue: activePrefix,
-        confirmText: 'Save Prefix'
-      });
-      if (newPrefix === null) return;
-      const cleanPrefix = newPrefix.trim().toLowerCase();
-      if (!cleanPrefix) {
-        showToast('Prefix cannot be empty', 'error');
-        return;
-      }
-      editPrefixBtn.disabled = true;
-      try {
-        await fetch(`${apiBase}/api/provider-prefixes`, {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: provId, prefix: cleanPrefix })
-        });
-        showToast(`Routing prefix updated to "${cleanPrefix}/"!`, 'success');
-        await renderProviderDetail(provId);
-      } catch (err) {
-        showToast(`Failed to save prefix: ${err.message}`, 'error');
-      } finally {
-        editPrefixBtn.disabled = false;
-      }
-    };
-  }
-
-  // Reset Provider Routing Prefix
-  const resetPrefixBtn = document.querySelector('#btn-reset-provider-prefix');
-  if (resetPrefixBtn) {
-    resetPrefixBtn.onclick = async () => {
-      const confirmed = await showConfirmModal({
-        title: 'Reset Routing Prefix',
-        kicker: `RESET / ${meta.name.toUpperCase()}`,
-        message: `Reset routing prefix for ${meta.name} back to default "${meta.alias || provId}"?`,
-        confirmText: 'Reset to Default',
-        danger: false
-      });
-      if (!confirmed) return;
-      resetPrefixBtn.disabled = true;
-      try {
-        await fetch(`${apiBase}/api/provider-prefixes/${encodeURIComponent(provId)}`, {
-          method: 'DELETE',
-          headers
-        });
-        showToast(`Routing prefix reset to default "${meta.alias || provId}/"`, 'info');
-        await renderProviderDetail(provId);
-      } catch (err) {
-        showToast(`Failed to reset prefix: ${err.message}`, 'error');
-      }
-    };
-  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3951,9 +3884,9 @@ function openCompatibleNodeModal(variant = 'openai', existingNode = null) {
           </label>
 
           <label style="display:grid; gap:4px; font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Routing Prefix
+            Internal Node Identifier (not public model prefix)
             <input name="prefix" value="${escapeHtml(existingNode?.prefix || '')}" placeholder="${isAnthropic ? 'ac-prod' : 'oc-prod'}" required style="background:#05070a; border:1px solid var(--line); padding:8px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
-            <span style="font-size:9.5px; color:#5a6e82; text-transform:none;">Used as prefix for model IDs (e.g. <code>prefix/model-name</code>).</span>
+            <span style="font-size:9.5px; color:#5a6e82; text-transform:none;">Used only for internal provider mapping. Clients can use published aliases only.</span>
           </label>
 
           ${!isAnthropic ? `
@@ -4297,10 +4230,16 @@ let aliasPageSize = 25;
 let cachedAliasesPayload = { aliases: {} };
 
 function renderAliases(payload) {
-  if (payload && payload.aliases) {
-    cachedAliasesPayload = payload;
+  if (payload && (payload.aliases || payload.records)) {
+    const records = Array.isArray(payload.records) ? payload.records : [];
+    const recordAliases = records.reduce((result, record) => {
+      if (record.alias && record.provider && record.upstreamModel) result[record.alias] = record.provider === '__combo__' ? `combo:${record.upstreamModel}` : `${record.provider}/${record.upstreamModel}`;
+      return result;
+    }, {});
+    cachedAliasesPayload = { ...payload, aliases: Object.keys(recordAliases).length ? recordAliases : (payload.aliases || {}) };
   }
   const allEntries = Object.entries(cachedAliasesPayload.aliases || {});
+  const recordByAlias = new Map((cachedAliasesPayload.records || []).map((record) => [record.alias, record]));
   if (!allEntries.length) return emptySurface('No model aliases configured. Click "+ Create alias" to map a client model name.');
 
   // Extract unique provider filters from target strings
@@ -4348,7 +4287,7 @@ function renderAliases(payload) {
         <div class="aliases-toolbar-top">
           <div class="aliases-search-box">
             <span class="material-symbols-outlined search-icon">search</span>
-            <input type="text" id="alias-search-input" value="${escapeHtml(aliasSearchQuery)}" placeholder="Search alias (e.g. gpt-4o) or target model..." />
+            <input type="text" id="alias-search-input" value="${escapeHtml(aliasSearchQuery)}" placeholder="Search public alias or internal target..." />
           </div>
 
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -4385,8 +4324,8 @@ function renderAliases(payload) {
           <thead>
             <tr>
               <th style="width:100px;">Status</th>
-              <th style="width:30%;">Client Model Name (Alias)</th>
-              <th style="width:40%;">Target Upstream Route</th>
+              <th style="width:30%;">Public Client Alias</th>
+              <th style="width:40%;">Internal Provider / Upstream Model</th>
               <th class="table-cell-actions" style="width:20%;">Actions</th>
             </tr>
           </thead>
@@ -4398,13 +4337,16 @@ function renderAliases(payload) {
                 </td>
               </tr>
             ` : pageItems.map(([alias, target]) => {
+              const record = recordByAlias.get(alias);
+              const active = !record || record.isActive !== 0;
+              const isCombo = record?.provider === '__combo__' || String(target).startsWith('combo:');
               let targetProv = 'gateway';
               if (target.includes('/')) {
                 targetProv = target.split('/')[0];
               }
               return `
                 <tr id="alias-row-${escapeHtml(alias)}">
-                  <td><span class="table-badge active" style="font-size:7.5px;">ACTIVE</span></td>
+                  <td><span class="table-badge ${active ? 'active' : 'inactive'}" style="font-size:7.5px;">${active ? 'ACTIVE' : 'DISABLED'}</span></td>
                   <td>
                     <div style="display:flex; align-items:center; gap:6px;">
                       <code class="model-id-code" style="color:var(--text-bright); font-size:11px; font-weight:600;">${escapeHtml(alias)}</code>
@@ -4416,11 +4358,12 @@ function renderAliases(payload) {
                       <span class="alias-route-arrow">&rarr;</span>
                       <span class="table-badge" style="font-size:8px; padding:2px 5px; background:rgba(255,255,255,0.05); color:var(--muted); text-transform:uppercase;">${escapeHtml(targetProv)}</span>
                       <code class="model-id-code" style="color:var(--lime); font-size:11px;">${escapeHtml(target)}</code>
+                      ${record?.capabilities?.length ? `<small style="font-size:9px; color:var(--muted);">${escapeHtml(record.capabilities.join(', '))}</small>` : ''}
                     </div>
                   </td>
                   <td class="table-cell-actions">
-                    <button class="model-test-btn" data-test-alias="${escapeHtml(alias)}" style="font-size:9.5px; padding:3px 7px;">Test Live</button>
-                    <button class="secondary-button" data-edit-alias="${escapeHtml(alias)}" data-target="${escapeHtml(target)}" style="font-size:9.5px; padding:3px 7px;">Edit</button>
+                    ${active && !isCombo ? `<button class="model-test-btn" data-test-alias="${escapeHtml(alias)}" style="font-size:9.5px; padding:3px 7px;">Test Live</button>` : ''}
+                    ${isCombo ? '<span style="font-size:9px; color:var(--muted);">managed in Combos</span>' : `<button class="secondary-button" data-edit-alias="${escapeHtml(alias)}" data-target="${escapeHtml(target)}" data-active="${active ? '1' : '0'}" data-connection-id="${escapeHtml(record?.connectionId || '')}" data-capabilities="${escapeHtml(JSON.stringify(record?.capabilities || []))}" style="font-size:9.5px; padding:3px 7px;">Edit</button>`}
                     <button class="danger-button" data-delete-alias="${escapeHtml(alias)}" style="font-size:9.5px; padding:3px 7px;">Delete</button>
                   </td>
                 </tr>
@@ -5508,7 +5451,12 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
 }
 function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = []) {
   const current = parseRestrictionsObject(item.restrictions);
-  const { activeConnections, groups, allActiveModels, suggestedPrefixes } = getActiveProviderModels(availableProviders, availableModels, providerNodes, customModels);
+  const publishedAliases = Array.from(new Set((availableModels || []).map((model) => typeof model === 'string' ? model : model.id).filter((model) => model && !String(model).includes('/')))).sort();
+  const providerState = getActiveProviderModels(availableProviders, [], providerNodes, customModels);
+  const groups = providerState.groups.map((group) => ({ ...group, models: [] }));
+  const modelGroups = [{ provider: 'published-aliases', providerName: 'Published Model Aliases', accountCount: publishedAliases.length, models: publishedAliases }];
+  const allActiveModels = publishedAliases;
+  const suggestedPrefixes = new Set();
   const uniquePrefixes = Array.from(new Set([...suggestedPrefixes, ...current.allowedPrefixes]));
   const isModelSelected = (model) => current.allowedModels.some((allowed) => {
     const allowedName = String(allowed || '').split('/').pop();
@@ -5555,10 +5503,10 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             ${current.allowedModels.length === 0 ? '<span class="empty-chip-note">All models allowed (no whitelist)</span>' : current.allowedModels.map((m) => `<span class="chip active-chip" data-model="${escapeHtml(m)}">${escapeHtml(m)} <i class="remove-chip">&times;</i></span>`).join('')}
           </div>
 
-          ${groups.length > 0 ? `
+            ${publishedAliases.length > 0 ? `
             <div class="quick-add-bar" style="display:grid; gap:6px;">
               <span class="quick-add-label">ACTIVE MODELS:</span>
-              ${groups.map((grp) => `
+              ${modelGroups.map((grp) => `
                 <div class="active-prov-model-group" style="background:#080b10; border:1px solid var(--line-subtle); border-radius:5px; padding:6px 8px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                     <strong style="font-size:10.5px; color:var(--text-bright);">${escapeHtml(grp.providerName)}</strong>
@@ -5586,8 +5534,8 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
 
         <div class="builder-section">
           <div class="section-title">
-            <strong>2. Wildcard Prefix Rules</strong>
-            <small>Match entire model families (e.g. claude-*, gpt-*).</small>
+            <strong>2. Alias Family Rules</strong>
+            <small>Match published alias families only (e.g. coding-*, fast-*). Provider prefixes are forbidden.</small>
           </div>
           <div class="chip-container" id="selected-prefixes-container">
             ${current.allowedPrefixes.length === 0 ? '<span class="empty-chip-note">No prefix rules applied</span>' : current.allowedPrefixes.map((p) => `<span class="chip purple-chip" data-prefix="${escapeHtml(p)}">${escapeHtml(p)} <i class="remove-chip">&times;</i></span>`).join('')}
@@ -5601,7 +5549,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             </div>
           ` : ''}
           <div class="custom-input-row">
-            <input type="text" id="custom-prefix-input" placeholder="Custom prefix pattern (e.g. mistral-*)..." />
+            <input type="text" id="custom-prefix-input" placeholder="Alias family pattern (e.g. coding-*)..." />
             <button type="button" class="secondary-button" id="btn-add-custom-prefix">+ Add</button>
           </div>
         </div>
@@ -5618,7 +5566,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             <small>Leave empty to allow all providers. Check specific providers to restrict routing.</small>
           </div>
 
-          ${groups.length === 0 ? `
+            ${groups.length === 0 ? `
             <p style="color:var(--muted); font-size:11px; margin:4px 0 0;">No active providers connected.</p>
           ` : `
             <div class="prov-locking-controls" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin:4px 0 6px;">
@@ -6137,6 +6085,7 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
   const models = parseComboModels(combo.models);
   const strategy = combo.strategy || 'fallback';
   const name = combo.name || '';
+  const publicAlias = combo.publicAlias || '';
 
   return `
     <form class="inline-form policy-builder-form" id="combo-builder-form" data-combo-id="${escapeHtml(combo.id || '')}" style="max-width:740px;">
@@ -6155,6 +6104,10 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
         <label>
           Combo Route Name
           <input name="name" id="combo-name-input" value="${escapeHtml(name)}" placeholder="e.g. smart-fallback, claude-tier" required />
+        </label>
+        <label>
+          Public Model Alias (required for client access)
+          <input name="publicAlias" id="combo-public-alias-input" value="${escapeHtml(publicAlias)}" placeholder="e.g. smart-chat" pattern="[^/\\s]+" required />
         </label>
         <label>
           Routing Strategy
@@ -6367,6 +6320,7 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
 
     const comboName = form.querySelector('#combo-name-input').value.trim();
     const strategy = form.querySelector('#combo-strategy-select').value;
+    const publicAlias = form.querySelector('#combo-public-alias-input').value.trim();
     const body = { name: comboName, strategy, models: JSON.stringify(finalModels) };
 
     isSavingCombo = true;
@@ -6385,6 +6339,14 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
       });
       const resData = await response.json();
       if (!response.ok) throw new Error(resData.error || `${response.status} ${response.statusText}`);
+      const aliasEndpoint = isNew ? '/api/model-aliases' : `/api/model-aliases/${encodeURIComponent(publicAlias)}`;
+      const aliasResponse = await fetch(`${apiBase}${aliasEndpoint}`, {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: publicAlias, target: `combo:${comboName}` })
+      });
+      const aliasData = await aliasResponse.json().catch(() => ({}));
+      if (!aliasResponse.ok) throw new Error(aliasData.error || `${aliasResponse.status} ${aliasResponse.statusText}`);
       await renderView('orchestrator');
     } catch (err) {
       form.querySelector('.form-error').textContent = err.message;
@@ -6404,9 +6366,11 @@ function openCreateComboModal(comboId = null) {
   Promise.all([
     request('/api/combos').catch(() => ({ combos: [] })),
     request('/api/providers').catch(() => ({ connections: [] })),
-    request('/models').catch(() => ({ data: [] }))
-  ]).then(([comboPayload, provPayload, modelPayload]) => {
-    const { allActiveModels } = getActiveProviderModels(provPayload.connections || [], modelPayload.data || []);
+    request('/models').catch(() => ({ data: [] })),
+    request('/api/model-aliases').catch(() => ({ aliases: {} }))
+  ]).then(([comboPayload, provPayload, modelPayload, aliasPayload]) => {
+    const allActiveModels = (modelPayload.data || []).map((model) => typeof model === 'string' ? model : model.id).filter(Boolean).sort();
+    const comboAliases = Object.fromEntries(Object.entries(aliasPayload.aliases || {}).filter(([, target]) => String(target).startsWith('combo:')));
     let combo = { name: '', strategy: 'fallback', models: '[]' };
     let isNew = true;
 
@@ -6415,6 +6379,8 @@ function openCreateComboModal(comboId = null) {
       if (found) {
         combo = found;
         isNew = false;
+        const alias = Object.entries(comboAliases).find(([, target]) => target === `combo:${found.name}`);
+        if (alias) combo.publicAlias = alias[0];
       }
     }
 
@@ -6434,43 +6400,75 @@ function bindComboEditors() {
   });
 }
 
-function openCreateAliasModal(editAlias = '', editTarget = '') {
+function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, editConnectionID = '', editCapabilities = []) {
   Promise.all([
     request('/api/providers').catch(() => ({ connections: [] })),
-    request('/models').catch(() => ({ data: [] })),
-    request('/api/provider-nodes').catch(() => ({ nodes: [] })),
-    request('/api/custom-models').catch(() => ({ customModels: [] }))
-  ]).then(([provPayload, modelPayload, nodesPayload, customPayload]) => {
-    const { allActiveModels } = getActiveProviderModels(provPayload.connections || [], modelPayload.data || []);
+    request('/api/provider-nodes').catch(() => ({ nodes: [] }))
+  ]).then(([provPayload, nodesPayload]) => {
+    const connections = provPayload.connections || [];
+    const providerNames = Array.from(new Set([
+      ...connections.map((conn) => conn.provider).filter(Boolean),
+      ...(nodesPayload.nodes || []).map((node) => node.id).filter(Boolean)
+    ])).sort();
+    const targetText = String(editTarget || '');
+    const targetSeparator = targetText.indexOf('/');
+    const selectedProvider = (targetSeparator >= 0 ? targetText.slice(0, targetSeparator) : targetText) || providerNames[0] || '';
+    const selectedModel = targetSeparator >= 0 ? targetText.slice(targetSeparator + 1) : '';
+    if (selectedProvider && !providerNames.includes(selectedProvider)) providerNames.unshift(selectedProvider);
     const existing = document.querySelector('[data-create="aliases"]');
     if (existing) existing.remove();
 
     const isEdit = Boolean(editAlias);
     const formHtml = `
-      <form class="inline-form" data-create="aliases" style="max-width:540px; padding:16px; background:#080b10; border:1px solid var(--line); border-radius:8px; margin-bottom:14px;">
+      <form class="inline-form" data-create="aliases" style="max-width:600px; padding:16px; background:#080b10; border:1px solid var(--line); border-radius:8px; margin-bottom:14px;">
         <div class="form-head" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <span class="kicker">MODEL ROUTING MAPPER</span>
+            <span class="kicker">PUBLISHED MODEL ALIAS</span>
             <h2 style="font-size:14px; margin:2px 0 0;">${isEdit ? `Edit Alias: ${escapeHtml(editAlias)}` : 'Create New Model Alias'}</h2>
           </div>
           <button class="cancel-button" type="button" id="btn-close-alias-modal" style="padding:2px 6px;">&times;</button>
         </div>
         <div style="display:grid; gap:10px;">
           <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Client Model Name (Incoming Alias)
-            <input name="alias" id="alias-input" value="${escapeHtml(editAlias)}" placeholder="e.g. gpt-4o, claude-3-5-sonnet" ${isEdit ? 'readonly style="opacity:0.7;"' : 'required'} style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
+            Public Alias (client-visible, no provider prefix)
+            <input name="alias" id="alias-input" value="${escapeHtml(editAlias)}" placeholder="e.g. fast-gemini" ${isEdit ? 'readonly style="opacity:0.7;"' : 'required'} pattern="[^/\\s]+" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
           </label>
           <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Target Upstream Route
-            <input name="target" id="target-model-input" value="${escapeHtml(editTarget)}" placeholder="e.g. antigravity/gemini-3.7-flash-high, deepseek-chat" list="alias-models-datalist" required style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
-            <datalist id="alias-models-datalist">
-              ${allActiveModels.map((m) => `<option value="${escapeHtml(m)}"></option>`).join('')}
-            </datalist>
+            Internal Provider Target (admin only)
+            <select name="provider" id="alias-provider-input" required style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;">
+              ${providerNames.map((provider) => `<option value="${escapeHtml(provider)}" ${provider === selectedProvider ? 'selected' : ''}>${escapeHtml(provider)}</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+            Published State
+            <select name="isActive" id="alias-active-input" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;">
+              <option value="1" ${Number(editActive) !== 0 ? 'selected' : ''}>Published / active</option>
+              <option value="0" ${Number(editActive) === 0 ? 'selected' : ''}>Hidden / disabled</option>
+            </select>
+          </label>
+          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+            Provider Connection (optional pin)
+            <select name="connectionId" id="alias-connection-input" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;">
+              <option value="">Any active connection in provider</option>
+              ${connections.filter((conn) => String(conn.provider || '') === selectedProvider).map((conn) => `<option value="${escapeHtml(conn.id)}" ${conn.id === editConnectionID ? 'selected' : ''}>${escapeHtml(conn.name || conn.id)}</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+            Capabilities (comma-separated, admin metadata)
+            <input name="capabilities" value="${escapeHtml((editCapabilities || []).join(', '))}" placeholder="chat, vision, tools" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
+          </label>
+          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+            Upstream Model ID (never public)
+            <div style="display:flex; gap:6px;">
+              <input name="upstreamModel" id="target-model-input" value="${escapeHtml(selectedModel)}" placeholder="e.g. gemini-2.5-pro or vendor/model" list="alias-models-datalist" required style="flex:1; background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
+              <button type="button" class="secondary-button" id="btn-fetch-alias-models" style="white-space:nowrap;">Fetch models</button>
+            </div>
+            <datalist id="alias-models-datalist"></datalist>
+            <small style="display:block; margin-top:4px; color:var(--muted); text-transform:none;">Admin-only fetch. Models become public only after this alias is saved.</small>
           </label>
         </div>
-
         <div class="form-actions" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="solid-button" type="submit">${isEdit ? 'Save Alias Mapping' : 'Create Alias'}</button>
+          <button class="solid-button" type="submit">${isEdit ? 'Save Alias Mapping' : 'Publish Alias'}</button>
           <button class="cancel-button" type="button" id="btn-cancel-alias-form">Cancel</button>
         </div>
         <p class="form-error" role="alert" style="margin-top:6px; color:var(--danger); font-size:11px;"></p>
@@ -6480,10 +6478,40 @@ function openCreateAliasModal(editAlias = '', editTarget = '') {
     content.insertAdjacentHTML('afterbegin', formHtml);
     const form = document.querySelector('[data-create="aliases"]');
     if (!form) return;
-    
     const closeHandler = () => form.remove();
     form.querySelector('#btn-close-alias-modal')?.addEventListener('click', closeHandler);
     form.querySelector('#btn-cancel-alias-form')?.addEventListener('click', closeHandler);
+    const fetchModelsBtn = form.querySelector('#btn-fetch-alias-models');
+    const providerSelect = form.querySelector('#alias-provider-input');
+    const connectionSelect = form.querySelector('#alias-connection-input');
+    providerSelect?.addEventListener('change', () => {
+      if (!connectionSelect) return;
+      const provider = providerSelect.value;
+      connectionSelect.innerHTML = '<option value="">Any active connection in provider</option>' +
+        connections.filter((conn) => String(conn.provider || '') === provider).map((conn) => `<option value="${escapeHtml(conn.id)}">${escapeHtml(conn.name || conn.id)}</option>`).join('');
+    });
+    fetchModelsBtn?.addEventListener('click', async () => {
+      const provider = form.querySelector('#alias-provider-input').value.trim();
+      if (!provider) return;
+      fetchModelsBtn.disabled = true;
+      fetchModelsBtn.textContent = 'Fetching...';
+      try {
+        const response = await fetch(`${apiBase}/api/providers/${encodeURIComponent(provider)}/models`, { headers: getHeaders() });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+        const models = payload.models || payload.data || [];
+        form.querySelector('#alias-models-datalist').innerHTML = models.map((model) => {
+          const value = typeof model === 'string' ? model : (model.id || model.name || '');
+          return value ? `<option value="${escapeHtml(value)}"></option>` : '';
+        }).join('');
+        showToast(`${models.length} upstream model(s) loaded for admin selection.`, 'success');
+      } catch (error) {
+        showToast(`Model fetch failed: ${error.message}`, 'error');
+      } finally {
+        fetchModelsBtn.disabled = false;
+        fetchModelsBtn.textContent = 'Fetch models';
+      }
+    });
 
     form.onsubmit = async (event) => {
       event.preventDefault();
@@ -6491,13 +6519,17 @@ function openCreateAliasModal(editAlias = '', editTarget = '') {
       submitBtn.disabled = true;
       const origText = submitBtn.innerHTML;
       submitBtn.innerHTML = '<span class="spinner-icon"></span> Saving...';
+      form.querySelector('.form-error').textContent = '';
       try {
         const values = Object.fromEntries(new FormData(form).entries());
-        await fetch(`${apiBase}/api/model-aliases`, {
-          method: 'POST',
+        const endpoint = isEdit ? `/api/model-aliases/${encodeURIComponent(values.alias.trim())}` : '/api/model-aliases';
+        const response = await fetch(`${apiBase}${endpoint}`, {
+          method: isEdit ? 'PUT' : 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ alias: values.alias.trim(), target: values.target.trim() })
+          body: JSON.stringify({ alias: values.alias.trim(), target: `${values.provider.trim()}/${values.upstreamModel.trim()}`, provider: values.provider.trim(), upstreamModel: values.upstreamModel.trim(), connectionId: values.connectionId || null, capabilities: values.capabilities.split(',').map((item) => item.trim()).filter(Boolean), isActive: Number(values.isActive) })
         });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
         form.remove();
         await renderView('aliases');
       } catch (error) {
@@ -6580,7 +6612,7 @@ function bindAliasDeckActions() {
       const confirmed = await showConfirmModal({
         title: 'Delete All Model Aliases',
         kicker: 'DISCIPLINED PREFIX ROUTING',
-        message: `Are you sure you want to delete all ${entries.length} model aliases? This will enforce that all model calls require an explicit provider prefix (e.g. ag/..., codex/...), and only Combos will be available without a prefix.`,
+        message: `Are you sure you want to delete all ${entries.length} published model aliases? Client model discovery will become empty and raw provider models will remain unavailable.`,
         confirmText: 'Delete All Aliases',
         danger: true
       });
@@ -6604,7 +6636,9 @@ function bindAliasDeckActions() {
     btn.onclick = () => {
       const alias = btn.dataset.editAlias;
       const target = btn.dataset.target;
-      openCreateAliasModal(alias, target);
+      let capabilities = [];
+      try { capabilities = JSON.parse(btn.dataset.capabilities || '[]'); } catch {}
+      openCreateAliasModal(alias, target, Number(btn.dataset.active) || 0, btn.dataset.connectionId || '', capabilities);
     };
   });
 

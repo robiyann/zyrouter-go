@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 const legacyAPIKeyMigrationMetaKey = "migration.api_keys_hash.v1"
@@ -183,6 +184,18 @@ func EnsureSchema(db *sql.DB) error {
 			PRIMARY KEY (scope, key)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_kv_scope ON kv(scope);`,
+		`CREATE TABLE IF NOT EXISTS modelAliases (
+			id            TEXT PRIMARY KEY,
+			alias         TEXT UNIQUE NOT NULL,
+			provider      TEXT NOT NULL,
+			upstreamModel TEXT NOT NULL,
+			connectionId  TEXT,
+			isActive      INTEGER DEFAULT 1,
+			capabilities  TEXT NOT NULL DEFAULT '[]',
+			createdAt     TEXT NOT NULL,
+			updatedAt     TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_model_aliases_provider ON modelAliases(provider);`,
 
 		`CREATE TABLE IF NOT EXISTS settings (
 			id   INTEGER PRIMARY KEY CHECK (id = 1),
@@ -248,6 +261,9 @@ func EnsureSchema(db *sql.DB) error {
 			return fmt.Errorf("ensure schema exec query failed: %w", err)
 		}
 	}
+	if err := migrateModelAliasesFromKV(db); err != nil {
+		return fmt.Errorf("migrate model aliases: %w", err)
+	}
 
 	// Column migrations
 	migrateColumnIfNotExists(db, "apiKeys", "restrictions", "TEXT")
@@ -283,6 +299,61 @@ func EnsureSchema(db *sql.DB) error {
 
 	log.Printf("[db] Database schema verified & up to date")
 	return nil
+}
+
+// migrateModelAliasesFromKV keeps aliases created by older builds while the
+// structured registry becomes the source of truth for the management UI.
+func migrateModelAliasesFromKV(db *sql.DB) error {
+	rows, err := db.Query(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type aliasRow struct{ alias, target string }
+	var candidates []aliasRow
+	for rows.Next() {
+		var alias, raw string
+		if err := rows.Scan(&alias, &raw); err != nil {
+			return err
+		}
+		target := parseJSONString(raw)
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(target)), "combo:") {
+			comboName := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(target), "combo:"))
+			if comboName != "" {
+				candidates = append(candidates, aliasRow{alias: alias, target: "combo:" + comboName})
+			}
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(target), "/", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			continue
+		}
+		candidates = append(candidates, aliasRow{alias: alias, target: target})
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	var now string
+	for _, candidate := range candidates {
+		alias, target := candidate.alias, candidate.target
+		if strings.HasPrefix(target, "combo:") {
+			if now == "" {
+				now = time.Now().UTC().Format(time.RFC3339)
+			}
+			if _, err := db.Exec(`INSERT OR IGNORE INTO modelAliases (id, alias, provider, upstreamModel, isActive, capabilities, createdAt, updatedAt) VALUES (?, ?, '__combo__', ?, 1, '["combo"]', ?, ?)`, "alias_"+HashUserSecret(alias)[:24], alias, strings.TrimPrefix(target, "combo:"), now, now); err != nil {
+				return err
+			}
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(target), "/", 2)
+		if now == "" {
+			now = time.Now().UTC().Format(time.RFC3339)
+		}
+		if _, err := db.Exec(`INSERT OR IGNORE INTO modelAliases (id, alias, provider, upstreamModel, isActive, capabilities, createdAt, updatedAt) VALUES (?, ?, ?, ?, 1, '[]', ?, ?)`, "alias_"+HashUserSecret(alias)[:24], alias, parts[0], parts[1], now, now); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 // MigrateLegacyGatewayKeys hashes legacy secrets without deleting any rows.
