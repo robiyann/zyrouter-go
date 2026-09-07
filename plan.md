@@ -160,6 +160,7 @@ API key production idealnya menyimpan hash, prefix tampilan, client ID, policy I
 - [x] Add alias conflict, invalid target, active state, capability, and route-test states.
 - [x] Make combo and API-key policy pickers use published aliases only.
 - [x] Add admin authorization preview before saving API-key policy.
+- [x] Add aggregate security summary cards without exposing secrets or hashes.
 
 ### Phase 5 — Context Integrity
 
