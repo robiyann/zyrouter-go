@@ -168,6 +168,10 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 			w.Write([]byte(`{"status":"ok","message":"hello"}`))
 		}
 	})
+	r.Get("/api/public/telemetry/stats", HandlePublicTelemetryStats(repo))
+	r.Get("/api/public/telemetry/stream", HandlePublicTelemetryStream(repo))
+	r.Options("/api/public/telemetry/stats", HandlePublicTelemetryStats(repo))
+	r.Options("/api/public/telemetry/stream", HandlePublicTelemetryStream(repo))
 
 	r.Post("/api/auth/login", HandleAuthLogin(repo))
 	r.Post("/api/auth/logout", HandleAuthLogout())
