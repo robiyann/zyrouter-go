@@ -59,3 +59,22 @@ func TestPublicChatRejectsRawAndProviderPrefixedModels(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicModelEndpointsRejectPrefixes(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	h := NewChatHandler(db.NewRepo(database))
+
+	infoRec := httptest.NewRecorder()
+	h.HandleModelsInfo(infoRec, httptest.NewRequest(http.MethodGet, "/v1/models/info?id=deepseek/deepseek-chat", nil))
+	if infoRec.Code != http.StatusForbidden || !strings.Contains(infoRec.Body.String(), "provider_prefix_forbidden") {
+		t.Fatalf("models info accepted provider prefix: status=%d body=%s", infoRec.Code, infoRec.Body.String())
+	}
+
+	responseRec := httptest.NewRecorder()
+	responseReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"deepseek/deepseek-chat","input":"hello"}`))
+	h.HandleResponses(responseRec, responseReq)
+	if responseRec.Code != http.StatusForbidden || !strings.Contains(responseRec.Body.String(), "provider_prefix_forbidden") {
+		t.Fatalf("responses endpoint accepted provider prefix: status=%d body=%s", responseRec.Code, responseRec.Body.String())
+	}
+}
