@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"zyrouter/backend/internal/auditlog"
+	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/models"
@@ -874,6 +875,54 @@ func (h *AdminHandler) HandleDeleteModelAlias(w http.ResponseWriter, r *http.Req
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// HandlePreviewModelPolicy evaluates a draft API-key policy against published
+// aliases without creating or mutating a key.
+func (h *AdminHandler) HandlePreviewModelPolicy(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Models       []string               `json:"models"`
+		Restrictions models.KeyRestrictions `json:"restrictions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(body.Models) == 0 {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "models must contain at least one published alias")
+		return
+	}
+	restrictionsJSON, _ := json.Marshal(body.Restrictions)
+	restrictionsText := string(restrictionsJSON)
+	key := &models.APIKey{IsActive: 1, Restrictions: &restrictionsText}
+	results := make([]map[string]any, 0, len(body.Models))
+	for _, alias := range body.Models {
+		alias = strings.TrimSpace(alias)
+		result := map[string]any{"alias": alias, "allowed": false}
+		if alias == "" || strings.Contains(alias, "/") {
+			result["reason"] = "provider_prefix_forbidden_or_invalid_alias"
+			results = append(results, result)
+			continue
+		}
+		target, err := h.repo.GetModelAlias(alias)
+		if err != nil || target == "" {
+			result["reason"] = "model_alias_required"
+			results = append(results, result)
+			continue
+		}
+		provider := target
+		if parts := strings.SplitN(target, "/", 2); len(parts) == 2 {
+			provider = parts[0]
+		}
+		if err := auth.ValidateKeyPolicy(key, alias, provider); err != nil {
+			result["reason"] = err.Error()
+		} else {
+			result["allowed"] = true
+			result["reason"] = "allowed"
+		}
+		results = append(results, result)
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
 // ==========================================

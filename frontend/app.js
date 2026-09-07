@@ -5605,6 +5605,14 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             </label>
           </div>
         </div>
+        <div class="builder-section">
+          <div class="section-title">
+            <strong>5. Authorization Preview</strong>
+            <small>Simulate the alias policy before saving. This does not create or modify a key.</small>
+          </div>
+          <button type="button" class="secondary-button" id="btn-preview-key-policy">Preview access</button>
+          <div id="key-policy-preview" style="display:grid; gap:4px; margin-top:8px;"></div>
+        </div>
       </div>
 
       <!-- RAW JSON SURFACE (Hidden by default) -->
@@ -5922,6 +5930,49 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   // Limits
   form.querySelector('#limit-rpm').oninput = syncToRawJson;
   form.querySelector('#limit-tpd').oninput = syncToRawJson;
+
+  const previewBtn = form.querySelector('#btn-preview-key-policy');
+  if (previewBtn) {
+    previewBtn.onclick = async () => {
+      let policy = state;
+      try {
+        if (form.querySelector('.mode-tab.active')?.dataset.mode === 'raw') {
+          policy = parseRestrictionsObject(JSON.parse(form.querySelector('#policy-raw-json').value));
+        } else {
+          syncToRawJson();
+        }
+      } catch (error) {
+        form.querySelector('.form-error').textContent = `Invalid policy JSON: ${error.message}`;
+        return;
+      }
+      const aliases = Array.from(new Set([
+        ...policy.allowedModels,
+        ...Array.from(form.querySelectorAll('[data-add-model]')).map((button) => button.dataset.addModel)
+      ].filter(Boolean)));
+      const slot = form.querySelector('#key-policy-preview');
+      if (!aliases.length) {
+        slot.innerHTML = '<small style="color:var(--muted);">No published aliases available to preview.</small>';
+        return;
+      }
+      previewBtn.disabled = true;
+      previewBtn.textContent = 'Checking...';
+      try {
+        const response = await fetch(`${apiBase}/api/admin/model-policy/preview`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ models: aliases, restrictions: policy })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+        slot.innerHTML = (payload.results || []).map((result) => `<div style="font:10px var(--mono); color:${result.allowed ? 'var(--lime)' : 'var(--danger)'};">${result.allowed ? 'ALLOW' : 'DENY'} &nbsp;${escapeHtml(result.alias)} <span style="color:var(--muted);">${escapeHtml(result.reason || '')}</span></div>`).join('');
+      } catch (error) {
+        slot.innerHTML = `<small style="color:var(--danger);">Preview failed: ${escapeHtml(error.message)}</small>`;
+      } finally {
+        previewBtn.disabled = false;
+        previewBtn.textContent = 'Preview access';
+      }
+    };
+  }
 
   // Mode Switcher (Visual vs Raw JSON)
   form.querySelectorAll('.mode-tab').forEach((tab) => {

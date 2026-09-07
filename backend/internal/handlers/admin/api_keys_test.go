@@ -67,3 +67,28 @@ func TestAdminAPIKeyIsHashedAndNotRevealable(t *testing.T) {
 		t.Fatalf("structured alias listing failed: status=%d body=%s", aliases.Code, aliases.Body.String())
 	}
 }
+
+func TestModelPolicyPreviewUsesPublishedAliases(t *testing.T) {
+	file, err := os.CreateTemp("", "admin-policy-*.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	defer os.Remove(file.Name())
+	database, err := db.OpenDatabase(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	repo := db.NewRepo(database)
+	if err := repo.SetModelAliasRecord("fast-gemini", "google", "gemini-2.5-pro", nil, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	h := NewAdminHandler(repo)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/model-policy/preview", strings.NewReader(`{"models":["fast-gemini"],"restrictions":{"allowedModels":["fast-gemini"],"allowedProviders":["google"]}}`))
+	rec := httptest.NewRecorder()
+	h.HandlePreviewModelPolicy(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"allowed":true`) {
+		t.Fatalf("unexpected policy preview: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
