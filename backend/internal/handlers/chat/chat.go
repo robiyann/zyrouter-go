@@ -16,6 +16,7 @@ import (
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/log"
 	"zyrouter/backend/internal/middleware"
+	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/providers"
 	"zyrouter/backend/internal/translator"
 	"zyrouter/backend/internal/updater"
@@ -430,14 +431,7 @@ func (h *ChatHandler) handlePublishedAliasModels(w http.ResponseWriter, r *http.
 			continue
 		}
 		if apiKey != nil {
-			if !apiKey.IsModelAllowed(alias) {
-				continue
-			}
-			providerTarget := info.ConnectionID
-			if providerTarget == "" {
-				providerTarget = info.Provider
-			}
-			if !apiKey.IsProviderAllowed(providerTarget) && !apiKey.IsProviderAllowed(info.Provider) {
+			if !h.isPublicAliasAllowed(apiKey, alias, info) {
 				continue
 			}
 		}
@@ -445,6 +439,29 @@ func (h *ChatHandler) handlePublishedAliasModels(w http.ResponseWriter, r *http.
 		data = append(data, modelObj{ID: alias, Object: "model", Created: time.Now().Unix(), OwnedBy: "zyrouter", ContextLength: ctxLen, MaxCompletionTokens: maxOut})
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
+}
+
+func (h *ChatHandler) isPublicAliasAllowed(key *models.APIKey, alias string, info *ModelInfo) bool {
+	if key == nil || info == nil || !key.IsModelAllowed(alias) {
+		return false
+	}
+	checkProvider := func(candidate *ModelInfo) bool {
+		providerTarget := candidate.ConnectionID
+		if providerTarget == "" {
+			providerTarget = candidate.Provider
+		}
+		return key.IsProviderAllowed(providerTarget) || key.IsProviderAllowed(candidate.Provider)
+	}
+	if len(info.ComboModels) == 0 {
+		return checkProvider(info)
+	}
+	for _, member := range info.ComboModels {
+		memberInfo, err := h.resolveModel(member)
+		if err != nil || !checkProvider(memberInfo) || !key.IsModelAllowed(member) {
+			return false
+		}
+	}
+	return true
 }
 
 // HandleModelsInfo returns metadata for a specific model.
