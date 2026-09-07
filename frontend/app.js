@@ -4092,10 +4092,30 @@ function renderCombos(payload) {
   `;
 }
 
+let keyScopeFilter = 'all';
+
+function getKeyScope(item) {
+  if (item.clientId) return 'client';
+  if (item.userId) return 'user';
+  return 'gateway';
+}
+
 function renderKeys(payload) {
-  const rows = payload.keys || [];
+  const allRows = payload.keys || [];
+  const rows = allRows.filter((item) => keyScopeFilter === 'all' || getKeyScope(item) === keyScopeFilter);
   if (!rows.length) return emptySurface('No API keys configured');
+  const scopeCounts = { all: allRows.length, gateway: 0, user: 0, client: 0 };
+  allRows.forEach((item) => { scopeCounts[getKeyScope(item)]++; });
   return `
+    <div class="card" style="padding:14px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div><span class="kicker">ACCESS GOVERNANCE / ADMIN CONTROL PLANE</span><h2 style="font-size:15px; margin:2px 0 0;">API Keys</h2><p style="font-size:11px; color:var(--muted); margin:3px 0 0;">Secrets are create/rotate-only. Provider credentials remain on the Providers page.</p></div>
+        <span class="table-badge purple">${rows.length} / ${allRows.length} SHOWN</span>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">
+        ${[['all','All'],['gateway','Gateway'],['user','Verified User'],['client','Client Scoped']].map(([scope, label]) => `<button type="button" class="alias-filter-chip ${keyScopeFilter === scope ? 'active' : ''}" data-key-scope="${scope}">${label} (${scopeCounts[scope]})</button>`).join('')}
+      </div>
+    </div>
     <div class="data-table-container">
       <table class="data-table">
         <thead>
@@ -4103,7 +4123,7 @@ function renderKeys(payload) {
             <th>Status</th>
             <th>Key Name</th>
             <th>Key Token</th>
-            <th>Account Type</th>
+            <th>Scope / Account Type</th>
             <th>Policy Restrictions</th>
             <th class="table-cell-actions">Actions</th>
           </tr>
@@ -4123,7 +4143,7 @@ function renderKeys(payload) {
                   <span style="font-size:9px; color:var(--muted);">create-only secret</span>
                 </span>
               </td>
-              <td><span class="table-badge active">${escapeHtml(item.accountTypeId || (item.clientId ? 'client' : 'administrator'))}</span></td>
+              <td><span class="table-badge active">${escapeHtml(getKeyScope(item))}</span><small style="display:block; color:var(--muted); margin-top:3px;">${escapeHtml(item.accountTypeId || (item.clientId ? 'client' : item.userId ? 'user' : 'administrator'))}</small></td>
               <td>
                 <div style="font-size:10px; font-family:var(--mono); color:var(--muted); max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   ${escapeHtml(item.restrictions || 'No restrictions (unlimited)')}
@@ -5092,8 +5112,8 @@ async function renderView(name) {
       bindComboEditors();
     }
     if (name === 'keys') {
+      bindKeyManagementFilters();
       bindKeyPolicyEditors();
-      bindCopyKeyButtons();
     }
     if (name === 'logs') bindLogStream();
     if (name === 'authlogs') bindAuthLogs();
@@ -5109,22 +5129,6 @@ async function renderView(name) {
       content.innerHTML = emptySurface(`Backend error: ${escapeHtml(displayMsg)}`);
     }
   }
-}
-
-function bindCopyKeyButtons() {
-  document.querySelectorAll('[data-copy-key-id]').forEach((btn) => {
-    btn.onclick = async () => {
-      try {
-        const payload = await request(`/api/keys/${encodeURIComponent(btn.dataset.copyKeyId)}/reveal`);
-        await copyText(payload.key);
-        const prev = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = prev; }, 1200);
-      } catch (error) {
-        showToast(error.message || 'Copy failed', 'error');
-      }
-    };
-  });
 }
 
 function bindUsageFilters(activeDays = 'all', activeProv = '', activeModel = '') {
@@ -5625,6 +5629,19 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
       <p class="form-error" role="alert"></p>
     </form>
   `;
+}
+
+function bindKeyManagementFilters() {
+  document.querySelectorAll('[data-key-scope]').forEach((button) => {
+    button.onclick = async () => {
+      keyScopeFilter = button.dataset.keyScope || 'all';
+      const payload = await request('/api/keys');
+      content.innerHTML = renderKeys(payload);
+      bindKeyManagementFilters();
+      bindKeyPolicyEditors();
+      bindDeleteButtons('keys');
+    };
+  });
 }
 
 function bindKeyPolicyEditors() {
