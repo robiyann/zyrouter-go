@@ -23,6 +23,7 @@ assert.doesNotMatch(app, /Edit Prefix/, 'provider prefix must not be exposed as 
 assert.match(app, /data-key-scope/, 'API key governance must expose scope filters');
 assert.match(app, /Public Model Alias/, 'combo management must expose a public alias field');
 assert.match(app, /Internal Upstream Inventory/i, 'provider management must distinguish private inventory');
+assert.match(app, /PUBLIC: ALIAS-ONLY/, 'provider catalog must communicate alias-only public exposure');
 assert.match(app, /btn-preview-key-policy/, 'API key policy builder must expose authorization preview');
 assert.match(app, /const values = Object\.fromEntries\(new FormData\(form\)\.entries\(\)\);[\s\S]*?submitBtn\.disabled = true;/,
   'deployment form values must be captured before controls are disabled');

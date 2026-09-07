@@ -1759,7 +1759,7 @@ function renderProviders(payload) {
                     ${hasConns ? `${stats.active}/${stats.total} Connected` : 'Not Configured'}
                   </span>
                   <span class="table-badge" style="font-size:8px; padding:2px 5px; background:rgba(200,255,99,0.08); border:1px solid rgba(200,255,99,0.25); color:var(--lime);">
-                    ${escapeHtml(cat.alias || cat.id)}/
+                    PUBLIC: ALIAS-ONLY
                   </span>
                 </div>
               </div>
@@ -1789,7 +1789,7 @@ function renderProviders(payload) {
           <div class="card" style="padding:28px 20px; text-align:center; border:1px dashed var(--line); border-radius:10px; background:rgba(255,255,255,0.01);">
             <span class="material-symbols-outlined" style="font-size:32px; color:var(--muted); opacity:0.6; margin-bottom:8px;">extension</span>
             <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px;">No custom compatible nodes created yet.</p>
-            <p style="font-size:11px; color:#5a6e82; margin:0;">Click the buttons above to add an OpenAI or Anthropic compatible endpoint with its custom prefix and base URL.</p>
+            <p style="font-size:11px; color:#5a6e82; margin:0;">Click the buttons above to add an OpenAI or Anthropic compatible endpoint. Publish client access through a Model Alias.</p>
           </div>
         ` : `
           <div class="category-card-grid">
