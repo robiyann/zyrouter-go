@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'zyrouter',
       cwd: __dirname,
-      script: './backend/zyrouter',
+      script: process.platform === 'win32' ? './backend/zyrouter.exe' : './backend/zyrouter',
       interpreter: 'none',
       exec_mode: 'fork',
       instances: 1,
