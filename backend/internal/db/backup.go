@@ -3,22 +3,26 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+
+	"zyrouter/backend/internal/models"
 )
 
 // DatabaseBackup matches the exact 9router exportDb/importDb JSON schema.
 type DatabaseBackup struct {
-	Settings            *SettingsData      `json:"settings,omitempty"`
-	ProviderConnections []map[string]any   `json:"providerConnections"`
-	ProviderNodes       []map[string]any   `json:"providerNodes"`
-	ProxyPools          []map[string]any   `json:"proxyPools"`
-	APIKeys             []map[string]any   `json:"apiKeys"`
-	Combos              []map[string]any   `json:"combos"`
-	ModelAliases        map[string]any     `json:"modelAliases"`
-	CustomModels        []CustomModelEntry `json:"customModels"`
-	ProviderPrefixes    map[string]string  `json:"providerPrefixes,omitempty"`
-	MitmAlias           map[string]any     `json:"mitmAlias,omitempty"`
-	Pricing             map[string]any     `json:"pricing,omitempty"`
+	Settings            *SettingsData        `json:"settings,omitempty"`
+	ProviderConnections []map[string]any     `json:"providerConnections"`
+	ProviderNodes       []map[string]any     `json:"providerNodes"`
+	ProxyPools          []map[string]any     `json:"proxyPools"`
+	APIKeys             []map[string]any     `json:"apiKeys"`
+	Combos              []map[string]any     `json:"combos"`
+	ModelAliases        map[string]any       `json:"modelAliases"`
+	ModelAliasRecords   []*models.ModelAlias `json:"modelAliasRecords,omitempty"`
+	CustomModels        []CustomModelEntry   `json:"customModels"`
+	ProviderPrefixes    map[string]string    `json:"providerPrefixes,omitempty"`
+	MitmAlias           map[string]any       `json:"mitmAlias,omitempty"`
+	Pricing             map[string]any       `json:"pricing,omitempty"`
 }
 
 // ExportDB exports the complete SQLite database matching 9router's backup payload.
@@ -163,6 +167,9 @@ func (r *Repo) ExportDB() (*DatabaseBackup, error) {
 				})
 			}
 		}
+	}
+	if records, err := r.GetModelAliasRecords(); err == nil {
+		out.ModelAliasRecords = records
 	}
 
 	// 7. KV table entries
@@ -424,6 +431,30 @@ func (r *Repo) ImportDB(backup *DatabaseBackup) error {
 	for alias, target := range backup.ModelAliases {
 		tBytes, _ := json.Marshal(target)
 		_, _ = tx.Exec(`INSERT INTO kv (scope, key, value) VALUES ('modelAliases', ?, ?)`, alias, string(tBytes))
+	}
+	for _, item := range backup.ModelAliasRecords {
+		if item == nil || item.Alias == "" || item.Provider == "" || item.UpstreamModel == "" || strings.ContainsAny(item.Alias, "/ \t\r\n") {
+			continue
+		}
+		capabilities, _ := json.Marshal(item.Capabilities)
+		isActive := item.IsActive
+		if isActive != 0 {
+			isActive = 1
+		}
+		createdAt, updatedAt := item.CreatedAt, item.UpdatedAt
+		if createdAt == "" {
+			createdAt = now
+		}
+		if updatedAt == "" {
+			updatedAt = now
+		}
+		_, err := tx.Exec(`INSERT INTO modelAliases (id, alias, provider, upstreamModel, connectionId, isActive, capabilities, createdAt, updatedAt)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(alias) DO UPDATE SET provider=excluded.provider, upstreamModel=excluded.upstreamModel, connectionId=excluded.connectionId, isActive=excluded.isActive, capabilities=excluded.capabilities, updatedAt=excluded.updatedAt`,
+			item.ID, item.Alias, item.Provider, item.UpstreamModel, item.ConnectionID, isActive, string(capabilities), createdAt, updatedAt)
+		if err != nil {
+			return fmt.Errorf("restore model alias %s: %w", item.Alias, err)
+		}
 	}
 	for _, cm := range backup.CustomModels {
 		k := fmt.Sprintf("%s|%s|%s", cm.ProviderAlias, cm.ID, cm.Type)
