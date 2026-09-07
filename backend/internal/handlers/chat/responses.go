@@ -45,10 +45,13 @@ func (h *ChatHandler) HandleResponses(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, err.Error())
 		return
 	}
-
 	chatBody, err := responsesToChatRequest(body, modelInfo.Model)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.reserveUserQuota(r, body); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, err.Error())
 		return
 	}
 	recorder := httptest.NewRecorder()

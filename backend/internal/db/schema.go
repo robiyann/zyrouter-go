@@ -20,6 +20,79 @@ func EnsureSchema(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key);`,
 		`CREATE INDEX IF NOT EXISTS idx_ak_active ON apiKeys(isActive);`,
+		`CREATE TABLE IF NOT EXISTS accountTypes (
+			id TEXT PRIMARY KEY,
+			name TEXT UNIQUE NOT NULL,
+			description TEXT,
+			isSystem INTEGER DEFAULT 0,
+			isActive INTEGER DEFAULT 1,
+			quotaMode TEXT NOT NULL DEFAULT 'unlimited',
+			quotaTokens INTEGER DEFAULT 0,
+			requestsPerMinute INTEGER DEFAULT 0,
+			dailyTokenLimit INTEGER DEFAULT 0,
+			monthlyTokenLimit INTEGER DEFAULT 0,
+			allowRTK INTEGER DEFAULT 0,
+			allowCaveman INTEGER DEFAULT 0,
+			allowPonytail INTEGER DEFAULT 0,
+			createdAt TEXT NOT NULL,
+			updatedAt TEXT NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			telegramUserId TEXT UNIQUE NOT NULL,
+			telegramUsername TEXT,
+			displayName TEXT,
+			accountTypeId TEXT NOT NULL,
+			isActive INTEGER DEFAULT 1,
+			verifiedAt TEXT NOT NULL,
+			createdAt TEXT NOT NULL,
+			updatedAt TEXT NOT NULL,
+			FOREIGN KEY(accountTypeId) REFERENCES accountTypes(id)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_users_account_type ON users(accountTypeId);`,
+		`CREATE TABLE IF NOT EXISTS accountTypeModels (
+			accountTypeId TEXT NOT NULL,
+			alias TEXT NOT NULL,
+			createdAt TEXT NOT NULL,
+			PRIMARY KEY(accountTypeId, alias),
+			FOREIGN KEY(accountTypeId) REFERENCES accountTypes(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS userVerificationChallenges (
+			id TEXT PRIMARY KEY,
+			expiresAt TEXT NOT NULL,
+			telegramUserId TEXT,
+			telegramUsername TEXT,
+			telegramDisplayName TEXT,
+			status TEXT NOT NULL DEFAULT 'pending',
+			createdAt TEXT NOT NULL,
+			verifiedAt TEXT
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_verification_expiry ON userVerificationChallenges(expiresAt);`,
+		`CREATE TABLE IF NOT EXISTS userSessions (
+			hash TEXT PRIMARY KEY,
+			userId TEXT NOT NULL,
+			expiresAt TEXT NOT NULL,
+			createdAt TEXT NOT NULL,
+			FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS userQuotaUsage (
+			userId TEXT NOT NULL,
+			periodKey TEXT NOT NULL,
+			reservedTokens INTEGER NOT NULL DEFAULT 0,
+			actualTokens INTEGER NOT NULL DEFAULT 0,
+			requestCount INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(userId, periodKey),
+			FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS userSettings (
+			userId TEXT PRIMARY KEY,
+			rtkEnabled INTEGER,
+			cavemanEnabled INTEGER,
+			cavemanLevel TEXT,
+			ponytailEnabled INTEGER,
+			ponytailLevel TEXT,
+			FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+		);`,
 		`CREATE TABLE IF NOT EXISTS clientPolicies (
 			id        TEXT PRIMARY KEY,
 			name      TEXT NOT NULL,
@@ -150,7 +223,23 @@ func EnsureSchema(db *sql.DB) error {
 	migrateColumnIfNotExists(db, "apiKeys", "restrictions", "TEXT")
 	migrateColumnIfNotExists(db, "apiKeys", "clientId", "TEXT")
 	migrateColumnIfNotExists(db, "apiKeys", "policyId", "TEXT")
+	migrateColumnIfNotExists(db, "apiKeys", "userId", "TEXT")
+	migrateColumnIfNotExists(db, "apiKeys", "accountTypeId", "TEXT")
+	migrateColumnIfNotExists(db, "apiKeys", "keyHash", "TEXT")
+	migrateColumnIfNotExists(db, "usageHistory", "userId", "TEXT")
 	migrateColumnIfNotExists(db, "combos", "strategy", "TEXT DEFAULT 'fallback'")
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_one_active_user ON apiKeys(userId) WHERE userId IS NOT NULL AND isActive = 1`); err != nil {
+		return fmt.Errorf("create user api key uniqueness index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_usage_user ON usageHistory(userId)`); err != nil {
+		return fmt.Errorf("create user usage index: %w", err)
+	}
+	if _, err := db.Exec(`INSERT OR IGNORE INTO accountTypes (id, name, description, isSystem, isActive, quotaMode, createdAt, updatedAt) VALUES
+		('administrator', 'Administrator', 'Full access to all available models', 1, 1, 'unlimited', datetime('now'), datetime('now')),
+		('user', 'User', 'Standard verified user', 1, 1, 'custom', datetime('now'), datetime('now')),
+		('paid_user', 'Paid User', 'Paid user access tier', 1, 1, 'custom', datetime('now'), datetime('now'))`); err != nil {
+		return fmt.Errorf("seed account types: %w", err)
+	}
 
 	log.Printf("[db] Database schema verified & up to date")
 	return nil

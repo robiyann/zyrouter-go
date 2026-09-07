@@ -27,6 +27,14 @@ import (
 
 const maxFallbackAttempts = 10
 
+type quotaReservation struct {
+	UserID  string
+	Tokens  int64
+	Settled bool
+}
+
+type quotaReservationContextKey struct{}
+
 // handleAccountFallback attempts to forward a request with automatic account fallback.
 func (h *ChatHandler) handleAccountFallback(
 	ctx context.Context,
@@ -289,7 +297,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 
 	log.Info("router", "dispatch", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
 
-	pipedBody := h.applyTokenSavers(body)
+	pipedBody := h.applyTokenSaversForContext(ctx, body)
 	start := time.Now()
 	metrics := &streamMetrics{}
 	var fwdErr error
@@ -393,8 +401,20 @@ func (h *ChatHandler) tryForwardWithConnection(
 			APIKey:       apiKey,
 			Endpoint:     endpoint,
 		}
+		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok {
+			logInfo.UserID = reservation.UserID
+			logInfo.ReservedTokens = reservation.Tokens
+		}
 		h.logUsage(logInfo, usage, latencyMs, body, metrics)
+		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok && !reservation.Settled {
+			_ = h.Repo.FinalizeUserQuota(reservation.UserID, reservation.Tokens, int64(usage.PromptTokens+usage.CompletionTokens))
+			reservation.Settled = true
+		}
 	} else {
+		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok && !reservation.Settled {
+			_ = h.Repo.FinalizeUserQuota(reservation.UserID, reservation.Tokens, 0)
+			reservation.Settled = true
+		}
 		var ue *upstreamError
 		statusCode := 0
 		var errBodyStr string
@@ -467,9 +487,87 @@ func (h *ChatHandler) tryForwardWithConnection(
 	return fwdErr
 }
 
+func (h *ChatHandler) reserveUserQuota(r *http.Request, body []byte) error {
+	key := middleware.GetAuthenticatedApiKey(r)
+	if key == nil || key.UserID == nil || h.Repo == nil {
+		return nil
+	}
+	typeID := valueOrEmpty(key.AccountTypeID)
+	typ, err := h.Repo.GetAccountType(typeID)
+	if err != nil || typ == nil {
+		return fmt.Errorf("account type lookup failed")
+	}
+	if typ.QuotaMode == "unlimited" || typ.QuotaTokens <= 0 {
+		return nil
+	}
+	var raw map[string]any
+	inputEstimate := int64(len(body) / 4)
+	requestedOutput := int64(1024)
+	if json.Unmarshal(body, &raw) == nil {
+		for _, field := range []string{"max_tokens", "max_output_tokens"} {
+			if value, ok := raw[field].(float64); ok && value > 0 {
+				requestedOutput = int64(value)
+				break
+			}
+		}
+	}
+	requested := inputEstimate + requestedOutput
+	if requested < 16 {
+		requested = 16
+	}
+	ok, err := h.Repo.ReserveUserQuota(*key.UserID, typ, requested)
+	if err != nil {
+		return fmt.Errorf("quota lookup failed: %w", err)
+	}
+	if !ok {
+		return auth.ErrRateLimitExceeded
+	}
+	*r = *r.WithContext(context.WithValue(r.Context(), quotaReservationContextKey{}, &quotaReservation{UserID: *key.UserID, Tokens: requested}))
+	return nil
+}
+
 // applyTokenSavers runs RTK compression and prompt injection on the request body.
 // false from compress/inject means nothing changed (or unparseable) — keep original, not a failure.
 func (h *ChatHandler) applyTokenSavers(body []byte) []byte {
+	return h.applyTokenSaversWithFlags(body, h.TokenSaver.RTKEnabled(), h.TokenSaver.CavemanEnabled(), h.TokenSaver.CavemanLevel(), h.TokenSaver.PonytailEnabled(), h.TokenSaver.PonytailLevel())
+}
+
+// applyTokenSaversForContext applies account-type-capped user settings without
+// mutating the process-wide admin defaults.
+func (h *ChatHandler) applyTokenSaversForContext(ctx context.Context, body []byte) []byte {
+	key := middleware.GetAuthenticatedApiKeyFromContext(ctx)
+	if key == nil || key.UserID == nil || strings.TrimSpace(*key.UserID) == "" || h.Repo == nil {
+		return h.applyTokenSavers(body)
+	}
+	typ, err := h.Repo.GetAccountType(valueOrEmpty(key.AccountTypeID))
+	if err != nil || typ == nil {
+		return body
+	}
+	settings := key.UserFeatures
+	if settings == nil {
+		return body
+	}
+	rtk := typ.AllowRTK && settings.RTKEnabled != nil && *settings.RTKEnabled
+	caveman := typ.AllowCaveman && settings.CavemanEnabled != nil && *settings.CavemanEnabled
+	ponytail := typ.AllowPonytail && settings.PonytailEnabled != nil && *settings.PonytailEnabled
+	cavemanLevel, ponytailLevel := settings.CavemanLevel, settings.PonytailLevel
+	if cavemanLevel == "" {
+		cavemanLevel = "full"
+	}
+	if ponytailLevel == "" {
+		ponytailLevel = "full"
+	}
+	return h.applyTokenSaversWithFlags(body, rtk, caveman, cavemanLevel, ponytail, ponytailLevel)
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func (h *ChatHandler) applyTokenSaversWithFlags(body []byte, rtk, caveman bool, cavemanLevel string, ponytail bool, ponytailLevel string) []byte {
 	// Prompt-injection guard: tag (never block) flagged user content. Early
 	// detection here means operators can see abuse before it reaches upstream.
 	// Toggle via settings.injectionGuardEnabled (off bypasses the scan).
@@ -479,19 +577,19 @@ func (h *ChatHandler) applyTokenSavers(body []byte) []byte {
 		}
 	}
 	out := body
-	if h.TokenSaver.RTKEnabled() {
+	if rtk {
 		if next, did := tokensaver.CompressMessages(out); did {
 			out = next
 		}
 	}
-	if h.TokenSaver.CavemanEnabled() {
-		prompt := tokensaver.GetCavemanPrompt(h.TokenSaver.CavemanLevel())
+	if caveman {
+		prompt := tokensaver.GetCavemanPrompt(cavemanLevel)
 		if next, did := tokensaver.InjectSystemPrompt(out, prompt); did {
 			out = next
 		}
 	}
-	if h.TokenSaver.PonytailEnabled() {
-		prompt := tokensaver.GetPonytailPrompt(h.TokenSaver.PonytailLevel())
+	if ponytail {
+		prompt := tokensaver.GetPonytailPrompt(ponytailLevel)
 		if next, did := tokensaver.InjectSystemPrompt(out, prompt); did {
 			out = next
 		}

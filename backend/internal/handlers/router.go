@@ -14,6 +14,7 @@ import (
 	"zyrouter/backend/internal/handlers/deployment"
 	"zyrouter/backend/internal/handlers/oauth"
 	"zyrouter/backend/internal/handlers/shared"
+	userhandlers "zyrouter/backend/internal/handlers/user"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/middleware"
 )
@@ -155,6 +156,7 @@ func SetupRoutes(r interface {
 func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	adminH := admin.NewAdminHandler(repo)
 	clientH := clienthandlers.NewHandler(repo)
+	userH := userhandlers.NewHandler(repo)
 	// Public (unauthenticated) endpoints
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
@@ -177,6 +179,23 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	r.Post("/api/auth/logout", HandleAuthLogout())
 	r.Get("/api/auth/status", HandleAuthStatus(repo))
 
+	// Telegram verification is public only for challenge creation/status and the
+	// locked bot webhook. No database or admin data is exposed by these routes.
+	r.Post("/api/user/verification/start", userH.StartVerification)
+	r.Get("/api/user/verification/{id}", userH.VerificationStatus)
+	r.Post("/api/telegram/webhook", userH.TelegramWebhook)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireUserSession(repo))
+		r.Get("/api/user/profile", userH.Profile)
+		r.Get("/api/user/usage", userH.Usage)
+		r.Get("/api/user/features", userH.Features)
+		r.Put("/api/user/features", userH.UpdateFeatures)
+		r.Get("/api/user/key", userH.GetKey)
+		r.Post("/api/user/key", userH.GenerateKey)
+		r.Post("/api/user/key/rotate", userH.RotateKey)
+		r.Delete("/api/user/key", userH.RevokeKey)
+	})
+
 	// Future client dashboard API. It is intentionally isolated from admin/API-key routes.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireClientAccess(repo))
@@ -194,6 +213,14 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Post("/api/auth/change-password", HandleAuthChangePassword(repo))
 		r.Post("/api/admin/client-policies", adminH.HandleCreateClientPolicy)
 		r.Post("/api/admin/clients", adminH.HandleCreateClient)
+		r.Get("/api/admin/account-types", adminH.HandleGetAccountTypes)
+		r.Post("/api/admin/account-types", adminH.HandleUpsertAccountType)
+		r.Put("/api/admin/account-types/{id}", adminH.HandleUpsertAccountType)
+		r.Delete("/api/admin/account-types/{id}", adminH.HandleDeleteAccountType)
+		r.Get("/api/admin/account-types/{id}/models", adminH.HandleGetAccountTypeModels)
+		r.Post("/api/admin/account-types/{id}/models", adminH.HandleSetAccountTypeModels)
+		r.Get("/api/admin/users", adminH.HandleGetUsers)
+		r.Put("/api/admin/users/{id}/account-type", adminH.HandleUpdateUserAccountType)
 		// Health reset endpoint for the admin dashboard.
 		r.Post("/admin/health/reset", func(w http.ResponseWriter, r *http.Request) {
 			provider := r.URL.Query().Get("provider")

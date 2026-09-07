@@ -70,15 +70,60 @@ type KeyRestrictions struct {
 
 // APIKey represents a client-facing authorization key.
 type APIKey struct {
-	ID           string  `json:"id"`
-	Key          string  `json:"key"`
-	Name         *string `json:"name,omitempty"`
-	MachineID    *string `json:"machineId,omitempty"`
-	IsActive     int     `json:"isActive"`               // 0 or 1
-	Restrictions *string `json:"restrictions,omitempty"` // JSON string representing KeyRestrictions
-	ClientID     *string `json:"clientId,omitempty"`
-	PolicyID     *string `json:"policyId,omitempty"`
-	CreatedAt    string  `json:"createdAt"`
+	ID            string               `json:"id"`
+	Key           string               `json:"key"`
+	Name          *string              `json:"name,omitempty"`
+	MachineID     *string              `json:"machineId,omitempty"`
+	IsActive      int                  `json:"isActive"`               // 0 or 1
+	Restrictions  *string              `json:"restrictions,omitempty"` // JSON string representing KeyRestrictions
+	ClientID      *string              `json:"clientId,omitempty"`
+	PolicyID      *string              `json:"policyId,omitempty"`
+	UserID        *string              `json:"userId,omitempty"`
+	AccountTypeID *string              `json:"accountTypeId,omitempty"`
+	KeyHash       *string              `json:"-"`
+	UserFeatures  *UserFeatureSettings `json:"-"`
+	CreatedAt     string               `json:"createdAt"`
+}
+
+// AccountType is the server-owned access tier for verified users.
+type AccountType struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Description       string `json:"description,omitempty"`
+	IsSystem          int    `json:"isSystem"`
+	IsActive          int    `json:"isActive"`
+	QuotaMode         string `json:"quotaMode"`
+	QuotaTokens       int64  `json:"quotaTokens"`
+	RequestsPerMinute int    `json:"requestsPerMinute"`
+	DailyTokenLimit   int64  `json:"dailyTokenLimit"`
+	MonthlyTokenLimit int64  `json:"monthlyTokenLimit"`
+	AllowRTK          bool   `json:"allowRTK"`
+	AllowCaveman      bool   `json:"allowCaveman"`
+	AllowPonytail     bool   `json:"allowPonytail"`
+	CreatedAt         string `json:"createdAt"`
+	UpdatedAt         string `json:"updatedAt"`
+}
+
+// User is a Telegram-verified client identity.
+type User struct {
+	ID               string  `json:"id"`
+	TelegramUserID   string  `json:"telegramUserId,omitempty"`
+	TelegramUsername *string `json:"telegramUsername,omitempty"`
+	DisplayName      *string `json:"displayName,omitempty"`
+	AccountTypeID    string  `json:"accountTypeId"`
+	IsActive         int     `json:"isActive"`
+	VerifiedAt       string  `json:"verifiedAt"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+}
+
+// UserFeatureSettings are optional per-user requests, capped by account type permissions.
+type UserFeatureSettings struct {
+	RTKEnabled      *bool  `json:"rtkEnabled,omitempty"`
+	CavemanEnabled  *bool  `json:"cavemanEnabled,omitempty"`
+	CavemanLevel    string `json:"cavemanLevel,omitempty"`
+	PonytailEnabled *bool  `json:"ponytailEnabled,omitempty"`
+	PonytailLevel   string `json:"ponytailLevel,omitempty"`
 }
 
 // ClientPolicy is the server-owned policy inherited by client-generated keys.

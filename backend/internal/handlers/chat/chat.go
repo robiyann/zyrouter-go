@@ -65,6 +65,14 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 		handlerutil.WriteJSONError(w, status, err.Error())
 		return
 	}
+	if err := h.reserveUserQuota(r, body); err != nil {
+		status := http.StatusTooManyRequests
+		if !errors.Is(err, auth.ErrRateLimitExceeded) {
+			status = http.StatusInternalServerError
+		}
+		handlerutil.WriteJSONError(w, status, err.Error())
+		return
+	}
 
 	if len(modelInfo.ComboModels) > 0 {
 		if modelInfo.Strategy == "fusion" {
@@ -154,7 +162,6 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, status, err.Error())
 		return
 	}
-
 	translateResponse := true
 	var workingBody map[string]any
 	if modelInfo.Provider == "claude" || modelInfo.Provider == "anthropic" {
@@ -177,6 +184,14 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	workingBody["stream"] = reqBody.Stream
+	if err := h.reserveUserQuota(r, body); err != nil {
+		status := http.StatusTooManyRequests
+		if !errors.Is(err, auth.ErrRateLimitExceeded) {
+			status = http.StatusInternalServerError
+		}
+		handlerutil.WriteJSONError(w, status, err.Error())
+		return
+	}
 
 	if len(modelInfo.ComboModels) > 0 {
 		if modelInfo.Strategy == "fusion" {
@@ -202,6 +217,31 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	key := middleware.GetAuthenticatedApiKey(r)
 	if key == nil || info == nil {
 		return nil
+	}
+	// Verified user keys are alias-only. Their access is resolved from the
+	// account type, never from mutable restrictions copied onto the key.
+	if key.UserID != nil && strings.TrimSpace(*key.UserID) != "" {
+		if strings.Contains(requested, "/") {
+			return fmt.Errorf("client api keys must use the public model alias without a provider prefix")
+		}
+		aliasTarget, err := h.Repo.GetModelAlias(requested)
+		if err != nil {
+			return fmt.Errorf("model alias lookup failed: %w", err)
+		}
+		if strings.TrimSpace(aliasTarget) == "" {
+			return fmt.Errorf("model alias '%s' does not exist", requested)
+		}
+		typeID := ""
+		if key.AccountTypeID != nil {
+			typeID = *key.AccountTypeID
+		}
+		allowed, err := h.Repo.IsAliasAllowedForAccountType(typeID, requested)
+		if err != nil {
+			return fmt.Errorf("account type lookup failed: %w", err)
+		}
+		if !allowed {
+			return fmt.Errorf("model alias '%s' is not enabled for this account type", requested)
+		}
 	}
 
 	validateOne := func(requestedModel string, modelInfo *ModelInfo) error {
@@ -353,12 +393,39 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apiKey := middleware.GetAuthenticatedApiKey(r)
+	now := time.Now().Unix()
+	if apiKey != nil && apiKey.UserID != nil && strings.TrimSpace(*apiKey.UserID) != "" {
+		typeID := ""
+		if apiKey.AccountTypeID != nil {
+			typeID = *apiKey.AccountTypeID
+		}
+		aliases, err := h.Repo.GetAccountTypeModels(typeID)
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load account model permissions")
+			return
+		}
+		if typeID == "administrator" {
+			all, aliasErr := h.Repo.GetModelAliases()
+			if aliasErr != nil {
+				handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load model aliases")
+				return
+			}
+			aliases = aliases[:0]
+			for alias := range all {
+				aliases = append(aliases, string(alias))
+			}
+		}
+		data := make([]modelObj, 0, len(aliases))
+		for _, alias := range aliases {
+			data = append(data, modelObj{ID: alias, Object: "model", Created: now, OwnedBy: "zyrouter"})
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
+		return
+	}
 	connectionProviderMap := make(map[string]string)
 
 	seen := make(map[string]bool)
 	var data []modelObj
-	now := time.Now().Unix()
-
 	addModel := func(id, owner string, connectionID ...string) {
 		if id == "" || seen[id] {
 			return

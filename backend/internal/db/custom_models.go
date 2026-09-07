@@ -75,6 +75,15 @@ func (r *Repo) AddCustomModel(provider, modelID, modelType, name string) error {
 	return err
 }
 
+func (r *Repo) CustomModelExists(provider, modelID, modelType string) (bool, error) {
+	if modelType == "" {
+		modelType = "llm"
+	}
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM kv WHERE scope='customModels' AND lower(key)=lower(?)`, fmt.Sprintf("%s|%s|%s", provider, modelID, modelType)).Scan(&count)
+	return count > 0, err
+}
+
 // DeleteCustomModel removes a custom model from scope 'customModels'.
 func (r *Repo) DeleteCustomModel(provider, modelID, modelType string) error {
 	if modelType == "" {

@@ -27,7 +27,6 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	if usage == nil {
 		usage = &translator.OpenAIUsage{}
 	}
-
 	var ttftMs int64
 	var respContent string
 	if metrics != nil {
@@ -63,7 +62,13 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 
 	log.Info("router", "success", "provider", providerLabel, "providerId", info.Provider, "model", modelLabel, "modelId", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
 	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
-	if err := h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, maskAPIKey(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON); err != nil {
+	var usageErr error
+	if info.UserID != "" {
+		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, maskAPIKey(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
+	} else {
+		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, maskAPIKey(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
+	}
+	if err := usageErr; err != nil {
 		log.Error("usage", "insert failed", "error", err)
 	}
 

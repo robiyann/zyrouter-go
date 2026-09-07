@@ -72,7 +72,7 @@ func (r *Repo) GetClientByAccessTokenHash(tokenHash string) (*models.Client, err
 }
 
 func (r *Repo) GetApiKeysByClientID(clientID string) ([]*models.APIKey, error) {
-	rows, err := r.db.Query(`SELECT id, key, name, machineId, isActive, restrictions, createdAt, clientId, policyId FROM apiKeys WHERE clientId = ? ORDER BY createdAt DESC`, clientID)
+	rows, err := r.db.Query(`SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys WHERE clientId = ? ORDER BY createdAt DESC`, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +80,18 @@ func (r *Repo) GetApiKeysByClientID(clientID string) ([]*models.APIKey, error) {
 	var keys []*models.APIKey
 	for rows.Next() {
 		var key models.APIKey
-		if err := rows.Scan(&key.ID, &key.Key, &key.Name, &key.MachineID, &key.IsActive, &key.Restrictions, &key.CreatedAt, &key.ClientID, &key.PolicyID); err != nil {
+		var hash, userID, typeID sql.NullString
+		if err := rows.Scan(&key.ID, &key.Key, &hash, &key.Name, &key.MachineID, &key.IsActive, &key.Restrictions, &key.CreatedAt, &key.ClientID, &key.PolicyID, &userID, &typeID); err != nil {
 			return nil, err
+		}
+		if hash.Valid {
+			key.KeyHash = &hash.String
+		}
+		if userID.Valid {
+			key.UserID = &userID.String
+		}
+		if typeID.Valid {
+			key.AccountTypeID = &typeID.String
 		}
 		keys = append(keys, &key)
 	}

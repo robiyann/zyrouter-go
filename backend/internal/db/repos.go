@@ -31,7 +31,7 @@ func (r *Repo) RawDB() *sql.DB {
 // ValidateApiKey checks if the given API key exists and is active.
 func (r *Repo) ValidateApiKey(key string) (bool, error) {
 	var active int
-	err := r.db.QueryRow("SELECT isActive FROM apiKeys WHERE key = ? LIMIT 1", key).Scan(&active)
+	err := r.db.QueryRow("SELECT isActive FROM apiKeys WHERE key = ? OR keyHash = ? LIMIT 1", key, HashUserSecret(key)).Scan(&active)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -44,16 +44,26 @@ func (r *Repo) ValidateApiKey(key string) (bool, error) {
 // GetApiKeyByKey retrieves detailed APIKey information by key string.
 func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 	var apiKey models.APIKey
+	var userID, typeID, keyHash sql.NullString
 	err := r.db.QueryRow(
-		"SELECT id, key, name, machineId, isActive, restrictions, createdAt, clientId, policyId FROM apiKeys WHERE key = ? LIMIT 1",
-		key,
-	).Scan(&apiKey.ID, &apiKey.Key, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID)
+		"SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys WHERE key = ? OR keyHash = ? LIMIT 1",
+		key, HashUserSecret(key),
+	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if keyHash.Valid {
+		apiKey.KeyHash = &keyHash.String
+	}
+	if userID.Valid {
+		apiKey.UserID = &userID.String
+	}
+	if typeID.Valid {
+		apiKey.AccountTypeID = &typeID.String
 	}
 	return &apiKey, nil
 }
@@ -61,10 +71,11 @@ func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 // GetApiKeyByID retrieves APIKey information by primary key ID.
 func (r *Repo) GetApiKeyByID(id string) (*models.APIKey, error) {
 	var apiKey models.APIKey
+	var userID, typeID, keyHash sql.NullString
 	err := r.db.QueryRow(
-		"SELECT id, key, name, machineId, isActive, restrictions, createdAt, clientId, policyId FROM apiKeys WHERE id = ? LIMIT 1",
+		"SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys WHERE id = ? LIMIT 1",
 		id,
-	).Scan(&apiKey.ID, &apiKey.Key, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID)
+	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -72,12 +83,21 @@ func (r *Repo) GetApiKeyByID(id string) (*models.APIKey, error) {
 	if err != nil {
 		return nil, err
 	}
+	if keyHash.Valid {
+		apiKey.KeyHash = &keyHash.String
+	}
+	if userID.Valid {
+		apiKey.UserID = &userID.String
+	}
+	if typeID.Valid {
+		apiKey.AccountTypeID = &typeID.String
+	}
 	return &apiKey, nil
 }
 
 // GetApiKeys retrieves all API keys.
 func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
-	rows, err := r.db.Query("SELECT id, key, name, machineId, isActive, restrictions, createdAt, clientId, policyId FROM apiKeys ORDER BY createdAt DESC")
+	rows, err := r.db.Query("SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys ORDER BY createdAt DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +106,18 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 	var keys []*models.APIKey
 	for rows.Next() {
 		var k models.APIKey
-		if err := rows.Scan(&k.ID, &k.Key, &k.Name, &k.MachineID, &k.IsActive, &k.Restrictions, &k.CreatedAt, &k.ClientID, &k.PolicyID); err != nil {
+		var userID, typeID, keyHash sql.NullString
+		if err := rows.Scan(&k.ID, &k.Key, &keyHash, &k.Name, &k.MachineID, &k.IsActive, &k.Restrictions, &k.CreatedAt, &k.ClientID, &k.PolicyID, &userID, &typeID); err != nil {
 			return nil, err
+		}
+		if keyHash.Valid {
+			k.KeyHash = &keyHash.String
+		}
+		if userID.Valid {
+			k.UserID = &userID.String
+		}
+		if typeID.Valid {
+			k.AccountTypeID = &typeID.String
 		}
 		keys = append(keys, &k)
 	}

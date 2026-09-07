@@ -35,12 +35,14 @@ type ConnectionData struct {
 
 // UsageLogInfo holds request context needed to log a usage record.
 type UsageLogInfo struct {
-	Provider     string
-	Model        string
-	ConnectionID string
-	ProxyPoolID  string
-	APIKey       string
-	Endpoint     string
+	Provider       string
+	Model          string
+	ConnectionID   string
+	ProxyPoolID    string
+	APIKey         string
+	Endpoint       string
+	UserID         string
+	ReservedTokens int64
 }
 
 // ResponseCaptureMax is the maximum response content retained for token

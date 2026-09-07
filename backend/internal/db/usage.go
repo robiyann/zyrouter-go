@@ -29,6 +29,26 @@ func (r *Repo) InsertUsageHistory(provider, model, connectionID, apiKey, endpoin
 	return nil
 }
 
+func (r *Repo) InsertUserUsageHistory(userID, provider, model, connectionID, apiKey, endpoint string, promptTokens, completionTokens int, cost float64, status string, totalTokens int, meta string, tokensJSON string) error {
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.Exec(`INSERT INTO usageHistory (timestamp,provider,model,connectionId,apiKey,endpoint,promptTokens,completionTokens,cost,status,tokens,meta,userId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		timestamp, provider, model, connectionID, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokensJSON, meta, userID)
+	if err != nil {
+		return fmt.Errorf("insert user usage history: %w", err)
+	}
+	return nil
+}
+
+func (r *Repo) GetUserUsage(userID string) (map[string]any, error) {
+	var requests, prompt, completion int64
+	var cost float64
+	err := r.db.QueryRow(`SELECT COUNT(*),COALESCE(SUM(promptTokens),0),COALESCE(SUM(completionTokens),0),COALESCE(SUM(cost),0) FROM usageHistory WHERE userId=?`, userID).Scan(&requests, &prompt, &completion, &cost)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"totalRequests": requests, "promptTokens": prompt, "completionTokens": completion, "totalTokens": prompt + completion, "totalCost": cost}, nil
+}
+
 // UpsertUsageDaily inserts or replaces a daily usage aggregation record.
 // The data parameter should be a JSON string matching the 9Router daily aggregation format.
 // NOTE: INSERT OR REPLACE is an atomic full-row replace of the pre-merged JSON

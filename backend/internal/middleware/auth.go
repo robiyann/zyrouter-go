@@ -113,6 +113,16 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 				handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Invalid authentication credentials.")
 				return
 			}
+			// Hashed user keys keep only a display prefix in SQLite. Preserve the
+			// presented secret in request memory for downstream rate/usage context.
+			if apiKeyObj.KeyHash != nil {
+				apiKeyObj.Key = tokenString
+			}
+			if apiKeyObj.UserID != nil && strings.TrimSpace(*apiKeyObj.UserID) != "" {
+				if settings, settingsErr := repo.GetUserSettings(*apiKeyObj.UserID); settingsErr == nil {
+					apiKeyObj.UserFeatures = settings
+				}
+			}
 
 			if apiKeyObj.IsActive != 1 {
 				handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Invalid or inactive API key.")

@@ -865,6 +865,15 @@ func (h *AdminHandler) HandleAddCustomModel(w http.ResponseWriter, r *http.Reque
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "provider/providerAlias and id/model are required")
 		return
 	}
+	exists, err := h.repo.CustomModelExists(provider, modelID, mType)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if exists {
+		handlerutil.WriteJSONError(w, http.StatusConflict, "model id sudah ada pada provider ini; gunakan model id yang berbeda")
+		return
+	}
 	if err := h.repo.AddCustomModel(provider, modelID, mType, name); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
