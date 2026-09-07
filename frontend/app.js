@@ -2,7 +2,7 @@ const views = {
   overview: ['SIGNAL ROOM', 'See the signal.', 'One calm surface for the traffic, health, and policy decisions inside your AI gateway.', 'Refresh connection'],
   providers: ['NODES', 'Provider nodes', 'Manage live connections to your routing fabric.', 'Add connection'],
   orchestrator: ['FLOWS', 'Combo orchestrator', 'Compose fallback, round-robin, sticky, and fusion strategies.', 'Create combo'],
-  keys: ['KEYS', 'API key governance', 'Control access with model, prefix, and provider restrictions.', 'Create API key'],
+  keys: ['KEYS', 'API key governance', 'Control gateway access with public aliases and provider restrictions.', 'Create API key'],
   usage: ['LEDGER', 'Usage ledger', 'Inspect token volume and cost from the SQLite rollup.', 'Export ledger'],
   logs: ['TRACE', 'Stream inspector', 'Observe translator events and request traces as they happen.', 'Connect stream'],
   authlogs: ['SECURITY', 'Auth log', 'Review dashboard login attempts and rejected admin access.', 'Refresh auth log'],
