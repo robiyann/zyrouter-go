@@ -67,6 +67,9 @@ func (h *ChatHandler) resolveClientModel(modelStr string) (*ModelInfo, error) {
 	if strings.TrimSpace(target) == "" {
 		return nil, auth.ErrModelAliasRequired
 	}
+	if !strings.Contains(target, "/") && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(target)), "combo:") {
+		return nil, auth.ErrModelAliasRequired
+	}
 	return h.resolveModel(modelStr)
 }
 

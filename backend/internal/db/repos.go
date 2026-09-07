@@ -483,7 +483,10 @@ func (r *Repo) GetModelAliases() (map[mapKey]string, error) {
 			return nil, err
 		}
 		if !known[alias] {
-			aliases[alias] = parseJSONString(rawVal)
+			target := parseJSONString(rawVal)
+			if strings.Contains(target, "/") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(target)), "combo:") {
+				aliases[alias] = target
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {

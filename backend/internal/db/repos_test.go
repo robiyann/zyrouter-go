@@ -179,11 +179,11 @@ func TestModelAliases(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// Seed data (simulating JSON strings and raw strings)
+	// Seed only valid alias targets; public aliases always map to provider/model.
 	_, err := db.Exec(`INSERT INTO kv (scope, key, value) VALUES
-		('modelAliases', 'gpt-4', '"gpt-4o"'),
-		('modelAliases', 'claude-3', '"claude-3-5-sonnet"'),
-		('modelAliases', 'raw-model', 'gpt-4-raw'),
+		('modelAliases', 'gpt-4', '"openai/gpt-4o"'),
+		('modelAliases', 'claude-3', '"anthropic/claude-3-5-sonnet"'),
+		('modelAliases', 'raw-model', '"openai/gpt-4-raw"'),
 		('otherScope', 'gpt-4', '"other-val"');`)
 	if err != nil {
 		t.Fatalf("failed to seed kv: %v", err)
@@ -196,17 +196,17 @@ func TestModelAliases(t *testing.T) {
 	if err != nil {
 		t.Errorf("GetModelAlias failed: %v", err)
 	}
-	if val != "gpt-4o" {
-		t.Errorf("expected gpt-4o, got %s", val)
+	if val != "openai/gpt-4o" {
+		t.Errorf("expected openai/gpt-4o, got %s", val)
 	}
 
-	// Test GetModelAlias with raw string (non-JSON string value)
+	// A target may contain an upstream slash but remains internal to the alias.
 	val, err = repo.GetModelAlias("raw-model")
 	if err != nil {
 		t.Errorf("GetModelAlias failed: %v", err)
 	}
-	if val != "gpt-4-raw" {
-		t.Errorf("expected gpt-4-raw, got %s", val)
+	if val != "openai/gpt-4-raw" {
+		t.Errorf("expected openai/gpt-4-raw, got %s", val)
 	}
 
 	// Test nonexistent alias
@@ -226,7 +226,7 @@ func TestModelAliases(t *testing.T) {
 	if len(aliases) != 3 {
 		t.Errorf("expected 3 aliases, got %d", len(aliases))
 	}
-	if aliases["gpt-4"] != "gpt-4o" || aliases["claude-3"] != "claude-3-5-sonnet" || aliases["raw-model"] != "gpt-4-raw" {
+	if aliases["gpt-4"] != "openai/gpt-4o" || aliases["claude-3"] != "anthropic/claude-3-5-sonnet" || aliases["raw-model"] != "openai/gpt-4-raw" {
 		t.Errorf("unexpected aliases mapping: %+v", aliases)
 	}
 }
