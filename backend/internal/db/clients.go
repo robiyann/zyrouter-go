@@ -100,7 +100,7 @@ func (r *Repo) GetApiKeysByClientID(clientID string) ([]*models.APIKey, error) {
 
 func (r *Repo) CreateClientApiKey(id, key, name, clientID, policyID, restrictions string) (*models.APIKey, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.Exec(`INSERT INTO apiKeys (id, key, name, isActive, restrictions, createdAt, clientId, policyId) VALUES (?, ?, ?, 1, ?, ?, ?, ?)`, id, key, name, restrictions, now, clientID, policyID)
+	_, err := r.db.Exec(`INSERT INTO apiKeys (id, key, keyHash, name, isActive, restrictions, createdAt, clientId, policyId) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`, id, keyPrefix(key), HashUserSecret(key), name, restrictions, now, clientID, policyID)
 	if err != nil {
 		return nil, fmt.Errorf("create client api key: %w", err)
 	}
@@ -123,8 +123,10 @@ func (r *Repo) GetClientUsage(clientID string) (map[string]any, error) {
 	var cost float64
 	err := r.db.QueryRow(`
 		SELECT COUNT(*), COALESCE(SUM(uh.promptTokens), 0), COALESCE(SUM(uh.completionTokens), 0), COALESCE(SUM(uh.cost), 0)
-		FROM usageHistory uh JOIN apiKeys ak ON ak.key = uh.apiKey
-		WHERE ak.clientId = ?`, clientID).Scan(&requests, &promptTokens, &completionTokens, &cost)
+		FROM usageHistory uh
+		WHERE EXISTS (SELECT 1 FROM apiKeys ak
+			WHERE ak.clientId = ? AND (uh.apiKey = ak.key OR uh.apiKey = ak.keyHash OR
+				(substr(ak.key, 1, 3) = 'zy_' AND uh.apiKey LIKE substr(ak.key, 1, 8) || '%')))`, clientID).Scan(&requests, &promptTokens, &completionTokens, &cost)
 	if err != nil {
 		return nil, err
 	}

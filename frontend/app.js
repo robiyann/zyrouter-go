@@ -318,6 +318,48 @@ function showPromptModal({ title = 'Prompt', kicker = 'INPUT REQUIRED', message 
   });
 }
 
+function showOneTimeKeyModal(key) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="cyber-modal-card">
+        <div class="cyber-modal-head">
+          <div>
+            <span class="kicker" style="font-size:8px; color:var(--lime);">ONE-TIME SECRET</span>
+            <h3>API key created</h3>
+          </div>
+          <button type="button" class="cancel-button" id="btn-secret-close" style="padding:2px 6px;">&times;</button>
+        </div>
+        <div class="cyber-modal-body">
+          <p>Copy this key now. The full secret is not stored and cannot be revealed later.</p>
+          <input id="one-time-api-key" value="${escapeHtml(key)}" readonly autocomplete="off" style="font-family:var(--mono);" />
+        </div>
+        <div class="cyber-modal-actions">
+          <button type="button" class="secondary-button" id="btn-secret-copy">Copy key</button>
+          <button type="button" class="solid-button" id="btn-secret-done">Done</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    const input = backdrop.querySelector('#one-time-api-key');
+    input.focus();
+    input.select();
+    backdrop.querySelector('#btn-secret-copy').onclick = async () => {
+      try {
+        await copyText(key);
+        showToast('API key copied. It will not be available again.', 'success');
+      } catch {
+        showToast('Copy failed; select the key manually.', 'error');
+      }
+    };
+    const cleanup = () => { backdrop.remove(); resolve(); };
+    backdrop.querySelector('#btn-secret-close').onclick = cleanup;
+    backdrop.querySelector('#btn-secret-done').onclick = cleanup;
+    backdrop.onclick = (event) => { if (event.target === backdrop) cleanup(); };
+  });
+}
+
 function showConfirmModal({ title = 'Confirm Action', kicker = 'CONFIRMATION', message = 'Are you sure you want to proceed?', confirmText = 'Confirm', danger = false } = {}) {
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
@@ -4145,10 +4187,10 @@ function renderKeys(payload) {
               <td>
                 <span class="table-cell-mono" style="display:inline-flex; align-items:center; gap:6px; color:#b3c5a0;">
                   <span>${escapeHtml(item.key || '***')}</span>
-                  ${item.id ? `<button class="model-copy-btn" data-copy-key-id="${escapeHtml(item.id)}" title="Copy Full API Key">&boxbox;</button>` : ''}
+                  <span style="font-size:9px; color:var(--muted);">create-only secret</span>
                 </span>
               </td>
-              <td><span class="table-badge active">${escapeHtml(item.accountTypeId || 'administrator')}</span></td>
+              <td><span class="table-badge active">${escapeHtml(item.accountTypeId || (item.clientId ? 'client' : 'administrator'))}</span></td>
               <td>
                 <div style="font-size:10px; font-family:var(--mono); color:var(--muted); max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   ${escapeHtml(item.restrictions || 'No restrictions (unlimited)')}
@@ -5987,6 +6029,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+      if (isNew && payload.key) await showOneTimeKeyModal(payload.key);
       await renderView('keys');
     } catch (err) {
       form.querySelector('.form-error').textContent = err.message;
@@ -6004,7 +6047,7 @@ function createForm(name) {
   const fields = {
     providers: [['provider', 'Provider alias', 'text', true], ['name', 'Connection name', 'text', true], ['email', 'Account email', 'email', false], ['data', 'Connection data JSON', 'textarea', true]],
     orchestrator: [['name', 'Combo name', 'text', true], ['strategy', 'Strategy (fallback, round-robin, sticky, fusion)', 'text', true], ['models', 'Models JSON array (e.g. ["gpt-4o","claude-3-5-sonnet"])', 'textarea', true]],
-    keys: [['name', 'Key name', 'text', true], ['key', 'API key (optional)', 'text', false], ['restrictions', 'Restrictions JSON', 'textarea', false]],
+    keys: [['name', 'Key name', 'text', true], ['restrictions', 'Restrictions JSON', 'textarea', false]],
     pools: [['data', 'Pool data JSON', 'textarea', true]],
     aliases: [['alias', 'Client model alias', 'text', true], ['target', 'Target model', 'text', true]]
   }[name];
@@ -6019,7 +6062,7 @@ async function submitCreate(form) {
   if (values.restrictions) {
     try { parsedRestrictions = JSON.parse(values.restrictions); } catch {}
   }
-  const body = name === 'providers' ? { provider: values.provider, name: values.name, email: values.email, authType: 'apikey', data: values.data } : name === 'orchestrator' ? { name: values.name, strategy: values.strategy, models: values.models } : name === 'keys' ? { name: values.name, key: values.key, restrictions: parsedRestrictions } : name === 'aliases' ? { alias: values.alias, target: values.target } : { data: values.data };
+  const body = name === 'providers' ? { provider: values.provider, name: values.name, email: values.email, authType: 'apikey', data: values.data } : name === 'orchestrator' ? { name: values.name, strategy: values.strategy, models: values.models } : name === 'keys' ? { name: values.name, restrictions: parsedRestrictions } : name === 'aliases' ? { alias: values.alias, target: values.target } : { data: values.data };
   const endpoint = name === 'providers' ? '/api/providers' : name === 'orchestrator' ? '/api/combos' : name === 'keys' ? '/api/keys' : name === 'aliases' ? '/api/model-aliases' : '/api/proxy-pools';
   const response = await fetch(`${apiBase}${endpoint}`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const resText = await response.text();

@@ -4,7 +4,22 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 )
+
+const legacyAPIKeyMigrationMetaKey = "migration.api_keys_hash.v1"
+
+// LegacyAPIKeyMigrationStats describes the one-time gateway-key migration.
+// Client-owned legacy rows are hashed but are deliberately not promoted to
+// administrator because clientId is a separate trust boundary.
+type LegacyAPIKeyMigrationStats struct {
+	AlreadyApplied  bool
+	Found           int
+	Hashed          int
+	Skipped         int
+	ClientID        int
+	UserKeyRetained int
+}
 
 // EnsureSchema creates all necessary tables and migrates missing columns.
 func EnsureSchema(db *sql.DB) error {
@@ -255,14 +270,129 @@ func EnsureSchema(db *sql.DB) error {
 		('paid_user', 'Paid User', 'Paid user access tier', 1, 1, 'custom', datetime('now'), datetime('now'))`); err != nil {
 		return fmt.Errorf("seed account types: %w", err)
 	}
-	// Legacy gateway keys are operator/admin keys. Only keys that are not owned
-	// by a verified user are backfilled; user-owned keys retain their tier.
-	if _, err := db.Exec(`UPDATE apiKeys SET accountTypeId='administrator' WHERE accountTypeId IS NULL AND userId IS NULL`); err != nil {
+	// Legacy gateway keys are operator/admin keys. Client-owned rows are a
+	// separate trust boundary and must not be promoted implicitly.
+	if _, err := db.Exec(`UPDATE apiKeys SET accountTypeId='administrator' WHERE accountTypeId IS NULL AND userId IS NULL AND (clientId IS NULL OR trim(clientId) = '')`); err != nil {
 		return fmt.Errorf("backfill legacy api key account type: %w", err)
+	}
+	if stats, err := MigrateLegacyGatewayKeys(db); err != nil {
+		return fmt.Errorf("migrate legacy api keys: %w", err)
+	} else if !stats.AlreadyApplied {
+		log.Printf("[db] legacy api key migration: found=%d hashed=%d skipped=%d clientId=%d userKeysRetained=%d", stats.Found, stats.Hashed, stats.Skipped, stats.ClientID, stats.UserKeyRetained)
 	}
 
 	log.Printf("[db] Database schema verified & up to date")
 	return nil
+}
+
+// MigrateLegacyGatewayKeys hashes legacy secrets without deleting any rows.
+// The entire batch runs in one transaction and is guarded by _meta so a
+// completed migration is not repeated on every startup.
+func MigrateLegacyGatewayKeys(db *sql.DB) (LegacyAPIKeyMigrationStats, error) {
+	var stats LegacyAPIKeyMigrationStats
+	tx, err := db.Begin()
+	if err != nil {
+		return stats, err
+	}
+	defer tx.Rollback()
+
+	var marker string
+	err = tx.QueryRow(`SELECT value FROM _meta WHERE key = ?`, legacyAPIKeyMigrationMetaKey).Scan(&marker)
+	if err == nil && marker == "complete" {
+		stats.AlreadyApplied = true
+		return stats, nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return stats, err
+	}
+
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM apiKeys WHERE userId IS NOT NULL`).Scan(&stats.UserKeyRetained); err != nil {
+		return stats, err
+	}
+	rows, err := tx.Query(`SELECT id, key, clientId FROM apiKeys WHERE userId IS NULL AND keyHash IS NULL AND key IS NOT NULL AND length(trim(key)) > 0`)
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+
+	type legacyRow struct {
+		id       string
+		secret   string
+		clientID sql.NullString
+	}
+	var candidates []legacyRow
+	for rows.Next() {
+		var row legacyRow
+		if err := rows.Scan(&row.id, &row.secret, &row.clientID); err != nil {
+			return stats, err
+		}
+		candidates = append(candidates, row)
+	}
+	if err := rows.Err(); err != nil {
+		return stats, err
+	}
+	if err := rows.Close(); err != nil {
+		return stats, err
+	}
+	stats.Found = len(candidates)
+
+	for _, row := range candidates {
+		masked, err := uniqueMaskedAPIKey(tx, row.id, row.secret)
+		if err != nil {
+			return stats, err
+		}
+		accountType := ""
+		if strings.TrimSpace(row.clientID.String) == "" {
+			accountType = "administrator"
+		} else {
+			// Hash the secret for safety, but do not change the client's tier.
+			stats.ClientID++
+			stats.Skipped++
+		}
+		query := `UPDATE apiKeys SET key = ?, keyHash = ?`
+		args := []any{masked, HashUserSecret(row.secret)}
+		if accountType != "" {
+			query += `, accountTypeId = ?`
+			args = append(args, accountType)
+		}
+		query += ` WHERE id = ? AND userId IS NULL AND keyHash IS NULL AND key = ?`
+		args = append(args, row.id, row.secret)
+		result, err := tx.Exec(query, args...)
+		if err != nil {
+			return stats, err
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return stats, fmt.Errorf("legacy api key %s changed during migration", row.id)
+		}
+		stats.Hashed++
+	}
+
+	if _, err := tx.Exec(`INSERT INTO _meta (key, value) VALUES (?, 'complete') ON CONFLICT(key) DO UPDATE SET value = excluded.value`, legacyAPIKeyMigrationMetaKey); err != nil {
+		return stats, err
+	}
+	if err := tx.Commit(); err != nil {
+		return stats, err
+	}
+	return stats, nil
+}
+
+func uniqueMaskedAPIKey(tx *sql.Tx, id, secret string) (string, error) {
+	base := keyPrefix(secret)
+	if len(secret) <= 12 {
+		base = "legacy_" + HashUserSecret(secret)[:12]
+	}
+	candidate := base
+	for suffix := 0; ; suffix++ {
+		var existingID string
+		err := tx.QueryRow(`SELECT id FROM apiKeys WHERE key = ? AND id <> ? LIMIT 1`, candidate, id).Scan(&existingID)
+		if err == sql.ErrNoRows {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		candidate = fmt.Sprintf("%s~%d", base, suffix+1)
+	}
 }
 
 func migrateColumnIfNotExists(db *sql.DB, tableName, columnName, columnDef string) {

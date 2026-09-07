@@ -15,6 +15,13 @@ Dokumentasi skema database SQLite untuk **Zyrouter** (`zyrouter.db`).
   PRAGMA foreign_keys = ON;
   ```
 
+### API key storage and migration
+
+- New gateway, user, and client API keys use the `zy_` prefix. The full key is returned only by the create response; SQLite stores a display prefix plus `keyHash`.
+- On startup, `_meta` key `migration.api_keys_hash.v1` guards the transactional legacy migration. Legacy rows with `userId IS NULL` and no `clientId` are assigned `accountTypeId = administrator`.
+- Rows with `clientId` are hashed but are not promoted; their existing account type and ownership fields are preserved. Verified user-owned rows are not changed.
+- The reveal endpoint cannot recover a stored secret and returns an explicit error; rotate a lost key.
+
 ---
 
 ## 2. Entity-Relationship Diagram

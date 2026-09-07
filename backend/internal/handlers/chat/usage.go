@@ -64,9 +64,9 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
 	var usageErr error
 	if info.UserID != "" {
-		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, maskAPIKey(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
+		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
 	} else {
-		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, maskAPIKey(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
+		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
 	}
 	if err := usageErr; err != nil {
 		log.Error("usage", "insert failed", "error", err)
@@ -409,4 +409,13 @@ func maskAPIKey(key string) string {
 		return "***"
 	}
 	return key[:4] + "***" + key[len(key)-4:]
+}
+
+// usageKeyValue keeps a stable, non-secret identifier for new Zyrouter keys.
+// Legacy keys retain the historical mask format for compatibility.
+func usageKeyValue(key string) string {
+	if strings.HasPrefix(key, "zy_") && len(key) > 12 {
+		return key[:12]
+	}
+	return maskAPIKey(key)
 }

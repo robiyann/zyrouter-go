@@ -8,17 +8,17 @@ import (
 
 // DatabaseBackup matches the exact 9router exportDb/importDb JSON schema.
 type DatabaseBackup struct {
-	Settings            *SettingsData          `json:"settings,omitempty"`
-	ProviderConnections []map[string]any       `json:"providerConnections"`
-	ProviderNodes       []map[string]any       `json:"providerNodes"`
-	ProxyPools          []map[string]any       `json:"proxyPools"`
-	APIKeys             []map[string]any       `json:"apiKeys"`
-	Combos              []map[string]any       `json:"combos"`
-	ModelAliases        map[string]any         `json:"modelAliases"`
-	CustomModels        []CustomModelEntry     `json:"customModels"`
-	ProviderPrefixes    map[string]string      `json:"providerPrefixes,omitempty"`
-	MitmAlias           map[string]any         `json:"mitmAlias,omitempty"`
-	Pricing             map[string]any         `json:"pricing,omitempty"`
+	Settings            *SettingsData      `json:"settings,omitempty"`
+	ProviderConnections []map[string]any   `json:"providerConnections"`
+	ProviderNodes       []map[string]any   `json:"providerNodes"`
+	ProxyPools          []map[string]any   `json:"proxyPools"`
+	APIKeys             []map[string]any   `json:"apiKeys"`
+	Combos              []map[string]any   `json:"combos"`
+	ModelAliases        map[string]any     `json:"modelAliases"`
+	CustomModels        []CustomModelEntry `json:"customModels"`
+	ProviderPrefixes    map[string]string  `json:"providerPrefixes,omitempty"`
+	MitmAlias           map[string]any     `json:"mitmAlias,omitempty"`
+	Pricing             map[string]any     `json:"pricing,omitempty"`
 }
 
 // ExportDB exports the complete SQLite database matching 9router's backup payload.
@@ -219,12 +219,15 @@ func (r *Repo) ImportDB(backup *DatabaseBackup) error {
 	}
 	defer tx.Rollback()
 
-	// 1. Clean existing tables (except migration meta)
+	// 1. Clean existing tables and force API-key migration for imported data.
 	tables := []string{"providerConnections", "providerNodes", "proxyPools", "apiKeys", "combos", "kv"}
 	for _, t := range tables {
 		if _, err := tx.Exec("DELETE FROM " + t); err != nil {
 			return fmt.Errorf("wipe table %s: %w", t, err)
 		}
+	}
+	if _, err := tx.Exec(`DELETE FROM _meta WHERE key = ?`, legacyAPIKeyMigrationMetaKey); err != nil {
+		return fmt.Errorf("reset api key migration marker: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -440,5 +443,11 @@ func (r *Repo) ImportDB(backup *DatabaseBackup) error {
 		_, _ = tx.Exec(`INSERT INTO kv (scope, key, value) VALUES ('pricing', ?, ?)`, prov, string(vBytes))
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if _, err := MigrateLegacyGatewayKeys(r.db); err != nil {
+		return fmt.Errorf("migrate imported api keys: %w", err)
+	}
+	return nil
 }

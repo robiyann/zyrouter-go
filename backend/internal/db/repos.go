@@ -31,7 +31,7 @@ func (r *Repo) RawDB() *sql.DB {
 // ValidateApiKey checks if the given API key exists and is active.
 func (r *Repo) ValidateApiKey(key string) (bool, error) {
 	var active int
-	err := r.db.QueryRow("SELECT isActive FROM apiKeys WHERE key = ? OR keyHash = ? LIMIT 1", key, HashUserSecret(key)).Scan(&active)
+	err := r.db.QueryRow("SELECT isActive FROM apiKeys WHERE (keyHash IS NOT NULL AND keyHash = ?) OR (keyHash IS NULL AND key = ?) LIMIT 1", HashUserSecret(key), key).Scan(&active)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -46,8 +46,8 @@ func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var userID, typeID, keyHash sql.NullString
 	err := r.db.QueryRow(
-		"SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys WHERE key = ? OR keyHash = ? LIMIT 1",
-		key, HashUserSecret(key),
+		"SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys WHERE (keyHash IS NOT NULL AND keyHash = ?) OR (keyHash IS NULL AND key = ?) LIMIT 1",
+		HashUserSecret(key), key,
 	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID)
 
 	if err == sql.ErrNoRows {
@@ -124,24 +124,27 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 	return keys, rows.Err()
 }
 
-// CreateApiKey inserts a new API key record with optional restrictions.
-func (r *Repo) CreateApiKey(id, key, name, machineID string, restrictions *string) (*models.APIKey, error) {
+// CreateApiKey inserts a new API key record with optional restrictions. The
+// raw secret is returned to the caller but only its prefix and one-way hash
+// are persisted.
+func (r *Repo) CreateApiKey(id, rawKey, name, machineID string, restrictions *string) (*models.APIKey, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := r.db.Exec(
-		`INSERT INTO apiKeys (id, key, name, machineId, isActive, restrictions, createdAt, accountTypeId) VALUES (?, ?, ?, ?, 1, ?, ?, 'administrator')`,
-		id, key, name, machineID, restrictions, now,
+		`INSERT INTO apiKeys (id, key, keyHash, name, machineId, isActive, restrictions, createdAt, accountTypeId) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'administrator')`,
+		id, keyPrefix(rawKey), HashUserSecret(rawKey), name, machineID, restrictions, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create api key: %w", err)
 	}
 	return &models.APIKey{
-		ID:           id,
-		Key:          key,
-		Name:         &name,
-		MachineID:    &machineID,
-		IsActive:     1,
-		Restrictions: restrictions,
-		CreatedAt:    now,
+		ID:            id,
+		Key:           rawKey,
+		Name:          &name,
+		MachineID:     &machineID,
+		IsActive:      1,
+		Restrictions:  restrictions,
+		AccountTypeID: stringPtr("administrator"),
+		CreatedAt:     now,
 	}, nil
 }
 

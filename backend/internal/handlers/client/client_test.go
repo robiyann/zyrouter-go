@@ -139,19 +139,19 @@ func TestInvalidClientTokenIsRejected(t *testing.T) {
 func TestClientPolicyAndUsageAreScoped(t *testing.T) {
 	repo, token, cleanup := setupClientTest(t)
 	defer cleanup()
-	if _, err := repo.CreateClientApiKey("ck-usage", "sk-client-usage", "Usage", "client-1", "policy-basic", `{"allowedPrefixes":["ag"]}`); err != nil {
+	if _, err := repo.CreateClientApiKey("ck-usage", "zy_usage-key-client-1", "Usage", "client-1", "policy-basic", `{"allowedPrefixes":["ag"]}`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.CreateClientApiKey("ck-other", "sk-client-other", "Other", "client-2", "policy-basic", `{"allowedPrefixes":["ag"]}`); err != nil {
+	if _, err := repo.CreateClientApiKey("ck-other", "zy_other-key-client-2", "Other", "client-2", "policy-basic", `{"allowedPrefixes":["ag"]}`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.GetClientPolicy("policy-basic"); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.InsertUsageHistory("test", "model", "", "sk-client-usage", "/chat/completions", 10, 5, 0.01, "200", 15, "", ""); err != nil {
+	if err := repo.InsertUsageHistory("test", "model", "", "zy_usage-key-client-1", "/chat/completions", 10, 5, 0.01, "200", 15, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.InsertUsageHistory("test", "model", "", "sk-client-other", "/chat/completions", 100, 100, 1.0, "200", 200, "", ""); err != nil {
+	if err := repo.InsertUsageHistory("test", "model", "", "zy_other-key-client-2", "/chat/completions", 100, 100, 1.0, "200", 200, "", ""); err != nil {
 		t.Fatal(err)
 	}
 

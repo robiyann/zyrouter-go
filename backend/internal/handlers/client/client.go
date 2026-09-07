@@ -123,7 +123,7 @@ func (h *Handler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to generate key id")
 		return
 	}
-	key, err := h.Repo.CreateClientApiKey("ck-"+keyID, "sk-client-"+keyToken, body.Name, client.ID, policy.ID, string(restrictionsJSON))
+	key, err := h.Repo.CreateClientApiKey("ck-"+keyID, "zy_"+keyToken, body.Name, client.ID, policy.ID, string(restrictionsJSON))
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return

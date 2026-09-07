@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/db"
@@ -27,13 +28,13 @@ func NewAdminHandler(repo *db.Repo) *AdminHandler {
 	return &AdminHandler{repo: repo}
 }
 
-// GenerateRandomKey generates a secure random API key starting with "sk-zy-".
-func GenerateRandomKey() string {
-	bytes := make([]byte, 24)
+// GenerateRandomKey generates a secure random API key starting with "zy_".
+func GenerateRandomKey() (string, error) {
+	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
-		return "sk-zy-" + hex.EncodeToString([]byte("fallback-random-key-12345"))
+		return "", err
 	}
-	return "sk-zy-" + hex.EncodeToString(bytes)
+	return "zy_" + hex.EncodeToString(bytes), nil
 }
 
 // ==========================================
@@ -71,7 +72,9 @@ func (h *AdminHandler) HandleRevealKey(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, http.StatusNotFound, "API key not found")
 		return
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"key": key.Key})
+	// A hash-backed key can never be revealed. The only full secret response is
+	// returned by the create endpoint, once, in the same request that generated it.
+	handlerutil.WriteJSONError(w, http.StatusGone, "API key secret is not recoverable; rotate the key")
 }
 
 func maskAPIKey(value string) string {
@@ -84,7 +87,6 @@ func maskAPIKey(value string) string {
 func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name         string                  `json:"name"`
-		Key          string                  `json:"key,omitempty"`
 		MachineID    string                  `json:"machineId,omitempty"`
 		Restrictions *models.KeyRestrictions `json:"restrictions,omitempty"`
 	}
@@ -93,15 +95,13 @@ func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keyStr := strings.TrimSpace(body.Key)
-	if keyStr == "" {
-		keyStr = GenerateRandomKey()
+	keyStr, err := GenerateRandomKey()
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to generate api key")
+		return
 	}
 
-	id := "key-" + hex.EncodeToString([]byte(keyStr[:min(len(keyStr), 8)])) + "-" + hex.EncodeToString([]byte(body.Name[:min(len(body.Name), 4)]))
-	if len(id) > 36 {
-		id = id[:36]
-	}
+	id := "key_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 
 	var restrictionsStr *string
 	if body.Restrictions != nil {
@@ -116,7 +116,12 @@ func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handlerutil.WriteJSON(w, http.StatusCreated, apiKey)
+	handlerutil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"id": apiKey.ID, "name": apiKey.Name, "key": keyStr,
+		"accountTypeId": "administrator", "isActive": apiKey.IsActive,
+		"restrictions": apiKey.Restrictions, "createdAt": apiKey.CreatedAt,
+		"warning": "Store this key securely. It will not be shown again.",
+	})
 }
 
 func (h *AdminHandler) HandleUpdateKey(w http.ResponseWriter, r *http.Request) {
