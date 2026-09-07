@@ -224,6 +224,7 @@ func runServer(cCtx *cli.Context) error {
 	} else {
 		log.Println("Server stopped gracefully")
 	}
+	authlog.Shutdown()
 	return nil
 }
 

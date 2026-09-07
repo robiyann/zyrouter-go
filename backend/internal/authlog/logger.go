@@ -33,6 +33,14 @@ func Record(entry db.AuthLogEntry) {
 	global.queue <- entry
 }
 
+func Shutdown() {
+	if global == nil {
+		return
+	}
+	global.once.Do(func() { close(global.stop) })
+	global = nil
+}
+
 func (l *Logger) run() {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
@@ -56,8 +64,15 @@ func (l *Logger) run() {
 		case <-ticker.C:
 			flush()
 		case <-l.stop:
-			flush()
-			return
+			for {
+				select {
+				case entry := <-l.queue:
+					batch = append(batch, entry)
+				default:
+					flush()
+					return
+				}
+			}
 		}
 	}
 }
