@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"zyrouter/backend/internal/auth"
+	"zyrouter/backend/internal/authlog"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/middleware"
@@ -88,6 +89,7 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := loginClientIP(r)
 		if retryAfter, locked := loginLocked(ip, time.Now()); locked {
+			recordAuthEvent(r, "login_locked", http.StatusTooManyRequests, "login temporarily locked")
 			w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds())+1, 10))
 			handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "Too many failed login attempts. Try again later.")
 			return
@@ -117,11 +119,15 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 		if !auth.CheckPassword(password, storedHash) {
 			retryAfter, locked, attemptsRemaining := recordLoginFailure(ip, time.Now())
 			w.Header().Set("X-Login-Attempts-Remaining", strconv.Itoa(attemptsRemaining))
+			event := "login_failed"
 			if locked {
+				event = "login_locked"
+				recordAuthEvent(r, event, http.StatusTooManyRequests, "login temporarily locked")
 				w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds())+1, 10))
 				handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "Too many failed login attempts. Try again later.")
 				return
 			}
+			recordAuthEvent(r, event, http.StatusUnauthorized, "invalid password")
 			message := "Invalid password."
 			if storedHash == "" {
 				message = "Dashboard password is not configured. Set INITIAL_PASSWORD and restart Zyrouter."
@@ -130,6 +136,7 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			return
 		}
 		clearLoginFailures(ip)
+		recordAuthEvent(r, "login_success", http.StatusOK, "dashboard session created")
 
 		token := auth.CreateSession()
 
@@ -149,6 +156,11 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			"message": "Authenticated successfully",
 		})
 	}
+}
+
+func recordAuthEvent(r *http.Request, event string, status int, detail string) {
+	ip := loginClientIP(r)
+	authlog.Record(db.AuthLogEntry{Event: event, IP: ip, Method: r.Method, Path: r.URL.Path, Status: status, RequestID: middleware.GetRequestID(r), UserAgent: r.UserAgent(), Referer: r.Referer(), Detail: detail})
 }
 
 // HandleAuthLogout invalidates the session and clears the cookie.

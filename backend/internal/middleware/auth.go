@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"zyrouter/backend/internal/auth"
+	"zyrouter/backend/internal/authlog"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/log"
@@ -145,7 +146,7 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 func RequireAdminAccess(repo *db.Repo) func(http.Handler) http.Handler {
 	base := RequireApiKey(repo)
 	return func(next http.Handler) http.Handler {
-		return base(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		protected := base(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := GetAuthenticatedApiKey(r)
 			if key != nil && key.ClientID != nil && strings.TrimSpace(*key.ClientID) != "" && isAdminRoute(r.URL.Path) {
 				handlerutil.WriteJSONError(w, http.StatusForbidden, "client API keys cannot access admin routes")
@@ -153,7 +154,25 @@ func RequireAdminAccess(repo *db.Repo) func(http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		}))
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ww := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+			protected.ServeHTTP(ww, r)
+			if isAdminRoute(r.URL.Path) && ww.status >= http.StatusUnauthorized {
+				authlog.Record(db.AuthLogEntry{Event: "admin_access_denied", IP: requestClientIP(r), Method: r.Method, Path: r.URL.Path, Status: ww.status, RequestID: GetRequestID(r), UserAgent: r.UserAgent(), Referer: r.Referer(), Detail: "admin route rejected"})
+			}
+		})
 	}
+}
+
+func requestClientIP(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+		return value
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func isAdminRoute(path string) bool {

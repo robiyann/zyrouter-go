@@ -19,6 +19,7 @@ import (
 
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/auth"
+	"zyrouter/backend/internal/authlog"
 	"zyrouter/backend/internal/config"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlers"
@@ -134,6 +135,7 @@ func runServer(cCtx *cli.Context) error {
 	defer conn.Close()
 
 	repo := db.NewRepo(conn)
+	authlog.Init(repo)
 	if settings, sErr := repo.GetSettings(); sErr == nil && settings != nil && settings.Password == nil && cfg.InitialPassword != "" {
 		hash := auth.HashPassword(cfg.InitialPassword)
 		settings.Password = &hash

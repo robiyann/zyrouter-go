@@ -5,6 +5,7 @@ const views = {
   keys: ['KEYS', 'API key governance', 'Control access with model, prefix, and provider restrictions.', 'Create API key'],
   usage: ['LEDGER', 'Usage ledger', 'Inspect token volume and cost from the SQLite rollup.', 'Export ledger'],
   logs: ['TRACE', 'Stream inspector', 'Observe translator events and request traces as they happen.', 'Connect stream'],
+  authlogs: ['SECURITY', 'Auth log', 'Review dashboard login attempts and rejected admin access.', 'Refresh auth log'],
   pools: ['POOLS', 'Proxy pools', 'Review deployable proxy pools and their test state.', 'Add pool'],
   aliases: ['ALIASES', 'Model aliases', 'Map client-facing model names to backend model routes.', 'Create alias'],
   settings: ['SETUP', 'System settings', 'Configure the gateway without leaving the control plane.', 'Open settings']
@@ -4821,6 +4822,36 @@ let poolCurrentPage = 1;
 let poolPageSize = 15;
 let cachedPoolsPayload = { proxyPools: [] };
 
+function renderAuthLogs(payload = {}) {
+  const logs = Array.isArray(payload.logs) ? payload.logs : [];
+  const rows = logs.length ? logs.map((entry) => `
+    <tr>
+      <td>${escapeHtml(new Date(entry.timestamp || Date.now()).toLocaleString())}</td>
+      <td><span class="table-badge ${Number(entry.status) >= 400 ? 'danger' : 'active'}">${escapeHtml(entry.event || '--')}</span></td>
+      <td><code>${escapeHtml(entry.ip || '--')}</code></td>
+      <td>${escapeHtml(`${entry.method || ''} ${entry.path || ''}`.trim() || '--')}</td>
+      <td>${escapeHtml(String(entry.status || '--'))}</td>
+      <td><code>${escapeHtml(entry.userAgent || '--')}</code></td>
+      <td>${escapeHtml(entry.detail || '--')}</td>
+    </tr>`).join('') : `
+    <tr><td colspan="7" style="text-align:center; padding:28px; color:var(--muted);">Belum ada auth event.</td></tr>`;
+  return `
+    <div class="card" style="padding:16px;">
+      <div class="section-header" style="margin-bottom:12px;">
+        <div><span class="kicker">SECURITY EVENTS</span><h2>Admin Auth Log</h2><p>Login success, password failure, lockout, dan akses admin yang ditolak. Credential tidak disimpan.</p></div>
+        <button type="button" class="secondary-button" id="btn-refresh-authlogs">Refresh</button>
+      </div>
+      <div class="data-table-container">
+        <table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>IP Address</th><th>Request</th><th>Status</th><th>User Agent</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
+      <div style="margin-top:10px; color:var(--muted); font:10px var(--mono);">${Number(payload.total || logs.length).toLocaleString()} retained events</div>
+    </div>`;
+}
+
+function bindAuthLogs() {
+  document.querySelector('#btn-refresh-authlogs')?.addEventListener('click', () => setView('authlogs'));
+}
+
 function renderPools(payload) {
   if (payload) cachedPoolsPayload = payload;
   const allRows = cachedPoolsPayload.proxyPools || [];
@@ -5051,11 +5082,12 @@ async function renderView(name) {
         keys: () => request('/api/keys'),
         usage: () => request('/api/usage/stats?period=all&days=all'),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
+        authlogs: () => request('/api/auth-logs?limit=200'),
         pools: () => request('/api/proxy-pools'),
         aliases: () => request('/api/model-aliases'),
         settings: () => request('/api/settings')
       }[name] || (() => Promise.resolve(null)))();
-    content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'usage' ? renderUsage(payload) : name === 'logs' ? renderLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
+    content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'usage' ? renderUsage(payload) : name === 'logs' ? renderLogs(payload) : name === 'authlogs' ? renderAuthLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
     
     if (name === 'settings') bindSettings();
     if (name === 'pools') bindDeployButtons();
@@ -5073,6 +5105,7 @@ async function renderView(name) {
       bindCopyKeyButtons();
     }
     if (name === 'logs') bindLogStream();
+    if (name === 'authlogs') bindAuthLogs();
     if (name === 'aliases') bindAliasDeckActions();
   } catch (error) {
     const isAuthErr = error.status === 401 ||

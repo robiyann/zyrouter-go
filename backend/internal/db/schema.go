@@ -206,6 +206,21 @@ func EnsureSchema(db *sql.DB) error {
 			status       TEXT,
 			data         TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS authLogs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp TEXT NOT NULL,
+			event TEXT NOT NULL,
+			ip TEXT,
+			method TEXT,
+			path TEXT,
+			status INTEGER,
+			requestId TEXT,
+			userAgent TEXT,
+			referer TEXT,
+			detail TEXT
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_logs_timestamp ON authLogs(timestamp);`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_logs_event ON authLogs(event);`,
 
 		`CREATE TABLE IF NOT EXISTS _meta (
 			key   TEXT PRIMARY KEY,
