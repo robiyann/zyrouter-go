@@ -8156,17 +8156,29 @@ function initMeshZoomPanControls() {
 function initSidebarToggle() {
   const shell = document.querySelector('.room-shell');
   const toggle = document.querySelector('#btn-sidebar-toggle');
+  const close = document.querySelector('#btn-sidebar-close');
+  const scrim = document.querySelector('#sidebar-scrim');
   const dock = document.querySelector('.dock');
   if (!shell || !toggle || !dock) return;
+  const closeMobileSidebar = () => {
+    dock.classList.remove('mobile-open');
+    scrim?.classList.remove('visible');
+  };
   toggle.onclick = () => {
     if (window.matchMedia('(max-width: 1100px)').matches) {
       dock.classList.toggle('mobile-open');
+      scrim?.classList.toggle('visible', dock.classList.contains('mobile-open'));
     } else {
       shell.classList.toggle('sidebar-collapsed');
     }
   };
+  close?.addEventListener('click', closeMobileSidebar);
+  scrim?.addEventListener('click', closeMobileSidebar);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeMobileSidebar();
+  });
   dock.querySelectorAll('.dock-item').forEach((item) => {
-    item.addEventListener('click', () => dock.classList.remove('mobile-open'));
+    item.addEventListener('click', closeMobileSidebar);
   });
 }
 

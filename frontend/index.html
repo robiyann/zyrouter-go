@@ -24,6 +24,9 @@
             <div class="brand-title">Zyrouter <span class="brand-badge">CORE</span></div>
             <div class="brand-sub">AI Routing Gateway</div>
           </div>
+          <button class="sidebar-close-button" id="btn-sidebar-close" aria-label="Close navigation sidebar" title="Close navigation sidebar">
+            <span class="material-symbols-outlined">close</span>
+          </button>
         </div>
 
         <div class="sidebar-scroll">
@@ -96,10 +99,14 @@
           </button>
         </div>
       </aside>
+      <div class="sidebar-scrim" id="sidebar-scrim" aria-hidden="true"></div>
 
       <!-- MAIN APP WORKSPACE -->
       <main class="room-main">
         <header class="room-header">
+          <button class="command-button sidebar-toggle-button" id="btn-sidebar-toggle" aria-label="Toggle navigation sidebar" title="Toggle navigation sidebar">
+            <span class="material-symbols-outlined" style="font-size:15px;">menu</span>
+          </button>
           <div class="header-context">
             <span class="material-symbols-outlined" style="font-size:14px; color:var(--lime);">radio_button_checked</span>
             <span>Zyrouter</span>
@@ -107,9 +114,6 @@
             <strong id="breadcrumb">OVERVIEW</strong>
           </div>
           <div class="header-tools">
-            <button class="command-button" id="btn-sidebar-toggle" aria-label="Toggle navigation sidebar" title="Toggle navigation sidebar">
-              <span class="material-symbols-outlined" style="font-size:15px;">menu</span>
-            </button>
             <button class="command-button" aria-label="Open command menu">
               <span style="font-size:9px; opacity:0.6;">⌘</span> K
             </button>

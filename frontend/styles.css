@@ -345,6 +345,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   z-index: 9;
 }
 
+.sidebar-toggle-button {
+  flex: 0 0 auto;
+}
+
+.sidebar-close-button {
+  display: none;
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #070a0f;
+  color: var(--muted);
+}
+
+.sidebar-scrim {
+  display: none;
+}
+
 .header-context, .header-tools {
   display: flex;
   align-items: center;
@@ -2966,6 +2985,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     padding-left: 12px;
   }
 
+  .room-header .header-context {
+    min-width: 0;
+    margin-left: 8px;
+  }
+
   .header-tools .command-button {
     min-width: 40px;
     min-height: 36px;
@@ -2973,6 +2997,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
   .filter-bar button {
     flex: 1 1 140px;
+  }
+
+  .dock.mobile-open .sidebar-close-button {
+    display: grid;
+    place-items: center;
+  }
+
+  .sidebar-scrim.visible {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
   }
 }
 
