@@ -1,5 +1,56 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-08] - [Antigravity & Codex] - E2E Integration Suite & Robust SQLite Auth Log Retry
+- **Modul**: `Testing / Database / Proxy Integration / Verification`
+- **File Diubah / Dibuat**:
+  - `[NEW] tests/e2e_proxy_test.mjs`
+  - `[MOD] tests/verify_plan.ps1`
+  - `[MOD] backend/internal/db/auth_logs.go`
+- **Deskripsi Perubahan**:
+  - Membuat automated end-to-end integration test runner (`tests/e2e_proxy_test.mjs`) yang memverifikasi 11 skenario kritis: discovery awal kosong, autentikasi admin session, registrasi mock provider upstream, penolakan provider-prefix & unaliased model (fail-closed HTTP 403), publikasi alias model, orkestrasi combo fallback, pembuatan API key dengan restriksi whitelist, streaming SSE chat, non-streaming combo chat, penegakan isolasi policy model, dan rekap security dashboard.
+  - Menambahkan retry loop dengan backoff bertahap pada `InsertAuthLogs` di `backend/internal/db/auth_logs.go` untuk mengeliminasi error transien `database is locked (SQLITE_BUSY)` saat commit paralel.
+  - Mengintegrasikan step E2E proxy integration ke dalam runner utama `tests/verify_plan.ps1` dan membatasi konkurensi build `go test -p 4` agar stabil di environment Windows multi-core.
+- **Status Task**: Selesai / Terhubung ke TASK-014 (100% PASS)
+
+### [2026-09-08] - [Antigravity & Codex] - Model Governance & Alias-Only Policy Enforcement
+- **Modul**: `Backend / Admin / Frontend / Model Aliases & Combos`
+- **File Diubah**:
+  - `frontend/app.js`
+  - `tests/frontend_contract.test.mjs`
+  - `backend/internal/handlers/admin/admin.go`
+  - `backend/internal/handlers/chat/chat.go`
+  - `backend/internal/handlers/chat/resolution.go`
+  - `backend/internal/db/repos.go`
+- **Deskripsi Perubahan**:
+  - Menerapkan invariant publik **Alias-Only**: model discovery provider hanya sebagai helper inventaris internal admin; client hanya dapat mengakses bare alias resmi yang dipublikasikan.
+  - Request dengan prefix provider (`provider/model`) atau raw model upstream tanpa alias langsung ditolak fail-closed (HTTP 403 `provider_prefix_forbidden` / `model_alias_required`).
+  - Form Combo Builder pada frontend diperketat agar hanya mengizinkan model alias yang sudah dipublikasikan, lengkap dengan validasi visual dan tautan shortcut ke manajemen model alias.
+  - Endpoint `/api/admin/model-policy/preview` ditambahkan untuk preview otorisasi API key sebelum disimpan.
+- **Status Task**: Selesai / Terhubung ke TASK-014 & TASK-015
+
+### [2026-09-08] - [Codex] - Gateway Security Hardening & Admin Auth Logs
+- **Modul**: `Backend / Security / Admin Dashboard / Database`
+- **File Diubah**:
+  - `backend/internal/db/schema.go`, `backend/internal/db/users.go`, `backend/internal/db/auth_logs.go`
+  - `backend/internal/handlers/admin/admin.go`
+  - `frontend/app.js`, `frontend/index.html`
+- **Deskripsi Perubahan**:
+  - Menghash seluruh gateway API key at rest di database SQLite untuk mencegah kebocoran secret jika file database terekspos.
+  - Menambahkan security summary card pada dashboard admin via endpoint `/api/admin/security/summary` tanpa mengekspos hash atau plaintext secret.
+  - Menambahkan logging event otorisasi terpusat (auth logs) dengan rate-limiting pada percobaan login gagal dan graceful flush saat shutdown.
+- **Status Task**: Selesai
+
+### [2026-09-08] - [Codex] - Dashboard UX, Dynamic Engine Origin & Telemetry
+- **Modul**: `Frontend / Public Telemetry / Mobile Navigation`
+- **File Diubah**:
+  - `frontend/app.js`, `frontend/index.html`
+  - `backend/internal/handlers/router.go`
+- **Deskripsi Perubahan**:
+  - Menghapus ketergantungan port statis `3840`, dashboard sekarang membaca origin dan port secara dinamis dari `window.location.origin`.
+  - Menambahkan endpoint telemetri real-time publik `/api/public/telemetry/stats` dan `/api/public/telemetry/stream`.
+  - Peningkatan navigasi responsif untuk perangkat mobile dan pembaruan layout sidebar.
+- **Status Task**: Selesai
+
 ### [2026-09-03] - [Codex] - Tolak alias prefix alternatif pada policy runtime
 - **Modul**: `Backend / Auth Policy / Model Resolution`
 - **File Diubah**: `backend/internal/handlers/chat/chat.go`, `backend/internal/handlers/chat/chat_test.go`

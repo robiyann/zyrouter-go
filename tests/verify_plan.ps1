@@ -7,7 +7,11 @@ $failures = @()
 function Run-Step([string]$Name, [scriptblock]$Action) {
   Write-Host "[RUN] $Name"
   try {
+    $global:LASTEXITCODE = 0
     & $Action
+    if ($global:LASTEXITCODE -and $global:LASTEXITCODE -ne 0) {
+      throw "Command exited with status code $global:LASTEXITCODE"
+    }
     Write-Host "[PASS] $Name" -ForegroundColor Green
   } catch {
     $script:failures += $Name
@@ -17,7 +21,7 @@ function Run-Step([string]$Name, [scriptblock]$Action) {
 
 Push-Location $backend
 try {
-  Run-Step 'go test' { go test ./... -count=1 }
+  Run-Step 'go test' { go test -p 4 ./... -count=1 }
   Run-Step 'go vet' { go vet ./... }
   Run-Step 'go build' { go build -trimpath ./cmd/zyrouter }
 
@@ -43,6 +47,7 @@ Push-Location $root
 try {
   Run-Step 'frontend syntax' { node --check frontend/app.js }
   Run-Step 'frontend contract' { node tests/frontend_contract.test.mjs }
+  Run-Step 'e2e proxy integration' { node tests/e2e_proxy_test.mjs }
 
   Run-Step 'dockerfile structure' {
     $dockerfile = Get-Content (Join-Path $root 'backend\Dockerfile') -Raw

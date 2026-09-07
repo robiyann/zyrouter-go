@@ -22,16 +22,22 @@ Folder ini adalah lingkungan terisolasi untuk seluruh pengujian otomatis, benchm
 From `zyrouter`:
 
 ```powershell
-pwsh -File .\tests\verify_plan.ps1
+powershell -ExecutionPolicy Bypass -File .\tests\verify_plan.ps1
 ```
 
-The runner executes Go tests, vet, build, frontend checks, and optional Docker,
-race, and Bash checks when those tools are installed.
+The runner executes:
+1. `go test -p 4 ./... -count=1`: Go unit and handler tests across all backend packages.
+2. `go vet ./...`: Go static analysis.
+3. `go build -trimpath ./cmd/zyrouter`: Native binary compilation.
+4. `node --check frontend/app.js`: Frontend JavaScript syntax validation.
+5. `node tests/frontend_contract.test.mjs`: REST & SSE API contract assertions on frontend code.
+6. `node tests/e2e_proxy_test.mjs`: Automated end-to-end integration test (11 scenarios covering mock upstream, streaming SSE, combo routing, fail-closed prefix rejection, key restrictions, and security summaries).
+7. Optional Docker, race, and Bash checks when those tools are available in the environment.
 
 ```
 zyrouter/tests/
-├── README.md                # Panduan ini
-├── integration/             # E2E integration tests (Proxy + Auth Restrictions)
-├── benchmarks/              # Throughput, memory allocation & latency benchmark suites
-└── mocks/                   # Mock HTTP responses untuk OpenAI, Claude, Gemini
+├── README.md                   # Panduan ini
+├── verify_plan.ps1             # Runner verifikasi komprehensif
+├── frontend_contract.test.mjs  # Verifikasi sinkronisasi kontrak API frontend/backend
+└── e2e_proxy_test.mjs          # E2E proxy integration test suite (11 skenario)
 ```

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,23 @@ func (r *Repo) InsertAuthLogs(entries []AuthLogEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		err := r.insertAuthLogsTx(entries)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		errStr := strings.ToLower(err.Error())
+		if !strings.Contains(errStr, "locked") && !strings.Contains(errStr, "busy") {
+			return err
+		}
+		time.Sleep(time.Duration(25*(attempt+1)) * time.Millisecond)
+	}
+	return lastErr
+}
+
+func (r *Repo) insertAuthLogsTx(entries []AuthLogEntry) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
