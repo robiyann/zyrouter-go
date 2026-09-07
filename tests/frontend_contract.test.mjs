@@ -22,6 +22,7 @@ assert.match(app, /alias-only/i, 'frontend contract must document alias-only mod
 assert.doesNotMatch(app, /Edit Prefix/, 'provider prefix must not be exposed as a client-facing management action');
 assert.match(app, /data-key-scope/, 'API key governance must expose scope filters');
 assert.match(app, /Public Model Alias/, 'combo management must expose a public alias field');
+assert.match(app, /Only published model aliases can be added to a combo/, 'combo builder must restrict steps to published model aliases');
 assert.match(app, /Internal Upstream Inventory/i, 'provider management must distinguish private inventory');
 assert.match(app, /PUBLIC: ALIAS-ONLY/, 'provider catalog must communicate alias-only public exposure');
 assert.match(app, /btn-preview-key-policy/, 'API key policy builder must expose authorization preview');

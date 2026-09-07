@@ -6173,7 +6173,7 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
   const publicAlias = combo.publicAlias || '';
 
   return `
-    <form class="inline-form policy-builder-form" id="combo-builder-form" data-combo-id="${escapeHtml(combo.id || '')}" style="max-width:740px;">
+    <form class="inline-form policy-builder-form" id="combo-builder-form" data-combo-id="${escapeHtml(combo.id || '')}" data-available-aliases="${escapeHtml(JSON.stringify(allActiveModels))}" style="max-width:740px;">
       <div class="form-head">
         <div>
           <span class="kicker">ORCHESTRATION / ROUTING PIPELINE</span>
@@ -6221,7 +6221,7 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
 
           <!-- ADD MODEL BAR -->
           <div style="margin-top:8px; background:#080b10; border:1px solid var(--line-subtle); border-radius:6px; padding:10px;">
-            <span class="quick-add-label" style="display:block; margin-bottom:6px;">QUICK ADD FROM ACTIVE NODES:</span>
+            <span class="quick-add-label" style="display:block; margin-bottom:6px;">ADD PUBLISHED MODEL ALIAS:</span>
             <div class="quick-chips" style="display:flex; flex-wrap:wrap; gap:4px; max-height:100px; overflow-y:auto; margin-bottom:8px;">
               ${allActiveModels.map((m) => `
                 <button type="button" class="preset-chip" data-add-combo-model="${escapeHtml(m)}">
@@ -6230,8 +6230,9 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
               `).join('')}
             </div>
             <div class="custom-input-row">
-              <input type="text" id="custom-combo-model-input" placeholder="Type custom model identifier..." />
+              <input type="text" id="custom-combo-model-input" placeholder="Type an existing published alias..." />
               <button type="button" class="secondary-button" id="btn-add-custom-combo-step">+ Add Step</button>
+              ${allActiveModels.length === 0 ? '<button type="button" class="secondary-button" id="btn-open-combo-aliases">Manage Model Aliases first</button>' : ''}
             </div>
           </div>
         </div>
@@ -6257,6 +6258,8 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
 function setupComboBuilderInteractions(combo = {}, isNew = false) {
   const form = document.querySelector('#combo-builder-form');
   if (!form) return;
+  let availableAliases = [];
+  try { availableAliases = JSON.parse(form.dataset.availableAliases || '[]'); } catch {}
 
   let pipeline = parseComboModels(combo.models);
 
@@ -6334,6 +6337,8 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
   form.querySelectorAll('[data-add-combo-model]').forEach((btn) => {
     btn.onclick = () => {
       const m = btn.dataset.addComboModel;
+      const errEl = form.querySelector('.form-error');
+      if (errEl) errEl.textContent = '';
       pipeline.push(m);
       renderPipelineSteps();
     };
@@ -6345,15 +6350,21 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
   if (customIn && addCustomBtn) {
     const addCustom = () => {
       const v = customIn.value.trim();
-      if (v) {
+      if (v && availableAliases.includes(v)) {
+        const errEl = form.querySelector('.form-error');
+        if (errEl) errEl.textContent = '';
         pipeline.push(v);
         customIn.value = '';
         renderPipelineSteps();
+      } else if (v) {
+        form.querySelector('.form-error').textContent = 'Only published model aliases can be added to a combo.';
       }
     };
     addCustomBtn.onclick = addCustom;
     customIn.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } };
   }
+
+  form.querySelector('#btn-open-combo-aliases')?.addEventListener('click', () => setView('aliases'));
 
   // Mode Switcher (Visual vs Raw JSON)
   form.querySelectorAll('.mode-tab').forEach((tab) => {
