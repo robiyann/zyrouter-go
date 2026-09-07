@@ -128,6 +128,9 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 // raw secret is returned to the caller but only its prefix and one-way hash
 // are persisted.
 func (r *Repo) CreateApiKey(id, rawKey, name, machineID string, restrictions *string) (*models.APIKey, error) {
+	if err := validateAliasRestrictions(restrictions); err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := r.db.Exec(
 		`INSERT INTO apiKeys (id, key, keyHash, name, machineId, isActive, restrictions, createdAt, accountTypeId) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'administrator')`,
@@ -150,6 +153,9 @@ func (r *Repo) CreateApiKey(id, rawKey, name, machineID string, restrictions *st
 
 // UpdateApiKey updates an existing API key's name, active state, or restrictions.
 func (r *Repo) UpdateApiKey(id string, name *string, isActive *int, restrictions *string) error {
+	if err := validateAliasRestrictions(restrictions); err != nil {
+		return err
+	}
 	query := "UPDATE apiKeys SET "
 	var args []any
 	var sets []string
@@ -176,6 +182,27 @@ func (r *Repo) UpdateApiKey(id string, name *string, isActive *int, restrictions
 
 	_, err := r.db.Exec(query, args...)
 	return err
+}
+
+func validateAliasRestrictions(raw *string) error {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return nil
+	}
+	var policy models.KeyRestrictions
+	if err := json.Unmarshal([]byte(*raw), &policy); err != nil {
+		return fmt.Errorf("invalid key restrictions: %w", err)
+	}
+	for _, value := range append(append([]string{}, policy.AllowedModels...), policy.BlockedModels...) {
+		if strings.Contains(value, "/") {
+			return fmt.Errorf("model restrictions must use public aliases; provider prefixes are forbidden")
+		}
+	}
+	for _, value := range policy.AllowedPrefixes {
+		if strings.Contains(value, "/") {
+			return fmt.Errorf("alias family restrictions cannot contain provider prefixes")
+		}
+	}
+	return nil
 }
 
 // DeleteApiKey removes an API key by primary key ID.

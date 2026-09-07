@@ -5524,7 +5524,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
           `}
 
           <div class="custom-input-row" style="margin-top:6px;">
-            <input type="text" id="custom-model-input" placeholder="Type custom model ID (e.g. gpt-4o, claude-3-5-sonnet)..." />
+            <input type="text" id="custom-model-input" placeholder="Type an existing published alias..." />
             <button type="button" class="secondary-button" id="btn-add-custom-model">+ Add</button>
           </div>
         </div>
@@ -5838,9 +5838,18 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
 
   const btnAddCustomModel = form.querySelector('#btn-add-custom-model');
   const inputCustomModel = form.querySelector('#custom-model-input');
+  const publishedAliasNames = new Set(Array.from(form.querySelectorAll('[data-add-model]')).map((button) => button.dataset.addModel));
   if (btnAddCustomModel && inputCustomModel) {
     const addCustom = () => {
       const val = inputCustomModel.value.trim();
+      if (val.includes('/')) {
+        form.querySelector('.form-error').textContent = 'Use a published bare model alias; provider prefixes are forbidden.';
+        return;
+      }
+      if (!publishedAliasNames.has(val)) {
+        form.querySelector('.form-error').textContent = 'Only published model aliases can be added to a key policy.';
+        return;
+      }
       if (val && !state.allowedModels.includes(val)) {
         state.allowedModels.push(val);
         inputCustomModel.value = '';
