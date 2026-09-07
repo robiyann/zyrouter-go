@@ -1858,14 +1858,15 @@ async function renderProviderDetail(provId) {
   content.innerHTML = '<div class="card generic-empty"><span class="loading-line"></span><p>Loading provider node details...</p></div>';
   
   try {
-    const [connPayload, modelPayload, poolPayload, settingsPayload, customPayload, prefixPayload, nodesPayload] = await Promise.all([
+    const [connPayload, modelPayload, poolPayload, settingsPayload, customPayload, prefixPayload, nodesPayload, aliasPayload] = await Promise.all([
       request('/api/providers').catch(() => ({ connections: [] })),
       request('/models').catch(() => ({ data: [] })),
       request('/api/proxy-pools').catch(() => ({ proxyPools: [] })),
       request('/api/settings').catch(() => ({})),
       request('/api/custom-models').catch(() => ({ customModels: [] })),
       request('/api/provider-prefixes').catch(() => ({ prefixes: {} })),
-      request('/api/provider-nodes').catch(() => ({ nodes: [] }))
+      request('/api/provider-nodes').catch(() => ({ nodes: [] })),
+      request('/api/model-aliases').catch(() => ({ aliases: {}, records: [] }))
     ]);
 
     const allConns = connPayload.connections || [];
@@ -1961,7 +1962,12 @@ async function renderProviderDetail(provId) {
       }
     });
 
-    const modelsList = Array.from(modelSet);
+    const publishedAliases = Array.isArray(aliasPayload.records) ? aliasPayload.records
+      .filter((record) => record && record.isActive !== 0 && provAliases.has(String(record.provider || '').toLowerCase()))
+      .map((record) => record.alias)
+      .filter(Boolean) : [];
+    const modelsList = Array.from(new Set(publishedAliases));
+    const inventoryModels = Array.from(modelSet).sort();
     const accountPageSize = 10;
     const accountPageCount = Math.max(1, Math.ceil(conns.length / accountPageSize));
     const accountPage = Math.min(providerAccountPages.get(provId) || 1, accountPageCount);
@@ -2187,8 +2193,8 @@ async function renderProviderDetail(provId) {
           <div class="detail-panel card">
             <div class="detail-panel-head">
               <div>
-                <h3>Provider Models</h3>
-                <span class="kicker">${modelsList.length} Model(s) Available</span>
+                <h3>Published Model Aliases</h3>
+                <span class="kicker">${modelsList.length} Alias(es) Available</span>
               </div>
               <div style="display:flex; gap:6px;">
                 ${conns.length > 0 ? `
@@ -2196,7 +2202,7 @@ async function renderProviderDetail(provId) {
                     📥 Fetch from /models
                   </button>
                 ` : ''}
-                <button class="solid-button" id="btn-add-custom-model" style="font-size:10.5px; padding:3px 8px;">+ Add Model</button>
+                <button class="solid-button" id="btn-add-provider-alias" style="font-size:10.5px; padding:3px 8px;">+ Publish Alias</button>
               </div>
             </div>
 
@@ -2204,12 +2210,12 @@ async function renderProviderDetail(provId) {
               ${modelsList.length === 0 ? `
                 <p style="color:var(--muted); font-size:12px; padding:8px 0;">No models registered yet for this provider.</p>
               ` : modelsList.map((cleanModelId) => {
-                const fullModelId = `${activePrefix}/${cleanModelId}`;
-                const isCustom = customModelIdsSet.has(cleanModelId);
+                const fullModelId = cleanModelId;
+                const isCustom = false;
                 return `
                   <div class="detail-model-row" id="row-model-${escapeHtml(cleanModelId)}">
                     <div style="display:flex; align-items:center; gap:6px; min-width:0;">
-                      <code class="model-id-code" title="${escapeHtml(fullModelId)}">${escapeHtml(fullModelId)}</code>
+                      <code class="model-id-code" title="Client-visible alias">${escapeHtml(fullModelId)}</code>
                       ${isCustom ? `<span class="table-badge" style="font-size:7.5px; padding:1px 4px; background:#c8ff6315; border:1px solid #c8ff6344; color:var(--lime);">CUSTOM</span>` : ''}
                     </div>
                     <div class="model-row-actions">
@@ -2220,6 +2226,16 @@ async function renderProviderDetail(provId) {
                   </div>
                 `;
               }).join('')}
+            </div>
+            <div style="margin-top:12px; padding:10px; border:1px dashed var(--line); border-radius:6px; background:rgba(255,255,255,0.015);">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <strong style="font-size:10px; color:var(--muted);">INTERNAL UPSTREAM INVENTORY</strong>
+                <span class="table-badge" style="font-size:8px;">NOT PUBLIC</span>
+              </div>
+              <p style="font-size:9.5px; color:var(--muted); margin:4px 0 0;">Fetched or manually known upstream IDs stay private until an admin publishes a Model Alias.</p>
+              <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:7px;">
+                ${inventoryModels.length ? inventoryModels.map((model) => `<code class="model-id-code" style="font-size:9px; color:var(--dim);">${escapeHtml(model)}</code>`).join('') : '<span style="font-size:9px; color:var(--muted);">No internal inventory loaded.</span>'}
+              </div>
             </div>
           </div>
         </div>
@@ -2715,39 +2731,10 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
     };
   }
 
-  // Add Custom Model Action
-  const addModelBtn = document.querySelector('#btn-add-custom-model');
+  // Publish a client-facing alias; raw upstream IDs remain inventory-only.
+  const addModelBtn = document.querySelector('#btn-add-provider-alias');
   if (addModelBtn) {
-    addModelBtn.onclick = async () => {
-      const modelName = await showPromptModal({
-        title: 'Add Custom Model',
-        kicker: `CATALOG / ${meta.name.toUpperCase()}`,
-        message: `Enter the upstream Model ID for ${meta.name}. It will be registered in SQLite and available across all clients and combos.`,
-        label: 'Model Identifier (e.g. gemini-3.7-flash-high, claude-custom-1)',
-        placeholder: 'gemini-3.7-flash-high',
-        confirmText: 'Add Model'
-      });
-      if (!modelName) return;
-      const cleanId = modelName.trim();
-      addModelBtn.disabled = true;
-      try {
-        const res = await fetch(`${apiBase}/api/custom-models`, {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: provId, providerAlias: meta.alias || provId, id: cleanId, type: 'llm', name: cleanId })
-        });
-        const resText = await res.text();
-        let resData = {};
-        try { resData = JSON.parse(resText); } catch {}
-        if (!res.ok) throw new Error(resData.error || resText || `${res.status} ${res.statusText}`);
-        showToast(`Custom model "${cleanId}" added!`, 'success');
-        await renderProviderDetail(provId);
-      } catch (err) {
-        showToast(`Failed to add custom model: ${err.message}`, 'error');
-      } finally {
-        addModelBtn.disabled = false;
-      }
-    };
+    addModelBtn.onclick = () => openCreateAliasModal('', `${provId}/`);
   }
   // Delete Provider Node Action (for OpenAI / Anthropic Compatible Nodes)
   const deleteNodeBtn = document.querySelector('#btn-delete-provider-node');
@@ -4049,6 +4036,7 @@ function parseComboModels(raw) {
 
 function renderCombos(payload) {
   const rows = payload.combos || [];
+  const comboAliases = Object.fromEntries(Object.entries(payload.modelAliases || {}).filter(([, target]) => String(target).startsWith('combo:')));
   if (!rows.length) return emptySurface('No route combos configured. Click "+ Add connection" or "+ Create combo" to compose a fallback or round-robin route.');
   return `
     <div class="data-table-container">
@@ -4057,6 +4045,7 @@ function renderCombos(payload) {
           <tr>
             <th>Strategy</th>
             <th>Combo Name</th>
+            <th>Public Alias</th>
             <th>Models Pipeline Sequence</th>
             <th class="table-cell-actions">Actions</th>
           </tr>
@@ -4069,6 +4058,7 @@ function renderCombos(payload) {
               <tr>
                 <td><span class="table-badge ${strategyClass}">${escapeHtml((item.strategy || 'fallback').toUpperCase())}</span></td>
                 <td><strong style="color:var(--text-bright); font-size:12px;">${escapeHtml(item.name)}</strong></td>
+                <td><code class="model-id-code" style="color:var(--lime);">${escapeHtml(Object.entries(comboAliases).find(([, target]) => target === `combo:${item.name}`)?.[0] || 'not published')}</code></td>
                 <td>
                   <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
                     ${models.map((m, idx) => `
@@ -5089,7 +5079,10 @@ async function renderView(name) {
             nodes: nodesRes.nodes || []
           };
         },
-        orchestrator: () => request('/api/combos'),
+        orchestrator: async () => {
+          const [combos, aliases] = await Promise.all([request('/api/combos'), request('/api/model-aliases').catch(() => ({ aliases: {} }))]);
+          return { ...combos, modelAliases: aliases.aliases || {} };
+        },
         keys: () => request('/api/keys'),
         usage: () => request('/api/usage/stats?period=all&days=all'),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
