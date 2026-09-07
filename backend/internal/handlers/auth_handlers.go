@@ -54,7 +54,7 @@ func loginLocked(ip string, now time.Time) (time.Duration, bool) {
 	return time.Until(state.lockedUntil), true
 }
 
-func recordLoginFailure(ip string, now time.Time) (time.Duration, bool) {
+func recordLoginFailure(ip string, now time.Time) (time.Duration, bool, int) {
 	loginLimiter.Lock()
 	defer loginLimiter.Unlock()
 	state := loginLimiter.entries[ip]
@@ -68,9 +68,13 @@ func recordLoginFailure(ip string, now time.Time) (time.Duration, bool) {
 	}
 	loginLimiter.entries[ip] = state
 	if state.lockedUntil.After(now) {
-		return time.Until(state.lockedUntil), true
+		return time.Until(state.lockedUntil), true, 0
 	}
-	return 0, false
+	remaining := loginFailureLimit - state.count
+	if remaining < 0 {
+		remaining = 0
+	}
+	return 0, false, remaining
 }
 
 func clearLoginFailures(ip string) {
@@ -111,7 +115,8 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 		}
 
 		if !auth.CheckPassword(password, storedHash) {
-			retryAfter, locked := recordLoginFailure(ip, time.Now())
+			retryAfter, locked, attemptsRemaining := recordLoginFailure(ip, time.Now())
+			w.Header().Set("X-Login-Attempts-Remaining", strconv.Itoa(attemptsRemaining))
 			if locked {
 				w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds())+1, 10))
 				handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "Too many failed login attempts. Try again later.")

@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
 )
 
@@ -185,5 +187,38 @@ func TestLoginRejectsNonObjectOrMissingPasswordBody(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("body %s: expected 400, got %d", body, rec.Code)
 		}
+	}
+}
+
+func TestLoginReportsRemainingAttemptsAndLockout(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	settings, err := repo.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := auth.HashPassword("correct-password")
+	settings.Password = &hash
+	if err := repo.UpdateSettingsData(settings); err != nil {
+		t.Fatal(err)
+	}
+	handler := HandleAuthLogin(repo)
+	ip := "198.51.100.77"
+	for want := 4; want >= 1; want-- {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"wrong-password"}`))
+		req.RemoteAddr = ip + ":1234"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized || rec.Header().Get("X-Login-Attempts-Remaining") != strconv.Itoa(want) {
+			t.Fatalf("attempt %d: status=%d remaining=%q", 5-want, rec.Code, rec.Header().Get("X-Login-Attempts-Remaining"))
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"wrong-password"}`))
+	req.RemoteAddr = ip + ":5678"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("X-Login-Attempts-Remaining") != "0" || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("lockout response missing metadata: status=%d remaining=%q retry=%q", rec.Code, rec.Header().Get("X-Login-Attempts-Remaining"), rec.Header().Get("Retry-After"))
 	}
 }

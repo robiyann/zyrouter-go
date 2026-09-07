@@ -188,7 +188,13 @@ function renderFullLoginGate() {
       const resText = await res.text();
       let data = {};
       try { data = JSON.parse(resText); } catch {}
-      if (!res.ok) throw new Error(data.error?.message || data.error || data.message || resText || 'Authentication failed');
+      if (!res.ok) {
+        const error = new Error(data.error?.message || data.error || data.message || resText || 'Authentication failed');
+        error.attemptsRemaining = res.headers.get('X-Login-Attempts-Remaining');
+        error.retryAfter = res.headers.get('Retry-After');
+        error.status = res.status;
+        throw error;
+      }
 
       dashboardAuthenticated = true;
       // Session is held by the HttpOnly cookie, not JavaScript storage.
@@ -203,6 +209,18 @@ function renderFullLoginGate() {
       if (currentView === 'overview') {
         loadOverview();
       }
+    } catch (err) {
+      const attempts = Number(err?.attemptsRemaining);
+      const retryAfter = Number(err?.retryAfter);
+      if (err?.status === 429 && retryAfter > 0) {
+        errEl.textContent = `Terlalu banyak percobaan gagal. Coba lagi dalam ${retryAfter} detik.`;
+      } else if (Number.isFinite(attempts) && attempts >= 0) {
+        errEl.textContent = `Password salah. Sisa percobaan: ${attempts}.`;
+      } else {
+        errEl.textContent = err?.message || 'Authentication failed';
+      }
+      input.value = '';
+      input.focus();
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerHTML = 'Unlock Control Center &rarr;';
