@@ -128,7 +128,7 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 func (r *Repo) CreateApiKey(id, key, name, machineID string, restrictions *string) (*models.APIKey, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := r.db.Exec(
-		`INSERT INTO apiKeys (id, key, name, machineId, isActive, restrictions, createdAt) VALUES (?, ?, ?, ?, 1, ?, ?)`,
+		`INSERT INTO apiKeys (id, key, name, machineId, isActive, restrictions, createdAt, accountTypeId) VALUES (?, ?, ?, ?, 1, ?, ?, 'administrator')`,
 		id, key, name, machineID, restrictions, now,
 	)
 	if err != nil {

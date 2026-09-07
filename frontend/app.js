@@ -4119,30 +4119,16 @@ function renderCombos(payload) {
 
 function renderKeys(payload) {
   const rows = payload.keys || [];
-  const users = payload.users || [];
-  const userRows = users.length ? users.map((user) => `
-    <tr>
-      <td><strong>${escapeHtml(user.displayName || user.telegramUsername || user.id)}</strong><br><code style="font-size:9px; color:var(--muted);">${escapeHtml(user.id)}</code></td>
-      <td><span class="table-badge active">${escapeHtml(user.accountTypeId || '--')}</span></td>
-      <td>${user.hasActiveKey ? `<code>${escapeHtml(user.keyPrefix || 'active')}</code>` : '<span style="color:var(--muted);">No active key</span>'}</td>
-      <td>${user.hasActiveKey ? escapeHtml(user.keyCreatedAt || '--') : '--'}</td>
-      <td class="table-cell-actions">${user.hasActiveKey ? `<button class="danger-button" data-revoke-user-key="${escapeHtml(user.id)}">Revoke Key</button>` : '--'}</td>
-    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">No verified users.</td></tr>';
+  if (!rows.length) return emptySurface('No API keys configured');
   return `
-    <div style="display:grid; gap:14px;">
-    <div class="card" style="padding:16px;">
-      <div class="section-header" style="margin-bottom:10px;"><div><span class="kicker">VERIFIED USERS</span><h2>User Access Keys</h2><p>Client keys are hashed, one active key per verified user. Rotate is initiated by the user; admin can revoke.</p></div></div>
-      <div class="data-table-container"><table class="data-table"><thead><tr><th>User</th><th>Account Type</th><th>Key</th><th>Created</th><th class="table-cell-actions">Actions</th></tr></thead><tbody>${userRows}</tbody></table></div>
-    </div>
-    <div class="card" style="padding:16px;">
-      <div class="section-header" style="margin-bottom:10px;"><div><span class="kicker">UPSTREAM CREDENTIALS</span><h2>Provider / Internal API Keys</h2><p>Legacy provider connection keys remain separate from user-generated access keys.</p></div></div>
-    ${rows.length ? `<div class="data-table-container">
+    <div class="data-table-container">
       <table class="data-table">
         <thead>
           <tr>
             <th>Status</th>
             <th>Key Name</th>
             <th>Key Token</th>
+            <th>Account Type</th>
             <th>Policy Restrictions</th>
             <th class="table-cell-actions">Actions</th>
           </tr>
@@ -4162,6 +4148,7 @@ function renderKeys(payload) {
                   ${item.id ? `<button class="model-copy-btn" data-copy-key-id="${escapeHtml(item.id)}" title="Copy Full API Key">&boxbox;</button>` : ''}
                 </span>
               </td>
+              <td><span class="table-badge active">${escapeHtml(item.accountTypeId || 'administrator')}</span></td>
               <td>
                 <div style="font-size:10px; font-family:var(--mono); color:var(--muted); max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   ${escapeHtml(item.restrictions || 'No restrictions (unlimited)')}
@@ -4175,8 +4162,7 @@ function renderKeys(payload) {
           `).join('')}
         </tbody>
       </table>
-    </div>` : '<div style="padding:20px; color:var(--muted);">No provider API keys configured.</div>'}
-    </div></div>
+    </div>
   `;
 }
 
@@ -5099,13 +5085,7 @@ async function renderView(name) {
           };
         },
         orchestrator: () => request('/api/combos'),
-        keys: async () => {
-          const [keys, users] = await Promise.all([
-            request('/api/keys'),
-            request('/api/admin/users').catch(() => ({ users: [] }))
-          ]);
-          return { keys: keys.keys || [], users: users.users || [] };
-        },
+        keys: () => request('/api/keys'),
         usage: () => request('/api/usage/stats?period=all&days=all'),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: () => request('/api/auth-logs?limit=200'),
@@ -5129,7 +5109,6 @@ async function renderView(name) {
     if (name === 'keys') {
       bindKeyPolicyEditors();
       bindCopyKeyButtons();
-      bindUserKeyActions();
     }
     if (name === 'logs') bindLogStream();
     if (name === 'authlogs') bindAuthLogs();
@@ -5158,21 +5137,6 @@ function bindCopyKeyButtons() {
         setTimeout(() => { btn.textContent = prev; }, 1200);
       } catch (error) {
         showToast(error.message || 'Copy failed', 'error');
-      }
-    };
-  });
-}
-
-function bindUserKeyActions() {
-  document.querySelectorAll('[data-revoke-user-key]').forEach((button) => {
-    button.onclick = async () => {
-      if (!confirm('Revoke this user API key? The client will need to rotate or generate a new key.')) return;
-      try {
-        await request(`/api/admin/users/${encodeURIComponent(button.dataset.revokeUserKey)}/key`, { method: 'DELETE' });
-        showToast('User API key revoked', 'success');
-        await setView('keys');
-      } catch (error) {
-        showToast(error.message || 'Failed to revoke user API key', 'error');
       }
     };
   });

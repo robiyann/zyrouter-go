@@ -255,6 +255,11 @@ func EnsureSchema(db *sql.DB) error {
 		('paid_user', 'Paid User', 'Paid user access tier', 1, 1, 'custom', datetime('now'), datetime('now'))`); err != nil {
 		return fmt.Errorf("seed account types: %w", err)
 	}
+	// Legacy gateway keys are operator/admin keys. Only keys that are not owned
+	// by a verified user are backfilled; user-owned keys retain their tier.
+	if _, err := db.Exec(`UPDATE apiKeys SET accountTypeId='administrator' WHERE accountTypeId IS NULL AND userId IS NULL`); err != nil {
+		return fmt.Errorf("backfill legacy api key account type: %w", err)
+	}
 
 	log.Printf("[db] Database schema verified & up to date")
 	return nil
