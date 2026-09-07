@@ -30,4 +30,5 @@ assert.match(app, /Public\/no-auth providers have no providerConnections row/,
   'policy builder must include active public providers without connection rows');
 assert.match(html, /id="generic-content"/);
 assert.match(html, /Issue Gateway API Key/, 'admin shortcut must describe gateway keys, not a client dashboard');
+assert.doesNotMatch(html, /:3840/, 'dashboard must not show a stale hardcoded engine port');
 console.log('frontend backend contract checks passed');

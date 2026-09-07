@@ -17,6 +17,8 @@ const nav = document.querySelector('#nav-list');
 const breadcrumb = document.querySelector('#breadcrumb');
 const content = document.querySelector('#generic-content');
 const apiBase = window.ZYROUTER_API_BASE || '';
+const enginePortBadge = document.querySelector('#engine-port-badge');
+if (enginePortBadge) enginePortBadge.textContent = `:${window.location.port || (window.location.protocol === 'https:' ? '443' : '80')}`;
 let activeStream = null;
 let dashboardAuthenticated = false;
 const providerAccountPages = new Map();
