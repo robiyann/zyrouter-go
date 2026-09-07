@@ -222,6 +222,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Post("/api/admin/account-types/{id}/models", adminH.HandleSetAccountTypeModels)
 		r.Get("/api/admin/users", adminH.HandleGetUsers)
 		r.Put("/api/admin/users/{id}/account-type", adminH.HandleUpdateUserAccountType)
+		r.Delete("/api/admin/users/{id}/key", adminH.HandleRevokeUserKey)
 		// Health reset endpoint for the admin dashboard.
 		r.Post("/admin/health/reset", func(w http.ResponseWriter, r *http.Request) {
 			provider := r.URL.Query().Get("provider")

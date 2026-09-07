@@ -93,9 +93,23 @@ func (h *AdminHandler) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]map[string]any, 0, len(users))
 	for _, user := range users {
+		activeKey, _ := h.repo.GetActiveUserApiKey(user.ID)
 		result = append(result, map[string]any{"id": user.ID, "telegramUsername": user.TelegramUsername, "displayName": user.DisplayName, "accountTypeId": user.AccountTypeID, "isActive": user.IsActive, "verifiedAt": user.VerifiedAt, "createdAt": user.CreatedAt})
+		result[len(result)-1]["hasActiveKey"] = activeKey != nil
+		if activeKey != nil {
+			result[len(result)-1]["keyPrefix"] = activeKey.Key
+			result[len(result)-1]["keyCreatedAt"] = activeKey.CreatedAt
+		}
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"users": result})
+}
+
+func (h *AdminHandler) HandleRevokeUserKey(w http.ResponseWriter, r *http.Request) {
+	if err := h.repo.RevokeUserApiKey(chi.URLParam(r, "id")); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to revoke user api key")
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
 
 func (h *AdminHandler) HandleUpdateUserAccountType(w http.ResponseWriter, r *http.Request) {
