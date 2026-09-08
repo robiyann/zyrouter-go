@@ -1,5 +1,15 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-08] - [Codex] - Unified Composite Model Aliases
+- **Modul**: `Model Aliases / Combo Routing / Client Policy`
+- **Deskripsi Perubahan**:
+  - Menambahkan composite alias atomik melalui `POST /api/model-aliases` dengan `kind: composite`.
+  - Satu alias publik sekarang dapat mengatur beberapa target provider/model internal dengan strategi fallback atau round-robin.
+  - Target provider/model combo tidak masuk ke `/models` atau metadata publik; client tetap hanya memanggil alias bare.
+  - Validasi policy combo diterapkan pada alias publik dan provider target internal tanpa menjadikan target internal sebagai namespace client.
+  - Combo editor mendukung alias direct maupun target `provider/model` internal admin.
+- **Status Task**: Selesai / Terhubung ke Phase 4B
+
 ### [2026-09-08] - [Antigravity & Codex] - E2E Integration Suite & Robust SQLite Auth Log Retry
 - **Modul**: `Testing / Database / Proxy Integration / Verification`
 - **File Diubah / Dibuat**:
@@ -24,7 +34,7 @@
 - **Deskripsi Perubahan**:
   - Menerapkan invariant publik **Alias-Only**: model discovery provider hanya sebagai helper inventaris internal admin; client hanya dapat mengakses bare alias resmi yang dipublikasikan.
   - Request dengan prefix provider (`provider/model`) atau raw model upstream tanpa alias langsung ditolak fail-closed (HTTP 403 `provider_prefix_forbidden` / `model_alias_required`).
-  - Form Combo Builder pada frontend diperketat agar hanya mengizinkan model alias yang sudah dipublikasikan, lengkap dengan validasi visual dan tautan shortcut ke manajemen model alias.
+  - Form Combo Builder pada frontend diperketat agar hanya menerima direct alias yang dipublikasikan atau target `provider/model` internal admin, lengkap dengan validasi visual dan tautan shortcut ke manajemen model alias.
   - Endpoint `/api/admin/model-policy/preview` ditambahkan untuk preview otorisasi API key sebelum disimpan.
 - **Status Task**: Selesai / Terhubung ke TASK-014 & TASK-015
 

@@ -6594,7 +6594,7 @@ function bindCreateForm(name) {
   };
 }
 
-function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
+function comboBuilderForm(combo = {}, isNew = false, allActiveModels = [], providerOptions = []) {
   const models = parseComboModels(combo.models);
   const strategy = combo.strategy || 'fallback';
   const name = combo.name || '';
@@ -6649,7 +6649,7 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
 
           <!-- ADD MODEL BAR -->
           <div style="margin-top:8px; background:#080b10; border:1px solid var(--line-subtle); border-radius:6px; padding:10px;">
-            <span class="quick-add-label" style="display:block; margin-bottom:6px;">ADD PUBLISHED MODEL ALIAS:</span>
+            <span class="quick-add-label" style="display:block; margin-bottom:6px;">ADD MODEL TARGET (ADMIN INTERNAL):</span>
             <div class="quick-chips" style="display:flex; flex-wrap:wrap; gap:4px; max-height:100px; overflow-y:auto; margin-bottom:8px;">
               ${allActiveModels.map((m) => `
                 <button type="button" class="preset-chip" data-add-combo-model="${escapeHtml(m)}">
@@ -6658,10 +6658,19 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = []) {
               `).join('')}
             </div>
             <div class="custom-input-row">
-              <input type="text" id="custom-combo-model-input" placeholder="Type an existing published alias..." />
+              <input type="text" id="custom-combo-model-input" placeholder="Alias or provider/model, e.g. openai/gpt-4o" />
               <button type="button" class="secondary-button" id="btn-add-custom-combo-step">+ Add Step</button>
               ${allActiveModels.length === 0 ? '<button type="button" class="secondary-button" id="btn-open-combo-aliases">Manage Model Aliases first</button>' : ''}
             </div>
+            <div style="display:grid; grid-template-columns:minmax(150px,0.8fr) minmax(180px,1fr) auto auto; gap:5px; margin-top:8px; align-items:center;">
+              <select id="combo-target-provider" style="background:#05070a; border:1px solid var(--line); color:var(--text); font:10px var(--mono); padding:6px 8px; border-radius:4px;">
+                ${providerOptions.map((provider) => `<option value="${escapeHtml(provider)}">${escapeHtml(provider)}</option>`).join('')}
+              </select>
+              <input type="text" id="combo-target-model" placeholder="Upstream model ID" style="background:#05070a; border:1px solid var(--line); color:var(--text); font:10px var(--mono); padding:6px 8px; border-radius:4px;" />
+              <button type="button" class="secondary-button" id="btn-fetch-combo-models" style="font-size:9.5px; padding:5px 7px;">Fetch</button>
+              <button type="button" class="secondary-button" id="btn-add-combo-target" style="font-size:9.5px; padding:5px 7px;">+ Target</button>
+            </div>
+            <div id="combo-target-suggestions" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;"></div>
           </div>
         </div>
       </div>
@@ -6704,7 +6713,7 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
     if (pipeline.length === 0) {
       container.innerHTML = `
         <div style="text-align:center; padding:16px; color:var(--muted); font-size:11px; border:1px dashed var(--line); border-radius:5px;">
-          Pipeline is empty. Select a published model alias below or type an existing published alias to add the first step.
+          Pipeline is empty. Select an alias below or type an internal provider/model target to add the first step.
         </div>
       `;
     } else {
@@ -6775,21 +6784,69 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
   // Custom step add
   const customIn = form.querySelector('#custom-combo-model-input');
   const addCustomBtn = form.querySelector('#btn-add-custom-combo-step');
+  const addMember = (raw) => {
+    const v = String(raw || '').trim();
+    const isInternalTarget = v.includes('/') && !/\s/.test(v) && v.split('/')[0] && v.split('/')[1];
+    if (!v || v.toLowerCase().startsWith('combo:') || (!availableAliases.includes(v) && !isInternalTarget)) {
+      form.querySelector('.form-error').textContent = 'Use a published alias or a valid internal provider/model target.';
+      return false;
+    }
+    const errEl = form.querySelector('.form-error');
+    if (errEl) errEl.textContent = '';
+    pipeline.push(v);
+    renderPipelineSteps();
+    return true;
+  };
   if (customIn && addCustomBtn) {
     const addCustom = () => {
-      const v = customIn.value.trim();
-      if (v && availableAliases.includes(v)) {
-        const errEl = form.querySelector('.form-error');
-        if (errEl) errEl.textContent = '';
-        pipeline.push(v);
+      if (addMember(customIn.value)) {
         customIn.value = '';
-        renderPipelineSteps();
-      } else if (v) {
-        form.querySelector('.form-error').textContent = 'Only published model aliases can be added to a combo.';
       }
     };
     addCustomBtn.onclick = addCustom;
     customIn.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } };
+  }
+
+  const targetProvider = form.querySelector('#combo-target-provider');
+  const targetModel = form.querySelector('#combo-target-model');
+  const targetSuggestions = form.querySelector('#combo-target-suggestions');
+  const addTargetBtn = form.querySelector('#btn-add-combo-target');
+  if (addTargetBtn && targetProvider && targetModel) {
+    addTargetBtn.onclick = () => {
+      if (addMember(`${targetProvider.value}/${targetModel.value.trim()}`)) targetModel.value = '';
+    };
+    targetModel.onkeydown = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        addTargetBtn.click();
+      }
+    };
+  }
+  const fetchTargetsBtn = form.querySelector('#btn-fetch-combo-models');
+  if (fetchTargetsBtn && targetProvider && targetSuggestions) {
+    fetchTargetsBtn.onclick = async () => {
+      fetchTargetsBtn.disabled = true;
+      fetchTargetsBtn.textContent = '...';
+      targetSuggestions.textContent = '';
+      try {
+        const payload = await request(`/api/providers/${encodeURIComponent(targetProvider.value)}/models`);
+        const models = (payload.models || payload.data || []).map((item) => typeof item === 'string' ? item : (item.id || item.name || '')).filter(Boolean).slice(0, 80);
+        models.forEach((model) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'preset-chip';
+          button.textContent = `+ ${model}`;
+          button.onclick = () => addMember(`${targetProvider.value}/${model}`);
+          targetSuggestions.appendChild(button);
+        });
+        if (!models.length) targetSuggestions.textContent = 'No upstream models returned.';
+      } catch (error) {
+        targetSuggestions.textContent = error.message;
+      } finally {
+        fetchTargetsBtn.disabled = false;
+        fetchTargetsBtn.textContent = 'Fetch';
+      }
+    };
   }
 
   form.querySelector('#btn-open-combo-aliases')?.addEventListener('click', () => setView('aliases'));
@@ -6845,10 +6902,15 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
     const publishedAliases = new Set(availableAliases.map((alias) => String(alias).trim()));
     const invalidMember = finalModels.find((member) => {
       const value = String(member || '').trim();
-      return !value || value.includes('/') || !publishedAliases.has(value);
+      if (!value || value.toLowerCase().startsWith('combo:') || /\s/.test(value)) return true;
+      if (value.includes('/')) {
+        const parts = value.split('/');
+        return !parts[0] || !parts.slice(1).join('/');
+      }
+      return !publishedAliases.has(value);
     });
     if (invalidMember !== undefined) {
-      form.querySelector('.form-error').textContent = `Combo members must be published model aliases. Invalid member: ${String(invalidMember || '(empty)')}`;
+      form.querySelector('.form-error').textContent = `Combo members must be published aliases or valid provider/model targets. Invalid member: ${String(invalidMember || '(empty)')}`;
       return;
     }
 
@@ -6864,23 +6926,38 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
     form.querySelector('.form-error').textContent = '';
 
     try {
-      const endpoint = isNew ? '/api/combos' : `/api/combos/${combo.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-      const response = await fetch(`${apiBase}${endpoint}`, {
-        method,
-        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const resData = await response.json();
-      if (!response.ok) throw new Error(resData.error || `${response.status} ${response.statusText}`);
-      const aliasEndpoint = isNew ? '/api/model-aliases' : `/api/model-aliases/${encodeURIComponent(publicAlias)}`;
-      const aliasResponse = await fetch(`${apiBase}${aliasEndpoint}`, {
-        method: isNew ? 'POST' : 'PUT',
-        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alias: publicAlias, target: `combo:${comboName}` })
-      });
-      const aliasData = await aliasResponse.json().catch(() => ({}));
-      if (!aliasResponse.ok) throw new Error(aliasData.error || `${aliasResponse.status} ${aliasResponse.statusText}`);
+      if (isNew) {
+        const response = await fetch(`${apiBase}/api/model-aliases`, {
+          method: 'POST',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alias: publicAlias,
+            kind: 'composite',
+            comboName,
+            strategy,
+            members: finalModels,
+            isActive: 1
+          })
+        });
+        const resData = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(resData.error || `${response.status} ${response.statusText}`);
+      } else {
+        const endpoint = `/api/combos/${combo.id}`;
+        const response = await fetch(`${apiBase}${endpoint}`, {
+          method: 'PUT',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const resData = await response.json();
+        if (!response.ok) throw new Error(resData.error || `${response.status} ${response.statusText}`);
+        const aliasResponse = await fetch(`${apiBase}/api/model-aliases/${encodeURIComponent(publicAlias)}`, {
+          method: 'PUT',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alias: publicAlias, target: `combo:${comboName}` })
+        });
+        const aliasData = await aliasResponse.json().catch(() => ({}));
+        if (!aliasResponse.ok) throw new Error(aliasData.error || `${aliasResponse.status} ${aliasResponse.statusText}`);
+      }
       await renderView('orchestrator');
     } catch (err) {
       form.querySelector('.form-error').textContent = err.message;
@@ -6904,6 +6981,10 @@ function openCreateComboModal(comboId = null) {
     request('/api/model-aliases').catch(() => ({ aliases: {} }))
   ]).then(([comboPayload, provPayload, modelPayload, aliasPayload]) => {
     const allActiveModels = (modelPayload.data || []).map((model) => typeof model === 'string' ? model : model.id).filter(Boolean).sort();
+    const providerOptions = Array.from(new Set([
+      ...(typeof KNOWN_PROVIDER_CATALOG !== 'undefined' ? KNOWN_PROVIDER_CATALOG.map((provider) => provider.id) : []),
+      ...(provPayload.connections || []).map((connection) => connection.provider).filter(Boolean)
+    ])).sort();
     const comboAliases = Object.fromEntries(Object.entries(aliasPayload.aliases || {}).filter(([, target]) => String(target).startsWith('combo:')));
     let combo = { name: '', strategy: 'fallback', models: '[]' };
     let isNew = true;
@@ -6921,7 +7002,7 @@ function openCreateComboModal(comboId = null) {
     const existing = document.querySelector('#combo-builder-form');
     if (existing) existing.remove();
 
-    content.insertAdjacentHTML('afterbegin', comboBuilderForm(combo, isNew, allActiveModels));
+    content.insertAdjacentHTML('afterbegin', comboBuilderForm(combo, isNew, allActiveModels, providerOptions));
     setupComboBuilderInteractions(combo, isNew);
   });
 }

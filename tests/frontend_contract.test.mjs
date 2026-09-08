@@ -29,7 +29,7 @@ assert.match(app, /alias-only/i, 'frontend contract must document alias-only mod
 assert.doesNotMatch(app, /Edit Prefix/, 'provider prefix must not be exposed as a client-facing management action');
 assert.match(app, /data-key-scope/, 'API key governance must expose scope filters');
 assert.match(app, /Public Model Alias/, 'combo management must expose a public alias field');
-assert.match(app, /Only published model aliases can be added to a combo/, 'combo builder must restrict steps to published model aliases');
+assert.match(app, /published aliases or valid provider\/model targets/, 'combo builder must restrict steps to published aliases or admin-internal targets');
 assert.match(app, /Internal Upstream Inventory/i, 'provider management must distinguish private inventory');
 assert.match(app, /PUBLIC: ALIAS-ONLY/, 'provider catalog must communicate alias-only public exposure');
 assert.match(app, /btn-preview-key-policy/, 'API key policy builder must expose authorization preview');
@@ -45,7 +45,11 @@ assert.match(app, /renderAccountTypes/, 'frontend must include Account Types vie
 assert.match(app, /Tier-Based Model Governance Active/, 'API key form must document tier-based model governance');
 assert.match(app, /manage-tier-models/, 'account types must support managing model permissions per tier');
 assert.match(app, /name === 'account-types'[\s\S]*?openTierModal\(null\)/, 'Account Types header action must open the tier editor');
-assert.match(app, /Combo members must be published model aliases/, 'combo submission must fail closed for raw or unpublished members');
+assert.match(app, /published aliases or valid provider\/model targets/, 'combo submission must validate public aliases and internal targets');
+assert.match(app, /kind: 'composite'/, 'combo creation must use the unified composite alias endpoint');
+assert.match(app, /members: finalModels/, 'composite alias must submit internal routing members with one public alias');
+assert.match(app, /btn-fetch-combo-models/, 'combo editor must provide an admin-only upstream model fetch action');
+assert.match(app, /btn-add-combo-target/, 'combo editor must provide an explicit internal target action');
 assert.match(app, /data-test-model/, 'admin provider inventory must retain a dedicated upstream test action');
 assert.match(app, /\/api\/providers\/\$\{encodeURIComponent\(provId\)\}\/test-model/, 'upstream model tests must use the admin provider test endpoint');
 assert.match(app, /data-quick-alias/, 'internal inventory must provide an explicit publish-alias action');

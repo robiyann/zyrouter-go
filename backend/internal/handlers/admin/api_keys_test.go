@@ -286,3 +286,23 @@ func TestHandleSetModelAliasRejectsCaseInsensitiveCollision(t *testing.T) {
 		t.Fatalf("expected case-insensitive alias collision, status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleSetModelAliasCreatesCompositeAtomically(t *testing.T) {
+	repo, cleanup := setupAdminTestDB(t)
+	defer cleanup()
+	h := NewAdminHandler(repo)
+	req := httptest.NewRequest(http.MethodPost, "/api/model-aliases", strings.NewReader(`{"alias":"unified-chat","kind":"composite","comboName":"unified-route","strategy":"round-robin","members":["openai/gpt-4o","anthropic/claude-sonnet"]}`))
+	rec := httptest.NewRecorder()
+	h.HandleSetModelAlias(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("composite create status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	target, err := repo.GetModelAlias("unified-chat")
+	if err != nil || target != "combo:unified-route" {
+		t.Fatalf("composite alias target mismatch: target=%q err=%v", target, err)
+	}
+	combo, err := repo.GetComboByName("unified-route")
+	if err != nil || combo == nil || !strings.Contains(combo.Models, "openai/gpt-4o") {
+		t.Fatalf("composite combo was not persisted atomically: combo=%+v err=%v", combo, err)
+	}
+}

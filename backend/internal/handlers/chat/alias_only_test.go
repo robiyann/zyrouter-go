@@ -9,6 +9,7 @@ import (
 
 	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
+	"zyrouter/backend/internal/models"
 )
 
 func TestPublicModelResolutionRequiresAliasAndRejectsProviderPrefix(t *testing.T) {
@@ -76,5 +77,37 @@ func TestPublicModelEndpointsRejectPrefixes(t *testing.T) {
 	h.HandleResponses(responseRec, responseReq)
 	if responseRec.Code != http.StatusForbidden || !strings.Contains(responseRec.Body.String(), "provider_prefix_forbidden") {
 		t.Fatalf("responses endpoint accepted provider prefix: status=%d body=%s", responseRec.Code, responseRec.Body.String())
+	}
+}
+
+func TestCompositeAliasCanRouteInternalProviderTargetsWithoutLeakingThem(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	if err := repo.CreateCombo(&models.Combo{
+		ID:       "combo-internal-targets",
+		Name:     "internal-targets",
+		Models:   `["deepseek/deepseek-chat","openai/gpt-4o"]`,
+		Strategy: "round-robin",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetModelAlias("unified-chat", "combo:internal-targets"); err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewChatHandler(repo)
+	info, err := h.resolveClientModel("unified-chat")
+	if err != nil || info == nil || len(info.ComboModels) != 2 {
+		t.Fatalf("composite alias did not resolve internal targets: info=%+v err=%v", info, err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.HandleModelsInfo(rec, httptest.NewRequest(http.MethodGet, "/v1/models/info?id=unified-chat", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("composite model info status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"member_count":2`) || strings.Contains(rec.Body.String(), "deepseek/") || strings.Contains(rec.Body.String(), "openai/") {
+		t.Fatalf("internal combo targets leaked from public metadata: %s", rec.Body.String())
 	}
 }

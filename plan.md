@@ -77,11 +77,12 @@ Prefix policy harus disiapkan sekarang walaupun Client Dashboard dibuat nanti.
 
 - Provider model discovery may be used by the Admin Dashboard only; fetched results remain internal and are never auto-published.
 - Every model visible to a client must be an admin-managed entry in `modelAliases`.
-- A public alias is bare (no `/`) and maps to exactly one provider and one upstream model.
+- A direct public alias is bare (no `/`) and maps to exactly one provider and one upstream model.
+- A composite public alias is bare (no `/`) and maps to one admin-managed combo route; its provider/model members remain internal routing targets.
 - Every client request containing a provider prefix (`provider/model`) is rejected; no prefix fallback or provider guessing is allowed.
 - A raw upstream model without a published alias is rejected with `model_alias_required`.
 - Duplicate public IDs are rejected during admin configuration, not deferred to runtime ambiguity handling.
-- Combos reference published aliases only; if exposed as a model identifier, the combo itself also requires a published alias.
+- Composite combos are exposed through one published outer alias. Members may reference direct published aliases or admin-only provider/model targets; neither form creates a client-callable provider prefix.
 
 - Client tidak boleh mengubah `allowedPrefixes` sendiri.
 - Policy ditentukan admin/server-side.
@@ -158,7 +159,7 @@ API key production idealnya menyimpan hash, prefix tampilan, client ID, policy I
 - [x] Show fetched models as unpublished until the admin creates an alias.
 - [x] Use explicit provider + upstream model fields for alias creation.
 - [x] Add alias conflict, invalid target, active state, capability, and route-test states.
-- [x] Make combo and API-key policy pickers use published aliases only.
+- [x] Make combo/public alias composition and API-key policy use one published outer alias while keeping internal provider/model targets private.
 - [x] Add admin authorization preview before saving API-key policy.
 - [x] Add aggregate security summary cards without exposing secrets or hashes.
 

@@ -638,6 +638,47 @@ func (r *Repo) SetModelAliasRecord(alias, provider, upstreamModel string, connec
 	return err
 }
 
+// CreateCompositeAlias atomically stores an admin-only combo definition and
+// its single public composite alias. Combo members remain internal routing
+// targets; only the outer alias belongs in the public model registry.
+func (r *Repo) CreateCompositeAlias(alias string, combo *models.Combo, isActive int) error {
+	alias = strings.TrimSpace(alias)
+	if alias == "" || strings.ContainsAny(alias, "/ \t\r\n") {
+		return fmt.Errorf("model alias must be a non-empty bare ID")
+	}
+	if combo == nil || strings.TrimSpace(combo.ID) == "" || strings.TrimSpace(combo.Name) == "" || strings.TrimSpace(combo.Models) == "" {
+		return fmt.Errorf("composite alias requires a combo definition")
+	}
+	if isActive != 0 {
+		isActive = 1
+	}
+	if combo.Strategy == "" {
+		combo.Strategy = "fallback"
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	combo.CreatedAt = now
+	combo.UpdatedAt = now
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO combos (id, name, kind, models, strategy, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)`, combo.ID, combo.Name, combo.Kind, combo.Models, combo.Strategy, combo.CreatedAt, combo.UpdatedAt); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO modelAliases (id, alias, provider, upstreamModel, isActive, capabilities, createdAt, updatedAt)
+		VALUES (?, ?, '__combo__', ?, ?, '["combo"]', ?, ?)`,
+		"alias_"+HashUserSecret(alias)[:24], alias, combo.Name, isActive, now, now); err != nil {
+		return err
+	}
+	legacyTarget, _ := json.Marshal("combo:" + combo.Name)
+	if _, err := tx.Exec(`INSERT INTO kv (scope, key, value) VALUES ('modelAliases', ?, ?)
+		ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, alias, string(legacyTarget)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // DeleteModelAlias removes a model alias.
 func (r *Repo) DeleteModelAlias(alias string) error {
 	if _, err := r.db.Exec("DELETE FROM modelAliases WHERE alias = ?", alias); err != nil {

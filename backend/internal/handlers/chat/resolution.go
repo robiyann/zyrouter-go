@@ -468,12 +468,19 @@ func (h *ChatHandler) resolveComboName(name string) (*ModelInfo, error) {
 	}
 	for _, member := range members {
 		member = strings.TrimSpace(member)
-		if member == "" || strings.Contains(member, "/") {
-			return nil, fmt.Errorf("published combo alias members must be bare model aliases")
+		if member == "" {
+			return nil, fmt.Errorf("published combo alias contains an empty member")
+		}
+		if strings.Contains(member, "/") {
+			parts := strings.SplitN(member, "/", 2)
+			if strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" || strings.ContainsAny(member, " \t\r\n") {
+				return nil, fmt.Errorf("published combo alias member %q is not a valid provider/model target", member)
+			}
+			continue
 		}
 		memberTarget, memberErr := h.Repo.GetModelAlias(member)
 		if memberErr != nil || strings.TrimSpace(memberTarget) == "" || strings.HasPrefix(strings.ToLower(memberTarget), "combo:") {
-			return nil, fmt.Errorf("published combo alias member %q is not a direct model alias", member)
+			return nil, fmt.Errorf("published combo alias member %q is not a direct model alias or provider/model target", member)
 		}
 	}
 	flattened, err := h.flattenComboModels(members)

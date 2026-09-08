@@ -256,13 +256,7 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 		}
 	}
 
-	validateOne := func(requestedModel string, modelInfo *ModelInfo) error {
-		// API-key model policy is expressed against the public alias. The
-		// internal provider/upstream target is never a client policy namespace.
-		modelAllowed := key.IsModelAllowed(requestedModel)
-		if !modelAllowed {
-			return fmt.Errorf("%w: '%s'", auth.ErrModelNotAllowed, requestedModel)
-		}
+	validateProvider := func(modelInfo *ModelInfo) error {
 		providerTarget := modelInfo.ConnectionID
 		if providerTarget == "" {
 			providerTarget = modelInfo.Provider
@@ -275,14 +269,22 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	}
 
 	if len(info.ComboModels) == 0 {
-		return validateOne(requested, info)
+		if !key.IsModelAllowed(requested) {
+			return fmt.Errorf("%w: '%s'", auth.ErrModelNotAllowed, requested)
+		}
+		return validateProvider(info)
+	}
+	// A composite alias is the single public policy subject. Its internal
+	// provider/model members are routing targets, not client model IDs.
+	if !key.IsModelAllowed(requested) {
+		return fmt.Errorf("%w: '%s'", auth.ErrModelNotAllowed, requested)
 	}
 	for _, entry := range info.ComboModels {
 		entryInfo, err := h.resolveModel(entry)
 		if err != nil {
 			return fmt.Errorf("resolve combo member %q: %w", entry, err)
 		}
-		if err := validateOne(entry, entryInfo); err != nil {
+		if err := validateProvider(entryInfo); err != nil {
 			return err
 		}
 	}
@@ -458,7 +460,7 @@ func (h *ChatHandler) isPublicAliasAllowed(key *models.APIKey, alias string, inf
 	}
 	for _, member := range info.ComboModels {
 		memberInfo, err := h.resolveModel(member)
-		if err != nil || !checkProvider(memberInfo) || !key.IsModelAllowed(member) {
+		if err != nil || !checkProvider(memberInfo) {
 			return false
 		}
 	}
@@ -495,7 +497,9 @@ func (h *ChatHandler) HandleModelsInfo(w http.ResponseWriter, r *http.Request) {
 	if len(modelInfo.ComboModels) > 0 {
 		info["combo"] = true
 		info["strategy"] = modelInfo.Strategy
-		info["models"] = modelInfo.ComboModels
+		// Do not expose internal provider/model targets through the public
+		// metadata endpoint. The public model ID is the composite alias.
+		info["member_count"] = len(modelInfo.ComboModels)
 	}
 
 	handlerutil.WriteJSON(w, http.StatusOK, info)
@@ -811,4 +815,3 @@ func (h *ChatHandler) TestProviderModel(ctx context.Context, provider, pinnedCon
 		Message:    fmt.Sprintf("Model responded in %dms", latencyMs),
 	}, nil
 }
-

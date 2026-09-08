@@ -240,28 +240,20 @@ try {
   // Scenario 6: Combo Orchestration
   {
     console.log('[TEST 6] Creating combo pipeline and published alias...');
-    const comboRes = await fetch(`${baseUrl}/api/combos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: cookieHeader },
-      body: JSON.stringify({
-        name: 'fallback-pipeline',
-        strategy: 'fallback',
-        models: JSON.stringify(['fast-llm']),
-      }),
-    });
-    assert.equal(comboRes.status, 201);
-
-    // Register alias for the combo
-    const aliasRes = await fetch(`${baseUrl}/api/model-aliases`, {
+    const comboRes = await fetch(`${baseUrl}/api/model-aliases`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: cookieHeader },
       body: JSON.stringify({
         alias: 'smart-combo',
-        target: 'combo:fallback-pipeline',
-        isActive: 1,
+        kind: 'composite',
+        comboName: 'fallback-pipeline',
+        strategy: 'fallback',
+        // Composite alias members are admin-internal provider/model targets;
+        // only smart-combo is exposed to the client.
+        members: ['openai/mock-raw-gpt', 'openai/mock-raw-gpt-2'],
       }),
     });
-    assert.equal(aliasRes.status, 200);
+    assert.equal(comboRes.status, 201);
 
     const mRes = await fetch(`${baseUrl}/models`);
     const mBody = await mRes.json();
