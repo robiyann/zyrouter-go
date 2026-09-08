@@ -46,7 +46,7 @@ assert.match(app, /const values = Object\.fromEntries\(new FormData\(form\)\.ent
 assert.match(app, /Public\/no-auth providers have no providerConnections row/,
   'policy builder must include active public providers without connection rows');
 assert.match(html, /id="generic-content"/);
-assert.match(html, /app\.js\?v=2\.8\.0/, 'frontend asset version must be bumped after dashboard changes');
+assert.match(html, /app\.js\?v=2\.8\.1/, 'frontend asset version must be bumped after dashboard changes');
 assert.match(html, /Issue Gateway API Key/, 'admin shortcut must describe gateway keys, not a client dashboard');
 assert.doesNotMatch(html, /:3840/, 'dashboard must not show a stale hardcoded engine port');
 assert.match(html, /data-view="account-types"/, 'sidebar must include Account Types navigation button');
