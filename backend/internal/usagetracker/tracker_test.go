@@ -60,3 +60,15 @@ func TestTracker_Subscription(t *testing.T) {
 		t.Error("timed out waiting for subscription broadcast")
 	}
 }
+
+func TestTracker_PreservesDistinctRequestsWithSameModelAndTimestamp(t *testing.T) {
+	tracker := NewTracker()
+	ts := time.Now().UTC().Format(time.RFC3339)
+	for _, id := range []string{"req-1", "req-2", "req-3"} {
+		tracker.PushRecent(RecentRequest{ID: id, Timestamp: ts, Model: "mimo-v2.5-free", Provider: "opencode", Status: "200"}, nil)
+	}
+	state := tracker.GetActiveState(nil)
+	if len(state.RecentRequests) != 3 {
+		t.Fatalf("expected all 3 distinct requests, got %d", len(state.RecentRequests))
+	}
+}
