@@ -5365,7 +5365,7 @@ function renderLogs(payload = {}) {
       <div class="console-header-card">
         <div style="display:flex; align-items:center; gap:10px;">
           <div class="console-status-indicator">
-            <span class="pulse-dot"></span>
+            <span class="pulse-dot emerald" id="console-stream-pulse-dot"></span>
             <span id="console-stream-status-text">Live Request Stream</span>
           </div>
           <span style="font-size:11px; font-family:var(--mono); color:#4a5c6d; background:rgba(255,255,255,0.04); padding:2px 7px; border-radius:10px;" id="console-buffer-count">${initialCount} reqs</span>
@@ -8556,6 +8556,11 @@ function bindLogStream() {
         ? '<span style="color:var(--lime); font-size:10px; margin-right:4px;">▶</span> Resume Stream'
         : '<span style="color:#f59e0b; font-size:10px; margin-right:4px;">⏸</span> Pause Stream';
       if (statusText) statusText.textContent = consoleIsPaused ? 'Stream Paused' : 'Live Request Stream';
+      const pulseDot = document.querySelector('#console-stream-pulse-dot');
+      if (pulseDot) {
+        pulseDot.classList.toggle('paused', consoleIsPaused);
+        pulseDot.classList.toggle('emerald', !consoleIsPaused);
+      }
     };
   }
 
@@ -8629,7 +8634,7 @@ function bindLogStream() {
         const costSavings = topReq.savings ? `$${topReq.savings.toFixed(2)}` : '$0.00';
 
         const row = document.createElement('tr');
-        row.className = 'console-row';
+        row.className = `console-row live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
         row.dataset.requestKey = requestKey;
         row.dataset.status = String(statusCode);
         row.dataset.provider = provName;
@@ -8638,7 +8643,7 @@ function bindLogStream() {
         row.innerHTML = `
           <td>
             <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:${statusDotColor};">
-              <span style="font-size:9px;">●</span> ${escapeHtml(String(statusCode))}
+              <span class="live-dot-ping" style="font-size:9px;">●</span> ${escapeHtml(String(statusCode))}
             </span>
           </td>
           <td>
@@ -9580,13 +9585,14 @@ startStream('/api/usage/stream', (payload) => {
         const proxyName = topReq.proxy || 'Direct';
         const tr = document.createElement('tr');
         tr.dataset.requestKey = requestKey;
+        tr.className = `live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
         tr.innerHTML = `
           <td><div style="font-family:var(--mono); line-height:1.2;"><span style="font-size:10px; color:var(--text-bright); font-weight:500;">${escapeHtml(timeStr)}</span><small style="display:block; font-size:8px; color:var(--muted);">${escapeHtml(dateStr)}</small></div></td>
           <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(topReq.model || '--')}</code></td>
           <td><div style="line-height:1.25;"><strong style="color:var(--text-bright); font-size:11px;">${escapeHtml(topReq.provider || '--')}</strong><small style="display:block; font-size:8.5px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">${escapeHtml(topReq.account || topReq.connectionId || '--')}</small></div></td>
           <td><div style="line-height:1.25;"><span class="table-badge ${proxyName !== 'Direct' && proxyName !== '--' ? 'purple' : ''}" style="font-size:8px; padding:1px 5px;">${escapeHtml(proxyName)}</span>${topReq.strategy ? `<small style="display:block; font-size:7.5px; font-family:var(--mono); color:#71717a; text-transform:uppercase; margin-top:2px;">${escapeHtml(topReq.strategy)}</small>` : ''}</div></td>
           <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
-          <td style="text-align:right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(String(topReq.status || 200))}</span></td>
+          <td style="text-align:right;"><span class="table-badge ${isErr ? 'inactive' : 'active'} live-badge-ping" style="font-size:7.5px;">${escapeHtml(String(topReq.status || 200))}</span></td>
         `;
         usageTbody.insertBefore(tr, usageTbody.firstChild);
         while (usageTbody.children.length > usageRecentPageSize) usageTbody.removeChild(usageTbody.lastChild);
@@ -9605,7 +9611,7 @@ startStream('/api/usage/stream', (payload) => {
       const cleanP = pName.startsWith('openai-compatible') ? 'custom' : pName;
 
       const itemEl = document.createElement('div');
-      itemEl.className = 'console-log-row';
+      itemEl.className = `console-log-row live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
       itemEl.style.cssText = 'background:#05070a; border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;';
       itemEl.innerHTML = `
         <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
