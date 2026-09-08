@@ -8470,7 +8470,14 @@ function bindSettings() {
 
 let consoleIsPaused = false;
 let consoleAutoScroll = true;
+let activeLogStreamCleanup = null;
 function bindLogStream() {
+  consoleIsPaused = false;
+  if (activeLogStreamCleanup) {
+    activeLogStreamCleanup();
+    activeLogStreamCleanup = null;
+  }
+
   const terminalBody = document.querySelector('#console-terminal-body');
   const scrollContainer = document.querySelector('#console-scroll-container');
   const activeContainer = document.querySelector('#console-active-container');
@@ -8582,7 +8589,9 @@ function bindLogStream() {
   // Subscribe to live SSE usage stream
   const streamPath = '/api/usage/stream';
   const fallbackStreamPath = '/translator/console-logs/stream';
-  startStream(streamPath, (payload) => {
+  const handleLogStream = (payload) => {
+    if (!terminalBody || !document.body.contains(terminalBody)) return;
+
     // 1. In-flight active requests
     const activeList = Array.isArray(payload.activeRequests) ? payload.activeRequests : [];
     const totalActive = activeList.reduce((sum, item) => sum + (item.count || 0), 0);
@@ -8593,74 +8602,98 @@ function bindLogStream() {
 
     // 2. Append completed requests to the console table.
     if (!consoleIsPaused && Array.isArray(payload.recentRequests) && payload.recentRequests.length > 0) {
-      const topReq = payload.recentRequests[0];
-      const requestKey = String(topReq.id || `${topReq.timestamp}|${topReq.provider}|${topReq.model}|${topReq.account || ''}`);
-      if (terminalBody && Array.from(terminalBody.querySelectorAll('tr[data-request-key]')).some((row) => row.dataset.requestKey === requestKey)) return;
-      if (terminalBody) {
+      let addedAny = false;
+      const recent = payload.recentRequests;
+      // Process from oldest to newest so newest ends up at the top
+      for (let i = recent.length - 1; i >= 0; i--) {
+        const topReq = recent[i];
+        if (!topReq) continue;
+        const requestKey = String(topReq.id || `${topReq.timestamp}|${topReq.provider}|${topReq.model}|${topReq.account || ''}`);
+        if (terminalBody.querySelector(`tr[data-request-key="${escapeHtml(requestKey)}"]`)) {
+          continue;
+        }
+
+        const emptyRow = terminalBody.querySelector('#console-empty-row');
+        if (emptyRow) emptyRow.remove();
+
+        const timeStr = formatWIBTimestamp(topReq.timestamp);
         const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
         const statusCode = topReq.status || 200;
         const statusDotColor = isErr ? '#ef4444' : '#22c55e';
-          const totalTokens = (topReq.promptTokens || 0) + (topReq.completionTokens || 0);
-          const latencySec = topReq.durationMs ? (topReq.durationMs / 1000).toFixed(2) + 's' : (topReq.latency ? topReq.latency : '1.78s');
-          const latNum = parseFloat(latencySec) || 0;
-          const latClass = latNum > 15 ? 'slow' : (latNum > 4 ? 'med' : 'fast');
-          const reqId = topReq.id || `${Date.now()}-${topReq.model || 'chat'}`;
-          const provName = (topReq.provider || 'gateway').toLowerCase();
-          const costSavings = topReq.savings ? `$${topReq.savings.toFixed(2)}` : '$0.00';
+        const totalTokens = (topReq.promptTokens || 0) + (topReq.completionTokens || 0);
+        const latencySec = topReq.durationMs ? (topReq.durationMs / 1000).toFixed(2) + 's' : (topReq.latency ? topReq.latency : '1.78s');
+        const latNum = parseFloat(latencySec) || 0;
+        const latClass = latNum > 15 ? 'slow' : (latNum > 4 ? 'med' : 'fast');
+        const reqId = topReq.id || `${Date.now()}-${topReq.model || 'chat'}`;
+        const provName = (topReq.provider || 'gateway').toLowerCase();
+        const costSavings = topReq.savings ? `$${topReq.savings.toFixed(2)}` : '$0.00';
 
-          const row = document.createElement('tr');
-          row.className = 'console-row';
-          row.dataset.requestKey = requestKey;
-          row.dataset.status = String(statusCode);
-          row.dataset.provider = provName;
-          row.dataset.query = `${reqId} ${provName} ${topReq.model || ''} ${statusCode}`.toLowerCase();
-          row.dataset.req = JSON.stringify(topReq);
-          row.innerHTML = `
-            <td>
-              <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:${statusDotColor};">
-                <span style="font-size:9px;">●</span> ${escapeHtml(String(statusCode))}
+        const row = document.createElement('tr');
+        row.className = 'console-row';
+        row.dataset.requestKey = requestKey;
+        row.dataset.status = String(statusCode);
+        row.dataset.provider = provName;
+        row.dataset.query = `${reqId} ${provName} ${topReq.model || ''} ${statusCode}`.toLowerCase();
+        row.dataset.req = JSON.stringify(topReq);
+        row.innerHTML = `
+          <td>
+            <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:${statusDotColor};">
+              <span style="font-size:9px;">●</span> ${escapeHtml(String(statusCode))}
+            </span>
+          </td>
+          <td>
+            <span class="method-tag post">POST</span>
+            <span style="color:#94a3b8; font-size:11px;">${escapeHtml(reqId)}</span>
+          </td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="prov-pill ${escapeHtml(provName.startsWith('openai-compatible') ? 'custom' : provName)}">
+                ${escapeHtml(provName)}
               </span>
-            </td>
-            <td>
-              <span class="method-tag post">POST</span>
-              <span style="color:#94a3b8; font-size:11px;">${escapeHtml(reqId)}</span>
-            </td>
-            <td>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span class="prov-pill ${escapeHtml(provName.startsWith('openai-compatible') ? 'custom' : provName)}">
-                  ${escapeHtml(provName)}
-                </span>
-                <strong style="color:var(--text-bright); font-size:11.5px;">${escapeHtml(topReq.model || 'model')}</strong>
-              </div>
-            </td>
-            <td style="text-align: right; color:#e2e8f0;">
-              ${totalTokens > 0 ? `${totalTokens.toLocaleString()} tok` : '--'}
-            </td>
-            <td style="text-align: right;">
-              <span class="latency-badge ${latClass}">${escapeHtml(latencySec)}</span>
-            </td>
-            <td style="text-align: right; color:#facc15;">
-              ${escapeHtml(costSavings)}
-            </td>
-            <td style="text-align: right; color:#64748b; font-size:10px;">
-              ${escapeHtml(timeStr)}
-            </td>
-          `;
+              <strong style="color:var(--text-bright); font-size:11.5px;">${escapeHtml(topReq.model || 'model')}</strong>
+            </div>
+          </td>
+          <td style="text-align: right; color:#e2e8f0;">
+            ${totalTokens > 0 ? `${totalTokens.toLocaleString()} tok` : '--'}
+          </td>
+          <td style="text-align: right;">
+            <span class="latency-badge ${latClass}">${escapeHtml(latencySec)}</span>
+          </td>
+          <td style="text-align: right; color:#facc15;">
+            ${escapeHtml(costSavings)}
+          </td>
+          <td style="text-align: right; color:#64748b; font-size:10px;">
+            ${escapeHtml(timeStr)}
+          </td>
+        `;
 
-          terminalBody.insertBefore(row, terminalBody.firstChild);
+        row.onclick = () => {
+          let reqData = {};
+          try { reqData = JSON.parse(row.dataset.req || '{}'); } catch {}
+          openPayloadInspectorDrawer(reqData);
+        };
 
-          // Keep buffer capped at 100 entries
-          while (terminalBody.children.length > 100) {
-            terminalBody.removeChild(terminalBody.lastChild);
+        terminalBody.insertBefore(row, terminalBody.firstChild);
+        addedAny = true;
+      }
+
+      if (addedAny) {
+        // Keep buffer capped at 100 entries
+        const allRows = terminalBody.querySelectorAll('.console-row');
+        if (allRows.length > 100) {
+          for (let i = 100; i < allRows.length; i++) {
+            allRows[i].remove();
           }
+        }
 
-          if (bufferCountEl) bufferCountEl.textContent = `${terminalBody.children.length} reqs`;
-          if (scrollContainer) scrollContainer.scrollTop = 0;
-          attachRowClicks();
+        if (bufferCountEl) bufferCountEl.textContent = `${terminalBody.querySelectorAll('.console-row').length} reqs`;
+        if (scrollContainer) scrollContainer.scrollTop = 0;
         filterRows();
       }
     }
-  });
+  };
+
+  activeLogStreamCleanup = startStream(streamPath, handleLogStream);
 }
 
 function openPayloadInspectorDrawer(reqData = {}) {
@@ -9435,6 +9468,11 @@ function startStream(path, onMessage) {
     streamListeners.add(onMessage);
   }
   ensureGlobalStream();
+  return () => {
+    if (typeof onMessage === 'function') {
+      streamListeners.delete(onMessage);
+    }
+  };
 }
 document.addEventListener('click', (event) => {
   const trigger = event.target.closest('[data-view]');

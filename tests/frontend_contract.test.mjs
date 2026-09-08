@@ -62,6 +62,9 @@ assert.match(app, /data-filter-pool-status/, 'proxy pools must expose status fil
 assert.match(app, /providerFetchedModelsCache\.set/, 'provider fetch results must stay in the private admin inventory cache');
 assert.match(app, /sourceCounts/, 'provider inventory UI must distinguish upstream, catalog, and custom model sources');
 assert.match(app, /function formatWIBTimestamp/, 'dashboard timestamps must use explicit WIB formatting');
+assert.match(app, /const\s+timeStr\s*=\s*formatWIBTimestamp\(topReq\.timestamp\);/, 'bindLogStream must format topReq timestamp without ReferenceError');
+assert.match(app, /emptyRow\.remove\(\)/, 'bindLogStream must remove empty row when new live entries arrive');
 assert.match(app, /ensureGlobalStream\(\)/, 'dashboard must start realtime SSE after authentication');
 assert.doesNotMatch(app, /Successfully imported .* models from upstream/, 'provider fetch must not auto-create public/custom model records');
 console.log('frontend backend contract checks passed');
+

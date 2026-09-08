@@ -53,6 +53,7 @@
 ---
 
 ## 📌 Log Klaim Terkini
+- `2026-09-08`: **Antigravity** memperbaiki bug real-time live streaming pada Console Stream (`zyrouter/frontend/app.js`): mengatasi `ReferenceError: timeStr is not defined` pada `bindLogStream`, membersihkan `#console-empty-row`, mencegah listener leak saat navigasi antar tab dengan mekanisme teardown `startStream`, dan menambahkan regression assertions pada contract test.
 - `2026-09-08`: **Antigravity & Codex** menyelesaikan TASK-014: Melengkapi automated test suite dengan `tests/e2e_proxy_test.mjs` (11 skenario integrasi live mock), memasang retry loop pada `InsertAuthLogs` di SQLite, mengintegrasikan E2E ke `tests/verify_plan.ps1`, dan memvalidasi seluruh test suite (Go unit, vet, build, frontend syntax & contract, e2e proxy). Status hijau 100%.
 - `2026-09-08`: **Codex & Antigravity** menyelesaikan Fase 4B: Enforce alias-only public model invariant, hashing gateway API keys at rest, preview otorisasi policy, pembatasan form combo builder hanya pada published alias, dan security dashboard cards.
 - `2026-09-02`: **Antigravity** menyelesaikan TASK-015: Penegakan single active prefix dinamis (Option 3) di Go engine, mencegah dual-prefix bypass (misal opencode vs oc), menyinkronkan /v1/models, dan menambahkan unit tests.
