@@ -15,6 +15,7 @@ import (
 
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/auth"
+	"zyrouter/backend/internal/clientstream"
 	"zyrouter/backend/internal/middleware"
 	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/providers"
@@ -400,10 +401,17 @@ func (h *ChatHandler) tryForwardWithConnection(
 			ProxyPoolID:  connData.ProxyPoolID,
 			APIKey:       apiKey,
 			Endpoint:     endpoint,
+			PublicModel:  publicModelFromContext(ctx),
+			RequestID:    middleware.GetRequestIDFromContext(ctx),
 		}
 		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok {
 			logInfo.UserID = reservation.UserID
 			logInfo.ReservedTokens = reservation.Tokens
+		}
+		if logInfo.UserID == "" {
+			if key := middleware.GetAuthenticatedApiKeyFromContext(ctx); key != nil && key.UserID != nil {
+				logInfo.UserID = strings.TrimSpace(*key.UserID)
+			}
 		}
 		h.logUsage(logInfo, usage, latencyMs, body, metrics)
 		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok && !reservation.Settled {
@@ -436,6 +444,9 @@ func (h *ChatHandler) tryForwardWithConnection(
 		// Also record failed request in usagetracker so recent log reflects error immediately
 		now := time.Now()
 		reqID := fmt.Sprintf("%d-%s", now.UnixMilli(), model)
+		if middleware.GetRequestIDFromContext(ctx) != "" {
+			reqID = middleware.GetRequestIDFromContext(ctx)
+		}
 		usagetracker.GetTracker().PushRecent(usagetracker.RecentRequest{
 			ID:               reqID,
 			Timestamp:        now.Format(time.RFC3339),
@@ -462,6 +473,15 @@ func (h *ChatHandler) tryForwardWithConnection(
 			"error":      fwdErr.Error(),
 		})
 		_ = h.Repo.InsertRequestDetail(reqID, provider, model, connectionID, "error", string(reqData))
+		userID := ""
+		if key := middleware.GetAuthenticatedApiKeyFromContext(ctx); key != nil && key.UserID != nil {
+			userID = strings.TrimSpace(*key.UserID)
+		}
+		clientstream.Get().Publish(userID, clientstream.Event{
+			ID: reqID + ":failed", Type: "request.failed", Timestamp: now.UTC().Format(time.RFC3339Nano),
+			RequestID: reqID, Model: publicModelFromContext(ctx), Status: "failed", HTTPStatus: statusCode,
+			DurationMs: latencyMs, ErrorCode: "upstream_request_failed",
+		})
 		auditlog.Get().Log(&auditlog.AuditEntry{
 			ID:           reqID,
 			Timestamp:    now.Format(time.RFC3339Nano),

@@ -162,10 +162,14 @@ func (r *Repo) IsAliasAllowedForAccountType(accountTypeID, alias string) (bool, 
 }
 
 func (r *Repo) CreateVerificationChallenge(ttl time.Duration) (string, time.Time, error) {
+	return r.CreateVerificationChallengeForBrowser(ttl, "")
+}
+
+func (r *Repo) CreateVerificationChallengeForBrowser(ttl time.Duration, browserKey string) (string, time.Time, error) {
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	expires := now.Add(ttl)
-	_, err := r.db.Exec(`INSERT INTO userVerificationChallenges (id, expiresAt, status, createdAt) VALUES (?, ?, 'pending', ?)`, id, expires.Format(time.RFC3339), now.Format(time.RFC3339))
+	_, err := r.db.Exec(`INSERT INTO userVerificationChallenges (id, expiresAt, browserKey, status, createdAt) VALUES (?, ?, ?, 'pending', ?)`, id, expires.Format(time.RFC3339), browserKey, now.Format(time.RFC3339))
 	return id, expires, err
 }
 
@@ -242,6 +246,12 @@ func (r *Repo) GetVerificationStatus(challengeID string) (string, *models.User, 
 	}
 	user, err := r.GetUserByTelegramID(telegramID.String)
 	return status.String, user, err
+}
+
+func (r *Repo) GetVerificationBrowserKey(challengeID string) (string, error) {
+	var key sql.NullString
+	err := r.db.QueryRow(`SELECT browserKey FROM userVerificationChallenges WHERE id = ?`, challengeID).Scan(&key)
+	return key.String, err
 }
 
 func (r *Repo) GetUserByID(id string) (*models.User, error) { return r.getUser(`id = ?`, id) }

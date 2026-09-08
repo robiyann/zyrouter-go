@@ -112,11 +112,12 @@ try {
   assert.ok(startData.challengeId, 'must return challengeId');
   assert.equal(startData.status, 'pending', 'initial status must be pending');
   const challengeId = startData.challengeId;
+  const verificationCookie = (startRes.headers.get('set-cookie') || '').split(';')[0];
   console.log(`  -> PASS: challenge created (${challengeId})`);
 
   // TEST 3: Inspect challenge status before webhook
   console.log('[TEST 3] Testing GET /api/user/verification/{id} before verification...');
-  const inspectRes = await fetch(`${baseUrl}/api/user/verification/${challengeId}`);
+  const inspectRes = await fetch(`${baseUrl}/api/user/verification/${challengeId}`, { headers: { Cookie: verificationCookie } });
   assert.equal(inspectRes.status, 200);
   const inspectData = await inspectRes.json();
   assert.equal(inspectData.status, 'pending');
@@ -162,7 +163,7 @@ try {
 
   // TEST 5: Poll challenge status after verification -> Obtain user_session cookie
   console.log('[TEST 5] Testing challenge polling & HttpOnly cookie issuance...');
-  const pollRes = await fetch(`${baseUrl}/api/user/verification/${challengeId}`);
+  const pollRes = await fetch(`${baseUrl}/api/user/verification/${challengeId}`, { headers: { Cookie: verificationCookie } });
   assert.equal(pollRes.status, 200);
   const cookieHeader = pollRes.headers.get('set-cookie') || '';
   assert.match(cookieHeader, /user_session=/, 'set-cookie must issue user_session cookie');
@@ -172,7 +173,7 @@ try {
   assert.equal(pollData.status, 'verified');
   assert.ok(pollData.user, 'must return user object');
   assert.equal(pollData.user.telegramUsername, 'cybergod');
-  assert.ok(pollData.sessionToken, 'must return sessionToken');
+  assert.equal(pollData.sessionToken, undefined, 'session token must not be exposed to browser JavaScript');
 
   const sessionCookie = cookieHeader.split(';')[0];
   console.log(`  -> PASS: user verified, session cookie received (${sessionCookie.slice(0, 24)}...)`);
@@ -207,6 +208,23 @@ try {
   assert.equal(typeof usageData.totalTokens, 'number');
   assert.equal(typeof usageData.totalCost, 'number');
   console.log('  -> PASS: usage aggregates retrieved');
+
+  // TEST 7b: Private request log history and SSE stream are user-session scoped
+  console.log('[TEST 7b] Testing private client logs history and SSE stream...');
+  const logsRes = await userFetch('/api/user/logs?limit=10&offset=0');
+  assert.equal(logsRes.status, 200);
+  const logsData = await logsRes.json();
+  assert.ok(Array.isArray(logsData.items));
+  const logAbort = new AbortController();
+  const streamRes = await userFetch('/api/user/logs/stream', { signal: logAbort.signal });
+  assert.equal(streamRes.status, 200);
+  assert.match(streamRes.headers.get('content-type') || '', /text\/event-stream/);
+  const firstChunk = await streamRes.body.getReader().read();
+  assert.match(new TextDecoder().decode(firstChunk.value), /event: snapshot/);
+  logAbort.abort();
+  const adminUserLogRes = await fetch(`${baseUrl}/api/user/logs`, { headers: { Cookie: 'auth_token=admin-session' } });
+  assert.equal(adminUserLogRes.status, 401, 'admin session must not become a user session');
+  console.log('  -> PASS: client logs are private and stream starts with a snapshot');
 
   // TEST 8: Feature Toggles
   console.log('[TEST 8] Testing GET & PUT /api/user/features...');

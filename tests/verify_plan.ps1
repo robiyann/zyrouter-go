@@ -22,7 +22,7 @@ function Run-Step([string]$Name, [scriptblock]$Action) {
 Push-Location $backend
 try {
   Run-Step 'go test' { go test -p 4 ./... -count=1 }
-  Run-Step 'go vet' { go vet ./... }
+  Run-Step 'go vet' { go vet -p 1 ./... }
   Run-Step 'go build' { go build -trimpath ./cmd/zyrouter }
 
   if (Get-Command gcc -ErrorAction SilentlyContinue) {
@@ -47,8 +47,10 @@ Push-Location $root
 try {
   Run-Step 'frontend syntax' { node --check frontend/app.js }
   Run-Step 'client frontend syntax' { node --check ../zyrouter-client/app.js }
+  Run-Step 'client frontend contract' { node tests/client_contract.test.mjs }
   Run-Step 'frontend contract' { node tests/frontend_contract.test.mjs }
   Run-Step 'client portal e2e' { node tests/client_portal_test.mjs }
+  Run-Step 'client realtime e2e' { node tests/client_realtime_test.mjs }
   Run-Step 'e2e proxy integration' { node tests/e2e_proxy_test.mjs }
 
   Run-Step 'dockerfile structure' {

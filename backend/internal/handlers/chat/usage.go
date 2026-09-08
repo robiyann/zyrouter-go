@@ -9,6 +9,7 @@ import (
 	"zyrouter/backend/internal/log"
 
 	"zyrouter/backend/internal/auditlog"
+	"zyrouter/backend/internal/clientstream"
 	"zyrouter/backend/internal/constants"
 	"zyrouter/backend/internal/pricing"
 	"zyrouter/backend/internal/translator"
@@ -52,8 +53,22 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	}
 
 	totalTokens := usage.PromptTokens + usage.CompletionTokens
+	now := time.Now().UTC()
+	reqID := fmt.Sprintf("%d-%s", now.UnixMilli(), info.Model)
 	cost := pricing.EstimateCost(info.Model, usage.PromptTokens, usage.CompletionTokens)
-	metaJSON := fmt.Sprintf(`{"provider":"%s","model":"%s","connectionId":"%s"}`, info.Provider, info.Model, info.ConnectionID)
+	publicModel := info.PublicModel
+	if publicModel == "" {
+		publicModel = "unknown"
+	}
+	clientRequestID := info.RequestID
+	if clientRequestID == "" {
+		clientRequestID = reqID
+	}
+	metaBytes, _ := json.Marshal(map[string]any{
+		"provider": info.Provider, "model": info.Model, "connectionId": info.ConnectionID,
+		"publicModel": publicModel, "requestId": clientRequestID, "latencyMs": latencyMs,
+	})
+	metaJSON := string(metaBytes)
 	providerLabel := h.displayProviderLabel(info.Provider)
 	modelLabel := h.displayModelLabel(info.Provider, info.Model)
 
@@ -72,8 +87,6 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		log.Error("usage", "insert failed", "error", err)
 	}
 
-	now := time.Now().UTC()
-	reqID := fmt.Sprintf("%d-%s", now.UnixMilli(), info.Model)
 	reqMsgs := extractRequestMessages(requestBody)
 
 	accountLabel := h.displayAccountLabel(info.ConnectionID)
@@ -185,6 +198,11 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 		Status:           "200",
 	}, h.Repo)
+	clientstream.Get().Publish(info.UserID, clientstream.Event{
+		ID: clientRequestID + ":completed", Type: "request.completed", Timestamp: now.Format(time.RFC3339Nano),
+		RequestID: clientRequestID, Model: publicModel, Status: "completed", HTTPStatus: 200,
+		DurationMs: latencyMs, PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens,
+	})
 }
 
 // extractRequestMessages extracts truncated messages from the request body for logging.

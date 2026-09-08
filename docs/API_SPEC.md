@@ -103,14 +103,16 @@ sebagai sumber otorisasi.
 
 Public verification flow:
 
-- `POST /api/user/verification/start` — Mulai challenge verifikasi Telegram.
-- `GET /api/user/verification/{id}` — Cek status challenge.
+- `POST /api/user/verification/start` — Mulai challenge verifikasi Telegram dan menerima binding cookie HttpOnly browser.
+- `GET /api/user/verification/{id}` — Cek status challenge dari browser yang membuat challenge; browser lain ditolak.
 - `POST /api/telegram/webhook` — Webhook bot Telegram yang dikunci dengan secret token.
 
 Session-protected dashboard flow:
 
 - `GET /api/user/profile` — Telegram ID, username, display name, active state, dan account type.
 - `GET /api/user/usage` — Usage agregat user tersebut.
+- `GET /api/user/logs?limit=50&offset=0` — Ledger request milik user, hanya alias publik dan metrik tersanitasi.
+- `GET /api/user/logs/stream` — SSE lifecycle request milik user (`snapshot`, `request.started`, `request.completed`, `request.failed`).
 - `GET /api/user/features` — Feature flags yang diizinkan tier.
 - `PUT /api/user/features` — Update feature preferences dalam batas tier.
 - `GET /api/user/key` — Metadata key aktif, tanpa full secret.
@@ -124,6 +126,7 @@ Invariant Telegram key:
 - Constraint database `idx_api_keys_one_active_user` menjadi guard terakhir.
 - Full secret hanya dikembalikan saat generate/rotate dan tidak pernah bisa di-reveal ulang.
 - Username Telegram boleh kosong; Telegram numeric ID tetap menjadi identity utama.
+- Stream logs tidak pernah mengembalikan provider, connection ID, raw upstream model, prompt, response, header, atau stack trace.
 
 ### 3.7. Machine Client Dashboard API (`/api/client/*`)
 Semua endpoint berikut memakai client access token terbitan admin, bukan admin session,
@@ -167,6 +170,13 @@ Contoh request realtime:
 
 `unified-chat` dapat berupa direct alias atau composite alias. Provider/model member
 composite tetap internal dan tidak dikembalikan ke client.
+
+Production topology:
+
+- `panel.zyvenox.tech` — admin UI dan admin-only routes.
+- `client.zyvenox.tech` — standalone client portal dan `/api/user/*` control routes.
+- `api.zyvenox.tech/v1` — inference data plane menggunakan Gateway API key.
+- Client portal dan inference API boleh berada pada VPS/backend yang sama, tetapi session client tidak memberikan akses admin.
 
 ### 3.9. Admin API Key Listing
 

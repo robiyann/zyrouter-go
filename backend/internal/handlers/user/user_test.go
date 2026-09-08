@@ -54,24 +54,28 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 	if err := json.Unmarshal(start.Body.Bytes(), &challenge); err != nil || challenge.ID == "" {
 		t.Fatalf("bad challenge: %s", start.Body.String())
 	}
+	verificationCookie := start.Header().Get("Set-Cookie")
 	if _, err := repo.VerifyChallenge(challenge.ID, "12345", "tester", "Test User", "user"); err != nil {
 		t.Fatal(err)
 	}
 
 	status := httptest.NewRecorder()
-	r.ServeHTTP(status, httptest.NewRequest(http.MethodGet, "/verify/"+challenge.ID, nil))
+	statusReq := httptest.NewRequest(http.MethodGet, "/verify/"+challenge.ID, nil)
+	statusReq.Header.Set("Cookie", strings.Split(verificationCookie, ";")[0])
+	r.ServeHTTP(status, statusReq)
 	if status.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", status.Code, status.Body.String())
 	}
-	var verified struct {
-		Session string `json:"sessionToken"`
+	if strings.Contains(status.Body.String(), `"sessionToken"`) {
+		t.Fatalf("session must not be exposed to browser JavaScript: %s", status.Body.String())
 	}
-	if err := json.Unmarshal(status.Body.Bytes(), &verified); err != nil || verified.Session == "" {
-		t.Fatalf("missing session: %s", status.Body.String())
+	cookie := status.Header().Get("Set-Cookie")
+	if !strings.Contains(cookie, "user_session=") {
+		t.Fatalf("missing HttpOnly session cookie: %s", status.Body.String())
 	}
 
 	create := httptest.NewRequest(http.MethodPost, "/key", strings.NewReader(`{}`))
-	create.Header.Set("Authorization", "Bearer "+verified.Session)
+	create.Header.Set("Cookie", strings.Split(cookie, ";")[0])
 	created := httptest.NewRecorder()
 	r.ServeHTTP(created, create)
 	if created.Code != http.StatusCreated {
@@ -93,7 +97,7 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 
 	second := httptest.NewRecorder()
 	req2 := httptest.NewRequest(http.MethodPost, "/key", strings.NewReader(`{}`))
-	req2.Header.Set("Authorization", "Bearer "+verified.Session)
+	req2.Header.Set("Cookie", strings.Split(cookie, ";")[0])
 	r.ServeHTTP(second, req2)
 	if second.Code != http.StatusConflict {
 		t.Fatalf("expected one-key conflict, got %d: %s", second.Code, second.Body.String())
@@ -101,7 +105,7 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 
 	rotate := httptest.NewRecorder()
 	req3 := httptest.NewRequest(http.MethodPost, "/key/rotate", strings.NewReader(`{}`))
-	req3.Header.Set("Authorization", "Bearer "+verified.Session)
+	req3.Header.Set("Cookie", strings.Split(cookie, ";")[0])
 	r.ServeHTTP(rotate, req3)
 	if rotate.Code != http.StatusCreated {
 		t.Fatalf("rotate status=%d body=%s", rotate.Code, rotate.Body.String())

@@ -41,3 +41,16 @@ func TestCORS_PreflightAndHeaders(t *testing.T) {
 		t.Fatalf("expected allow origin http://localhost:3000, got %s", rec2.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
+
+func TestCORS_RejectsUnknownOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodOptions, "/api/user/profile", nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	CORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected unknown origin to be rejected, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("unknown origin must not receive CORS permission, got %q", got)
+	}
+}

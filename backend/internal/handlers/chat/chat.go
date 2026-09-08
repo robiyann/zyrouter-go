@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"zyrouter/backend/internal/auth"
+	"zyrouter/backend/internal/clientstream"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/log"
 	"zyrouter/backend/internal/middleware"
@@ -82,17 +83,40 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 		handlerutil.WriteJSONError(w, status, err.Error())
 		return
 	}
+	ctx := context.WithValue(r.Context(), publicModelContextKey{}, reqBody.Model)
+	h.publishClientStarted(r, reqBody.Model)
 
 	if len(modelInfo.ComboModels) > 0 {
 		if modelInfo.Strategy == "fusion" {
-			h.handleFusion(r.Context(), w, body, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, false, reqBody.Model, modelInfo.StickyLimit)
+			h.handleFusion(ctx, w, body, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, false, reqBody.Model, modelInfo.StickyLimit)
 			return
 		}
-		h.handleComboFallback(r.Context(), w, body, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, false, reqBody.Model, modelInfo.StickyLimit)
+		h.handleComboFallback(ctx, w, body, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, false, reqBody.Model, modelInfo.StickyLimit)
 		return
 	}
 
-	h.handleSingleModel(r.Context(), w, body, modelInfo, reqBody.Stream, false)
+	h.handleSingleModel(ctx, w, body, modelInfo, reqBody.Stream, false)
+}
+
+type publicModelContextKey struct{}
+
+func publicModelFromContext(ctx context.Context) string {
+	if value, ok := ctx.Value(publicModelContextKey{}).(string); ok {
+		return value
+	}
+	return "unknown"
+}
+
+func (h *ChatHandler) publishClientStarted(r *http.Request, model string) {
+	key := middleware.GetAuthenticatedApiKey(r)
+	if key == nil || key.UserID == nil || strings.TrimSpace(*key.UserID) == "" {
+		return
+	}
+	requestID := middleware.GetRequestID(r)
+	clientstream.Get().Publish(*key.UserID, clientstream.Event{
+		ID: requestID + ":started", Type: "request.started", RequestID: requestID,
+		Model: model, Status: "started", Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // handleSingleModel resolves a single ModelInfo and forwards the request upstream.
@@ -201,6 +225,8 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, status, err.Error())
 		return
 	}
+	ctx := context.WithValue(r.Context(), publicModelContextKey{}, reqBody.Model)
+	h.publishClientStarted(r, reqBody.Model)
 
 	if len(modelInfo.ComboModels) > 0 {
 		if modelInfo.Strategy == "fusion" {
@@ -209,14 +235,14 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 				handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to marshal request body")
 				return
 			}
-			h.handleFusion(r.Context(), w, bodyJSON, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, translateResponse, reqBody.Model, modelInfo.StickyLimit)
+			h.handleFusion(ctx, w, bodyJSON, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, translateResponse, reqBody.Model, modelInfo.StickyLimit)
 			return
 		}
-		h.handleMessagesComboFallback(r.Context(), w, workingBody, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, reqBody.Model, modelInfo.StickyLimit)
+		h.handleMessagesComboFallback(ctx, w, workingBody, modelInfo.ComboModels, modelInfo.Strategy, reqBody.Stream, reqBody.Model, modelInfo.StickyLimit)
 		return
 	}
 
-	h.handleMessagesSingleModel(r.Context(), w, workingBody, modelInfo, reqBody.Stream, translateResponse)
+	h.handleMessagesSingleModel(ctx, w, workingBody, modelInfo, reqBody.Stream, translateResponse)
 }
 
 // validateRequestPolicy validates the resolved model and every concrete model

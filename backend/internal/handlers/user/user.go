@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"zyrouter/backend/internal/clientstream"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/middleware"
@@ -22,14 +23,26 @@ import (
 
 type Handler struct{ Repo *db.Repo }
 
+const verificationBrowserCookie = "verification_browser"
+
 func NewHandler(repo *db.Repo) *Handler { return &Handler{Repo: repo} }
 
 func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
-	id, expires, err := h.Repo.CreateVerificationChallenge(5 * time.Minute)
+	browserKey, err := randomToken(32)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create verification browser binding")
+		return
+	}
+	id, expires, err := h.Repo.CreateVerificationChallengeForBrowser(5*time.Minute, db.HashUserSecret(browserKey))
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create verification challenge")
 		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name: verificationBrowserCookie, Value: browserKey, Path: "/", HttpOnly: true,
+		Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
+		SameSite: http.SameSiteLaxMode, MaxAge: 300,
+	})
 	bot := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
 	deepLink := ""
 	if bot != "" {
@@ -43,7 +56,14 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
-	status, user, err := h.Repo.GetVerificationStatus(chi.URLParam(r, "id"))
+	challengeID := chi.URLParam(r, "id")
+	browserCookie, cookieErr := r.Cookie(verificationBrowserCookie)
+	storedBrowserKey, browserErr := h.Repo.GetVerificationBrowserKey(challengeID)
+	if browserErr != nil || cookieErr != nil || storedBrowserKey == "" || db.HashUserSecret(browserCookie.Value) != storedBrowserKey {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "verification challenge is not bound to this browser")
+		return
+	}
+	status, user, err := h.Repo.GetVerificationStatus(challengeID)
 	if errors.Is(err, sql.ErrNoRows) {
 		handlerutil.WriteJSONError(w, http.StatusNotFound, "verification challenge not found")
 		return
@@ -60,13 +80,12 @@ func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response["user"] = sanitizeUser(user)
-		response["sessionToken"] = session
-		response["warning"] = "Store this session token securely. It will not be shown again."
 		http.SetCookie(w, &http.Cookie{
 			Name:     "user_session",
 			Value:    session,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   86400,
 		})
@@ -185,6 +204,69 @@ func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, usage)
+}
+
+func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetAuthenticatedUser(r)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	logs, err := h.Repo.GetUserUsageLogs(user.ID, limit, offset)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load request logs")
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, logs)
+}
+
+// LogsStream emits only sanitized lifecycle events belonging to the authenticated user.
+func (h *Handler) LogsStream(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetAuthenticatedUser(r)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "streaming is unavailable")
+		return
+	}
+	writeEvent := func(eventName string, value any) bool {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return false
+		}
+		if _, err := w.Write([]byte("event: " + eventName + "\ndata: " + string(payload) + "\n\n")); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	ch, unsubscribe := clientstream.Get().Subscribe(user.ID)
+	defer unsubscribe()
+	// Subscribe before taking the snapshot so an event cannot land in the gap
+	// between history delivery and live delivery. The browser deduplicates IDs.
+	writeEvent("snapshot", map[string]any{"items": clientstream.Get().Snapshot(user.ID)})
+	heartbeat := time.NewTicker(20 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case frame, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := w.Write([]byte("event: request\ndata: " + string(frame) + "\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-heartbeat.C:
+			if _, err := w.Write([]byte(": heartbeat\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func (h *Handler) GenerateKey(w http.ResponseWriter, r *http.Request) { h.rotateKey(w, r, false) }

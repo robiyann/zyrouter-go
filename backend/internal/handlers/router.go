@@ -197,6 +197,8 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Use(middleware.RequireUserSession(repo))
 		r.Get("/api/user/profile", userH.Profile)
 		r.Get("/api/user/usage", userH.Usage)
+		r.Get("/api/user/logs", userH.Logs)
+		r.Get("/api/user/logs/stream", userH.LogsStream)
 		r.Get("/api/user/features", userH.Features)
 		r.Put("/api/user/features", userH.UpdateFeatures)
 		r.Get("/api/user/key", userH.GetKey)
