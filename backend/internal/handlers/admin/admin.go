@@ -946,8 +946,9 @@ func (h *AdminHandler) HandleTestModelAlias(w http.ResponseWriter, r *http.Reque
 // aliases without creating or mutating a key.
 func (h *AdminHandler) HandlePreviewModelPolicy(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Models       []string               `json:"models"`
-		Restrictions models.KeyRestrictions `json:"restrictions"`
+		AccountTypeID string                 `json:"accountTypeId,omitempty"`
+		Models        []string               `json:"models"`
+		Restrictions  models.KeyRestrictions `json:"restrictions"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -959,7 +960,8 @@ func (h *AdminHandler) HandlePreviewModelPolicy(w http.ResponseWriter, r *http.R
 	}
 	restrictionsJSON, _ := json.Marshal(body.Restrictions)
 	restrictionsText := string(restrictionsJSON)
-	key := &models.APIKey{IsActive: 1, Restrictions: &restrictionsText}
+	typeID := strings.TrimSpace(body.AccountTypeID)
+	key := &models.APIKey{IsActive: 1, Restrictions: &restrictionsText, AccountTypeID: &typeID}
 	results := make([]map[string]any, 0, len(body.Models))
 	for _, alias := range body.Models {
 		alias = strings.TrimSpace(alias)
@@ -978,6 +980,14 @@ func (h *AdminHandler) HandlePreviewModelPolicy(w http.ResponseWriter, r *http.R
 		provider := target
 		if parts := strings.SplitN(target, "/", 2); len(parts) == 2 {
 			provider = parts[0]
+		}
+		if typeID != "" && typeID != "administrator" {
+			allowed, err := h.repo.IsAliasAllowedForAccountType(typeID, alias)
+			if err != nil || !allowed {
+				result["reason"] = "unauthorized_model_for_tier"
+				results = append(results, result)
+				continue
+			}
 		}
 		if err := auth.ValidateKeyPolicy(key, alias, provider); err != nil {
 			result["reason"] = err.Error()

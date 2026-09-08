@@ -6019,25 +6019,18 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
 }
 function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = [], accountTypes = []) {
   const current = parseRestrictionsObject(item.restrictions);
-  const publishedAliases = Array.from(new Set((availableModels || []).map((model) => typeof model === 'string' ? model : model.id).filter((model) => model && !String(model).includes('/')))).sort();
+  // Model restrictions are governed exclusively at the Account Type tier level.
+  current.allowedModels = [];
+  current.allowedPrefixes = [];
   const providerState = getActiveProviderModels(availableProviders, [], providerNodes, customModels);
   const groups = providerState.groups.map((group) => ({ ...group, models: [] }));
-  const modelGroups = [{ provider: 'published-aliases', providerName: 'Published Model Aliases', accountCount: publishedAliases.length, models: publishedAliases }];
-  const allActiveModels = publishedAliases;
-  const suggestedPrefixes = new Set();
-  const uniquePrefixes = Array.from(new Set([...suggestedPrefixes, ...current.allowedPrefixes]));
-  const isModelSelected = (model) => current.allowedModels.some((allowed) => {
-    const allowedName = String(allowed || '').split('/').pop();
-    const modelName = String(model || '').split('/').pop();
-    return String(allowed).toLowerCase() === String(model).toLowerCase() || allowedName.toLowerCase() === modelName.toLowerCase();
-  });
 
   return `
     <form class="inline-form policy-builder-form" id="key-policy-form" data-key-id="${escapeHtml(item.id || '')}" data-provider-groups="${escapeHtml(JSON.stringify(groups.map((g) => ({ provider: g.provider, providerName: g.providerName }))))}">
       <div class="form-head">
         <div>
-          <span class="kicker">RESTRICTIONS</span>
-          <h2>${isNew ? 'New API Key Policy' : `Policy: ${escapeHtml(item.name || item.id)}`}</h2>
+          <span class="kicker">ACCESS GOVERNANCE</span>
+          <h2>${isNew ? 'New API Key' : `Key Policy: ${escapeHtml(item.name || item.id)}`}</h2>
         </div>
         <div class="mode-tabs">
           <button type="button" class="mode-tab active" data-mode="visual">Visual Builder</button>
@@ -6065,81 +6058,29 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
         </label>
       </div>
 
-      <div class="tier-governance-banner" style="background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:6px; padding:10px 12px; margin:10px 0 14px; display:flex; align-items:center; gap:8px;">
-        <span class="material-symbols-outlined" style="color:#38bdf8; font-size:18px;">verified_user</span>
-        <div style="font-size:11px; color:#cbd5e1; line-height:1.4;">
-          <strong>Tier-Based Model Governance Active:</strong> Client model access is inherited from the assigned Account Type. Manage model permissions per tier under <strong>Account Types &rarr; Manage Models</strong>.
+      <div class="tier-governance-banner" id="tier-governance-info" style="background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:6px; padding:12px 14px; margin:12px 0 16px; display:flex; align-items:flex-start; gap:10px;">
+        <span class="material-symbols-outlined" style="color:#38bdf8; font-size:22px; margin-top:2px;">verified_user</span>
+        <div style="font-size:11.5px; color:#cbd5e1; line-height:1.5; flex:1;">
+          <strong style="color:#38bdf8; font-size:12px;">Tier-Based Model Governance Active</strong>
+          <p style="margin:4px 0 6px; color:#e2e8f0;">
+            Model restrictions are strictly enforced at the <strong>Account Type Tier</strong> level. This API Key automatically inherits access only to the model aliases permitted for its assigned tier.
+          </p>
+          <div id="tier-model-summary" style="background:#080b10; border:1px solid rgba(255,255,255,0.08); border-radius:4px; padding:6px 10px; font-size:11px; font-family:var(--mono);">
+            Loading tier permissions...
+          </div>
+          <small style="display:block; margin-top:6px; color:var(--muted);">
+            To configure or restrict allowed models for this tier, navigate to <strong>ROUTING &rarr; Account Types &rarr; Manage Models</strong>.
+          </small>
         </div>
       </div>
 
       <!-- VISUAL BUILDER SURFACE -->
       <div id="visual-builder-surface">
-        <div id="policy-conflict-warning" class="hidden"></div>
-        <div class="builder-section">
-          <div class="section-title">
-            <strong>1. Allowed Models Whitelist</strong>
-            <small>Leave empty to allow all models. Select specific models to restrict access.</small>
-          </div>
-          <div class="chip-container" id="selected-models-container">
-            ${current.allowedModels.length === 0 ? '<span class="empty-chip-note">All models allowed (no whitelist)</span>' : current.allowedModels.map((m) => `<span class="chip active-chip" data-model="${escapeHtml(m)}">${escapeHtml(m)} <i class="remove-chip">&times;</i></span>`).join('')}
-          </div>
-
-            ${publishedAliases.length > 0 ? `
-            <div class="quick-add-bar" style="display:grid; gap:6px;">
-              <span class="quick-add-label">ACTIVE MODELS:</span>
-              ${modelGroups.map((grp) => `
-                <div class="active-prov-model-group" style="background:#080b10; border:1px solid var(--line-subtle); border-radius:5px; padding:6px 8px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <strong style="font-size:10.5px; color:var(--text-bright);">${escapeHtml(grp.providerName)}</strong>
-                    <span style="font-size:8.5px; font-family:var(--mono); color:var(--muted);">${grp.accountCount > 0 ? `${grp.accountCount} active` : 'public / no-auth'}</span>
-                  </div>
-                  <div class="quick-chips" style="display:flex; flex-wrap:wrap; gap:3px;">
-                    ${grp.models.map((m) => `
-                      <button type="button" class="preset-chip ${isModelSelected(m) ? 'picked' : ''}" data-add-model="${escapeHtml(m)}">
-                        + ${escapeHtml(m)}
-                      </button>
-                    `).join('')}
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          ` : `
-            <p style="color:var(--muted); font-size:11px; margin:4px 0 0;">No active providers connected.</p>
-          `}
-
-          <div class="custom-input-row" style="margin-top:6px;">
-            <input type="text" id="custom-model-input" placeholder="Type an existing published alias..." />
-            <button type="button" class="secondary-button" id="btn-add-custom-model">+ Add</button>
-          </div>
-        </div>
-
-        <div class="builder-section">
-          <div class="section-title">
-            <strong>2. Alias Family Rules</strong>
-            <small>Match published alias families only (e.g. coding-*, fast-*). Provider prefixes are forbidden.</small>
-          </div>
-          <div class="chip-container" id="selected-prefixes-container">
-            ${current.allowedPrefixes.length === 0 ? '<span class="empty-chip-note">No prefix rules applied</span>' : current.allowedPrefixes.map((p) => `<span class="chip purple-chip" data-prefix="${escapeHtml(p)}">${escapeHtml(p)} <i class="remove-chip">&times;</i></span>`).join('')}
-          </div>
-          ${uniquePrefixes.length > 0 ? `
-            <div class="quick-add-bar">
-              <span class="quick-add-label">SUGGESTED:</span>
-              <div class="quick-chips">
-                ${uniquePrefixes.map((p) => `<button type="button" class="preset-chip ${current.allowedPrefixes.includes(p) ? 'picked' : ''}" data-add-prefix="${escapeHtml(p)}">${escapeHtml(p)}</button>`).join('')}
-              </div>
-            </div>
-          ` : ''}
-          <div class="custom-input-row">
-            <input type="text" id="custom-prefix-input" placeholder="Alias family pattern (e.g. coding-*)..." />
-            <button type="button" class="secondary-button" id="btn-add-custom-prefix">+ Add</button>
-          </div>
-        </div>
-
-        <!-- SECTION 3: PROVIDER LOCKING -->
+        <!-- SECTION 1: PROVIDER LOCKING -->
         <div class="builder-section">
           <div class="section-title">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong>3. Provider Locking (Optional)</strong>
+              <strong>1. Provider Locking (Optional)</strong>
               <span id="prov-lock-status-badge" class="table-badge ${current.allowedProviders.length === 0 ? 'active' : 'purple'}" style="font-size:8px;">
                 ${current.allowedProviders.length === 0 ? 'ALL ALLOWED' : `LOCKED (${current.allowedProviders.length})`}
               </span>
@@ -6147,7 +6088,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             <small>Leave empty to allow all providers. Check specific providers to restrict routing.</small>
           </div>
 
-            ${groups.length === 0 ? `
+          ${groups.length === 0 ? `
             <p style="color:var(--muted); font-size:11px; margin:4px 0 0;">No active providers connected.</p>
           ` : `
             <div class="prov-locking-controls" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin:4px 0 6px;">
@@ -6173,10 +6114,11 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
           `}
         </div>
 
+        <!-- SECTION 2: RATE LIMITS & QUOTAS -->
         <div class="builder-section">
           <div class="section-title">
-            <strong>4. Rate Limits & Quotas</strong>
-            <small>Throttle usage per key (0 = Unlimited).</small>
+            <strong>2. Key-Level Rate Limits &amp; Quotas (Optional)</strong>
+            <small>Throttle usage specifically for this key (0 = Unlimited).</small>
           </div>
           <div class="form-grid-2">
             <label>
@@ -6189,10 +6131,12 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             </label>
           </div>
         </div>
+
+        <!-- SECTION 3: AUTHORIZATION PREVIEW -->
         <div class="builder-section">
           <div class="section-title">
-            <strong>5. Authorization Preview</strong>
-            <small>Simulate the alias policy before saving. This does not create or modify a key.</small>
+            <strong>3. Authorization Preview</strong>
+            <small>Simulate access under the selected Account Type and key policies.</small>
           </div>
           <button type="button" class="secondary-button" id="btn-preview-key-policy">Preview access</button>
           <div id="key-policy-preview" style="display:grid; gap:4px; margin-top:8px;"></div>
@@ -6203,12 +6147,12 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
       <div id="raw-json-surface" class="hidden">
         <label>
           Restrictions JSON Blob
-          <textarea id="policy-raw-json" rows="10" style="font-family: var(--mono); font-size: 11px;">${escapeHtml(JSON.stringify(current, null, 2))}</textarea>
+          <textarea id="policy-raw-json" rows="10" style="font-family: var(--mono); font-size: 11px;">${escapeHtml(JSON.stringify({ allowedProviders: current.allowedProviders, rateLimit: current.rateLimit }, null, 2))}</textarea>
         </label>
       </div>
 
       <div class="form-actions">
-        <button class="solid-button" type="submit">Save Policy</button>
+        <button class="solid-button" type="submit">Save Key</button>
         <button class="cancel-button" type="button" id="btn-cancel-policy">Cancel</button>
       </div>
       <p class="form-error" role="alert"></p>
@@ -6264,98 +6208,13 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   if (!form) return;
 
   const state = parseRestrictionsObject(item.restrictions);
+  state.allowedModels = [];
+  state.allowedPrefixes = [];
+
   let groups = [];
   try {
     groups = JSON.parse(form.dataset.providerGroups || '[]');
   } catch {}
-
-  function checkPolicyDeadlocks() {
-    const warningBox = form.querySelector('#policy-conflict-warning');
-    if (!warningBox) return;
-
-    const checkedProvs = Array.from(form.querySelectorAll('input[name="allowedProviders"]:checked')).map((cb) => cb.value.toLowerCase());
-    if (checkedProvs.length === 0 || state.allowedModels.length === 0) {
-      warningBox.classList.add('hidden');
-      warningBox.innerHTML = '';
-      return;
-    }
-
-    const conflicts = [];
-    state.allowedModels.forEach((model) => {
-      const parts = String(model || '').split('/');
-      if (parts.length === 2) {
-        const prefix = parts[0].toLowerCase();
-        // find matching provider for this prefix
-        const matchingGroup = (groups || []).find((g) => {
-          const provId = String(g.provider || '').toLowerCase();
-          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
-          return provId === prefix || (cat && (cat.id.toLowerCase() === prefix || (cat.alias && cat.alias.toLowerCase() === prefix)));
-        });
-        if (matchingGroup) {
-          const provId = String(matchingGroup.provider || '').toLowerCase();
-          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId);
-          const alias = cat?.alias ? String(cat.alias).toLowerCase() : null;
-          const isAllowed = checkedProvs.includes(provId) || (alias && checkedProvs.includes(alias));
-          if (!isAllowed) {
-            conflicts.push({ model, providerName: matchingGroup.providerName, provId: matchingGroup.provider });
-          }
-        }
-      }
-    });
-
-    if (conflicts.length > 0) {
-      warningBox.classList.remove('hidden');
-      warningBox.innerHTML = `
-        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
-          <div style="display: flex; align-items: center; gap: 6px; color: #f87171; font-weight: 600; font-size: 11.5px;">
-            <span class="material-symbols-outlined" style="font-size: 16px;">warning</span>
-            <span>Policy Conflict / Deadlock Detected!</span>
-          </div>
-          <p style="font-size: 11px; color: #fca5a5; margin: 0; line-height: 1.4;">
-            Allowed Providers is locked to <code>${escapeHtml(checkedProvs.join(', '))}</code>, but Allowed Models contains models from other providers:
-            <br>
-            ${conflicts.map((c) => `• <code>${escapeHtml(c.model)}</code> (Belongs to: <strong>${escapeHtml(c.providerName)}</strong>)`).join('<br>')}
-          </p>
-          <small style="font-size: 10px; color: #cbd5e1;">With this configuration, clients with this key will receive <strong>0 models</strong> or <strong>HTTP 403 Forbidden</strong>.</small>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
-            <button type="button" id="btn-fix-conflict-add-providers" class="secondary-button" style="font-size: 10px; padding: 4px 8px; color: #38bdf8; border-color: #38bdf8;">
-              + Auto-Add Missing Providers (${escapeHtml(Array.from(new Set(conflicts.map((c) => c.provId))).join(', '))})
-            </button>
-            <button type="button" id="btn-fix-conflict-unlock" class="secondary-button" style="font-size: 10px; padding: 4px 8px;">
-              Unlock All Providers (Allow All)
-            </button>
-          </div>
-        </div>
-      `;
-
-      const btnAddMissing = warningBox.querySelector('#btn-fix-conflict-add-providers');
-      if (btnAddMissing) {
-        btnAddMissing.onclick = () => {
-          conflicts.forEach((c) => {
-            const cb = form.querySelector(`input[name="allowedProviders"][value="${c.provId}"]`);
-            if (cb) {
-              cb.checked = true;
-              cb.closest('.provider-check-card')?.classList.add('checked');
-            }
-          });
-          syncToRawJson();
-        };
-      }
-      const btnUnlock = warningBox.querySelector('#btn-fix-conflict-unlock');
-      if (btnUnlock) {
-        btnUnlock.onclick = () => {
-          form.querySelectorAll('input[name="allowedProviders"]').forEach((cb) => {
-            cb.checked = false;
-            cb.closest('.provider-check-card')?.classList.remove('checked');
-          });
-          syncToRawJson();
-        };
-      }
-    } else {
-      warningBox.classList.add('hidden');
-      warningBox.innerHTML = '';
-    }
-  }
 
   function updateProvLockBadge() {
     const checked = form.querySelectorAll('input[name="allowedProviders"]:checked');
@@ -6363,7 +6222,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
     if (badge) {
       if (checked.length === 0) {
         badge.className = 'table-badge active';
-        badge.textContent = 'DEFAULT: ALL CONNECTIONS ALLOWED';
+        badge.textContent = 'DEFAULT: ALL PROVIDERS ALLOWED';
       } else {
         badge.className = 'table-badge purple';
         badge.textContent = `LOCKED TO ${checked.length} TARGETS`;
@@ -6372,122 +6231,55 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   }
 
   function syncToRawJson() {
-    state.rateLimit.requestsPerMinute = Number(form.querySelector('#limit-rpm').value) || 0;
-    state.rateLimit.tokensPerDay = Number(form.querySelector('#limit-tpd').value) || 0;
+    if (!state.rateLimit) state.rateLimit = {};
+    state.rateLimit.requestsPerMinute = Number(form.querySelector('#limit-rpm')?.value) || 0;
+    state.rateLimit.tokensPerDay = Number(form.querySelector('#limit-tpd')?.value) || 0;
     const checkedProv = Array.from(form.querySelectorAll('input[name="allowedProviders"]:checked')).map((cb) => cb.value);
     state.allowedProviders = Array.from(new Set(checkedProv));
-    form.querySelector('#policy-raw-json').value = JSON.stringify(state, null, 2);
+    state.allowedModels = [];
+    state.allowedPrefixes = [];
+    const rawEl = form.querySelector('#policy-raw-json');
+    if (rawEl) {
+      rawEl.value = JSON.stringify({ allowedProviders: state.allowedProviders, rateLimit: state.rateLimit }, null, 2);
+    }
     updateProvLockBadge();
-    checkPolicyDeadlocks();
   }
 
-  function renderModelChips() {
-    const container = form.querySelector('#selected-models-container');
-    if (state.allowedModels.length === 0) {
-      container.innerHTML = '<span class="empty-chip-note">All models allowed (no whitelist restriction)</span>';
-    } else {
-      container.innerHTML = state.allowedModels.map((m) => `<span class="chip active-chip" data-model="${escapeHtml(m)}">${escapeHtml(m)} <i class="remove-chip">&times;</i></span>`).join('');
-    }
-    form.querySelectorAll('[data-add-model]').forEach((btn) => {
-      btn.classList.toggle('picked', state.allowedModels.includes(btn.dataset.addModel));
-    });
-    syncToRawJson();
-  }
+  // Account Type selection change -> update dynamic tier model summary
+  const accountTypeSelect = form.querySelector('#policy-key-account-type');
+  const summaryEl = form.querySelector('#tier-model-summary');
 
-  function renderPrefixChips() {
-    const container = form.querySelector('#selected-prefixes-container');
-    if (state.allowedPrefixes.length === 0) {
-      container.innerHTML = '<span class="empty-chip-note">No prefix rules applied</span>';
-    } else {
-      container.innerHTML = state.allowedPrefixes.map((p) => `<span class="chip purple-chip" data-prefix="${escapeHtml(p)}">${escapeHtml(p)} <i class="remove-chip">&times;</i></span>`).join('');
+  async function updateTierSummary() {
+    if (!accountTypeSelect || !summaryEl) return;
+    const selectedType = accountTypeSelect.value;
+    if (selectedType === 'administrator') {
+      summaryEl.innerHTML = `<span style="color:var(--lime); font-weight:600;">👑 Full Access:</span> All active published models permitted (Administrator tier).`;
+      return;
     }
-    form.querySelectorAll('[data-add-prefix]').forEach((btn) => {
-      btn.classList.toggle('picked', state.allowedPrefixes.includes(btn.dataset.addPrefix));
-    });
-    syncToRawJson();
-  }
-
-  // Model chips removal & addition
-  form.querySelector('#selected-models-container').onclick = (e) => {
-    const chip = e.target.closest('[data-model]');
-    if (chip && e.target.classList.contains('remove-chip')) {
-      const model = chip.dataset.model;
-      state.allowedModels = state.allowedModels.filter((m) => m !== model);
-      renderModelChips();
-    }
-  };
-
-  form.querySelectorAll('[data-add-model]').forEach((btn) => {
-    btn.onclick = () => {
-      const model = btn.dataset.addModel;
-      if (state.allowedModels.includes(model)) {
-        state.allowedModels = state.allowedModels.filter((m) => m !== model);
+    summaryEl.innerHTML = `<span style="color:var(--muted);">Fetching allowed models for tier <code>${escapeHtml(selectedType)}</code>...</span>`;
+    try {
+      const res = await request(`/api/admin/account-types/${encodeURIComponent(selectedType)}/models`);
+      const aliases = res.aliases || [];
+      if (aliases.length === 0) {
+        summaryEl.innerHTML = `<span style="color:var(--danger); font-weight:600;">⚠️ 0 Models Permitted:</span> No models assigned to this tier yet. Configure models in <strong>Account Types &rarr; Manage Models</strong>.`;
       } else {
-        state.allowedModels.push(model);
+        summaryEl.innerHTML = `
+          <div style="margin-bottom:3px;"><span style="color:#38bdf8; font-weight:600;">Inherited Models (${aliases.length}):</span></div>
+          <div style="display:flex; flex-wrap:wrap; gap:4px;">
+            ${aliases.map((a) => `<span class="table-badge active" style="font-size:9.5px; padding:2px 6px;">${escapeHtml(a)}</span>`).join('')}
+          </div>
+        `;
       }
-      renderModelChips();
-    };
-  });
-
-  const btnAddCustomModel = form.querySelector('#btn-add-custom-model');
-  const inputCustomModel = form.querySelector('#custom-model-input');
-  const publishedAliasNames = new Set(Array.from(form.querySelectorAll('[data-add-model]')).map((button) => button.dataset.addModel));
-  if (btnAddCustomModel && inputCustomModel) {
-    const addCustom = () => {
-      const val = inputCustomModel.value.trim();
-      if (val.includes('/')) {
-        form.querySelector('.form-error').textContent = 'Use a published bare model alias; provider prefixes are forbidden.';
-        return;
-      }
-      if (!publishedAliasNames.has(val)) {
-        form.querySelector('.form-error').textContent = 'Only published model aliases can be added to a key policy.';
-        return;
-      }
-      if (val && !state.allowedModels.includes(val)) {
-        state.allowedModels.push(val);
-        inputCustomModel.value = '';
-        renderModelChips();
-      }
-    };
-    btnAddCustomModel.onclick = addCustom;
-    inputCustomModel.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } };
+    } catch (err) {
+      summaryEl.innerHTML = `<span style="color:var(--muted);">Tier: <code>${escapeHtml(selectedType)}</code> (Model permissions configured under Account Types)</span>`;
+    }
   }
 
-  // Prefix chips removal & addition
-  form.querySelector('#selected-prefixes-container').onclick = (e) => {
-    const chip = e.target.closest('[data-prefix]');
-    if (chip && e.target.classList.contains('remove-chip')) {
-      const prefix = chip.dataset.prefix;
-      state.allowedPrefixes = state.allowedPrefixes.filter((p) => p !== prefix);
-      renderPrefixChips();
-    }
-  };
-
-  form.querySelectorAll('[data-add-prefix]').forEach((btn) => {
-    btn.onclick = () => {
-      const prefix = btn.dataset.addPrefix;
-      if (state.allowedPrefixes.includes(prefix)) {
-        state.allowedPrefixes = state.allowedPrefixes.filter((p) => p !== prefix);
-      } else {
-        state.allowedPrefixes.push(prefix);
-      }
-      renderPrefixChips();
+  if (accountTypeSelect) {
+    accountTypeSelect.onchange = () => {
+      updateTierSummary();
     };
-  });
-
-  const btnAddCustomPrefix = form.querySelector('#btn-add-custom-prefix');
-  const inputCustomPrefix = form.querySelector('#custom-prefix-input');
-  if (btnAddCustomPrefix && inputCustomPrefix) {
-    const addPrefix = () => {
-      const val = inputCustomPrefix.value.trim();
-      if (val && !state.allowedPrefixes.includes(val)) {
-        state.allowedPrefixes.push(val);
-        inputCustomPrefix.value = '';
-        renderPrefixChips();
-      }
-    };
-    btnAddCustomPrefix.onclick = addPrefix;
-    inputCustomPrefix.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addPrefix(); } };
+    updateTierSummary();
   }
 
   // Provider Locking Controls & Checkboxes
@@ -6510,11 +6302,12 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   });
 
   updateProvLockBadge();
-  checkPolicyDeadlocks();
 
   // Limits
-  form.querySelector('#limit-rpm').oninput = syncToRawJson;
-  form.querySelector('#limit-tpd').oninput = syncToRawJson;
+  const rpmInput = form.querySelector('#limit-rpm');
+  if (rpmInput) rpmInput.oninput = syncToRawJson;
+  const tpdInput = form.querySelector('#limit-tpd');
+  if (tpdInput) tpdInput.oninput = syncToRawJson;
 
   const previewBtn = form.querySelector('#btn-preview-key-policy');
   if (previewBtn) {
@@ -6530,22 +6323,24 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
         form.querySelector('.form-error').textContent = `Invalid policy JSON: ${error.message}`;
         return;
       }
-      const aliases = Array.from(new Set([
-        ...policy.allowedModels,
-        ...Array.from(form.querySelectorAll('[data-add-model]')).map((button) => button.dataset.addModel)
-      ].filter(Boolean)));
+      const typeSelect = form.querySelector('#policy-key-account-type');
+      const accountTypeId = typeSelect ? typeSelect.value : (item.accountTypeId || 'administrator');
       const slot = form.querySelector('#key-policy-preview');
-      if (!aliases.length) {
-        slot.innerHTML = '<small style="color:var(--muted);">No published aliases available to preview.</small>';
-        return;
-      }
+
       previewBtn.disabled = true;
       previewBtn.textContent = 'Checking...';
       try {
+        const aliasesPayload = await request('/api/model-aliases').catch(() => ({ aliases: [] }));
+        const allPublished = (aliasesPayload.aliases || []).map((a) => a.alias).filter(Boolean);
+        if (!allPublished.length) {
+          slot.innerHTML = '<small style="color:var(--muted);">No published aliases available in system.</small>';
+          return;
+        }
+
         const response = await fetch(`${apiBase}/api/admin/model-policy/preview`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ models: aliases, restrictions: policy })
+          body: JSON.stringify({ accountTypeId, models: allPublished, restrictions: policy })
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
@@ -6571,10 +6366,8 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
         try {
           const raw = JSON.parse(form.querySelector('#policy-raw-json').value);
           Object.assign(state, parseRestrictionsObject(raw));
-          renderModelChips();
-          renderPrefixChips();
-          form.querySelector('#limit-rpm').value = state.rateLimit?.requestsPerMinute ?? 0;
-          form.querySelector('#limit-tpd').value = state.rateLimit?.tokensPerDay ?? 0;
+          if (rpmInput) rpmInput.value = state.rateLimit?.requestsPerMinute ?? 0;
+          if (tpdInput) tpdInput.value = state.rateLimit?.tokensPerDay ?? 0;
           form.querySelectorAll('input[name="allowedProviders"]').forEach((cb) => {
             cb.checked = state.allowedProviders.includes(cb.value);
             cb.closest('.provider-check-card')?.classList.toggle('checked', cb.checked);
@@ -6626,6 +6419,8 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
       const method = isNew ? 'POST' : 'PUT';
       const typeSelect = form.querySelector('#policy-key-account-type');
       const accountTypeId = typeSelect ? typeSelect.value : (item.accountTypeId || 'administrator');
+      finalRestrictions.allowedModels = [];
+      finalRestrictions.allowedPrefixes = [];
       const body = { name: keyName, isActive: isActive, accountTypeId: accountTypeId, restrictions: finalRestrictions };
       const response = await fetch(`${apiBase}${endpoint}`, {
         method,
