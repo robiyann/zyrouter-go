@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'zyrouter-client');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'client-portal');
 const app = await readFile(path.join(root, 'app.js'), 'utf8');
 const html = await readFile(path.join(root, 'index.html'), 'utf8');
 const readme = await readFile(path.join(root, 'README.md'), 'utf8');

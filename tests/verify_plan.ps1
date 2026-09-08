@@ -46,7 +46,7 @@ try {
 Push-Location $root
 try {
   Run-Step 'frontend syntax' { node --check frontend/app.js }
-  Run-Step 'client frontend syntax' { node --check ../zyrouter-client/app.js }
+  Run-Step 'client frontend syntax' { node --check client-portal/app.js }
   Run-Step 'client frontend contract' { node tests/client_contract.test.mjs }
   Run-Step 'frontend contract' { node tests/frontend_contract.test.mjs }
   Run-Step 'client portal e2e' { node tests/client_portal_test.mjs }
