@@ -262,7 +262,15 @@
     if (!challenge) return;
     try {
       const res = await api(`/api/user/verification/${encodeURIComponent(challenge)}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (res.status === 403 || res.status === 404) {
+          clearInterval(verificationPoll);
+          sessionStorage.removeItem('zy_active_challenge');
+          sessionStorage.removeItem('zy_active_challenge_expires');
+          showAuthError('Challenge tidak lagi terikat ke browser ini. Silakan buat kode verifikasi baru.');
+        }
+        return;
+      }
       const data = await res.json();
 
       if (data.status === 'telegram_verified') {
