@@ -5568,6 +5568,19 @@ function renderPools(payload) {
     else typeCounts[t] = 1;
   });
 
+  // Status counts
+  const statusCounts = { all: allRows.length, passed: 0, error: 0, active: 0, disabled: 0 };
+  allRows.forEach((item) => {
+    let d = {};
+    try { d = typeof item.data === 'string' ? JSON.parse(item.data) : (item.data || {}); } catch {}
+    const isActive = item.isActive === 1 || item.isActive === true || item.isActive === '1';
+    const ts = String(item.testStatus || d.testStatus || (isActive ? 'active' : 'untested')).toLowerCase();
+    if (isActive) statusCounts.active++;
+    else statusCounts.disabled++;
+    if (ts === 'active' || ts === 'pass' || ts === 'passed') statusCounts.passed++;
+    if (ts === 'error' || ts === 'failed' || Boolean(d.lastError)) statusCounts.error++;
+  });
+
   // Filter by search, type, and status
   const q = poolSearchQuery.trim().toLowerCase();
   const filtered = allRows.filter((item) => {
@@ -5578,13 +5591,15 @@ function renderPools(payload) {
     const pType = (item.type || d.type || 'http').toLowerCase();
     const isActive = item.isActive === 1 || item.isActive === true || item.isActive === '1';
     const testStatus = (item.testStatus || d.testStatus || (isActive ? 'active' : 'untested')).toLowerCase();
+    const isErr = testStatus === 'error' || testStatus === 'failed' || Boolean(d.lastError);
+    const isPass = testStatus === 'active' || testStatus === 'pass' || testStatus === 'passed';
 
     if (q && !name.includes(q) && !url.includes(q) && !item.id.toLowerCase().includes(q)) return false;
     if (poolTypeFilter !== 'all' && pType !== poolTypeFilter) return false;
     if (poolStatusFilter === 'active' && !isActive) return false;
     if (poolStatusFilter === 'disabled' && isActive) return false;
-    if (poolStatusFilter === 'passed' && testStatus !== 'active' && testStatus !== 'pass' && testStatus !== 'passed') return false;
-    if (poolStatusFilter === 'error' && testStatus !== 'error' && testStatus !== 'failed') return false;
+    if (poolStatusFilter === 'passed' && !isPass) return false;
+    if (poolStatusFilter === 'error' && !isErr) return false;
     return true;
   });
 
@@ -5597,8 +5612,8 @@ function renderPools(payload) {
   const pageRows = filtered.slice(startIdx, endIdx);
 
   const table = filtered.length ? `
-    <div class="data-table-container card" style="padding:0; overflow:hidden; margin-top:10px;">
-      <table class="data-table">
+    <div class="data-table-container card" style="padding:0; overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:10px;">
+      <table class="data-table" style="min-width:680px; width:100%;">
         <thead>
           <tr>
             <th style="width:90px;">Status</th>
@@ -5606,7 +5621,7 @@ function renderPools(payload) {
             <th style="width:90px;">Type</th>
             <th>Proxy / Relay URL</th>
             <th style="width:110px;">Test Status</th>
-            <th class="table-cell-actions" style="width:150px; text-align:right;">Action</th>
+            <th class="table-cell-actions" style="width:140px; min-width:140px; text-align:right;">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -5635,7 +5650,7 @@ function renderPools(payload) {
                     ${isTestOk ? 'PASSED' : (isTestErr ? 'ERROR' : escapeHtml(testStatus.toUpperCase()))}
                   </span>
                 </td>
-                <td class="table-cell-actions" style="text-align:right;">
+                <td class="table-cell-actions" style="text-align:right; white-space:nowrap; min-width:140px;">
                   <button class="secondary-button" data-test-pool="${escapeHtml(item.id)}" id="btn-test-pool-${escapeHtml(item.id)}" style="font-size:9.5px; padding:3px 8px; margin-right:4px;">Test</button>
                   <button class="danger-button" data-delete="pools" data-id="${escapeHtml(item.id)}">Delete</button>
                 </td>
@@ -5721,16 +5736,37 @@ function renderPools(payload) {
         </div>
       </div>
 
-      <!-- Filter Tabs -->
-      <div class="aliases-filter-tabs" style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
-        <button type="button" class="alias-filter-chip ${poolTypeFilter === 'all' ? 'active' : ''}" data-filter-pool-type="all" style="font-size:10px; padding:4px 9px;">
+      <!-- Type Filter Tabs -->
+      <div class="aliases-filter-tabs" style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <span style="font-size:10px; color:var(--muted); font-weight:600; margin-right:4px;">TYPE:</span>
+        <button type="button" class="alias-filter-chip ${poolTypeFilter === 'all' ? 'active' : ''}" data-filter-pool-type="all" style="font-size:10px; padding:3px 8px;">
           All Types (${allRows.length})
         </button>
         ${['vercel', 'cloudflare', 'deno', 'http'].map((t) => typeCounts[t] > 0 ? `
-          <button type="button" class="alias-filter-chip ${poolTypeFilter === t ? 'active' : ''}" data-filter-pool-type="${t}" style="font-size:10px; padding:4px 9px;">
+          <button type="button" class="alias-filter-chip ${poolTypeFilter === t ? 'active' : ''}" data-filter-pool-type="${t}" style="font-size:10px; padding:3px 8px;">
             ${t.toUpperCase()} (${typeCounts[t]})
           </button>
         ` : '').join('')}
+      </div>
+
+      <!-- Status Filter Tabs -->
+      <div class="aliases-filter-tabs" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <span style="font-size:10px; color:var(--muted); font-weight:600; margin-right:4px;">STATUS:</span>
+        <button type="button" class="alias-filter-chip ${poolStatusFilter === 'all' ? 'active' : ''}" data-filter-pool-status="all" style="font-size:10px; padding:3px 8px;">
+          All (${allRows.length})
+        </button>
+        <button type="button" class="alias-filter-chip ${poolStatusFilter === 'passed' ? 'active' : ''}" data-filter-pool-status="passed" style="font-size:10px; padding:3px 8px; color:var(--lime);">
+          Passed (${statusCounts.passed})
+        </button>
+        <button type="button" class="alias-filter-chip ${poolStatusFilter === 'error' ? 'active' : ''}" data-filter-pool-status="error" style="font-size:10px; padding:3px 8px; color:var(--danger, #ff4a6e); border-color:${statusCounts.error > 0 ? 'rgba(255,74,110,0.5)' : ''};">
+          Errors (${statusCounts.error})
+        </button>
+        <button type="button" class="alias-filter-chip ${poolStatusFilter === 'active' ? 'active' : ''}" data-filter-pool-status="active" style="font-size:10px; padding:3px 8px;">
+          Active (${statusCounts.active})
+        </button>
+        <button type="button" class="alias-filter-chip ${poolStatusFilter === 'disabled' ? 'active' : ''}" data-filter-pool-status="disabled" style="font-size:10px; padding:3px 8px;">
+          Disabled (${statusCounts.disabled})
+        </button>
       </div>
 
       <!-- Live Health Check Progress Bar (Hidden when idle) -->
@@ -5988,12 +6024,26 @@ function bindDeleteButtons(name) {
       });
       if (!confirmed) return;
       const endpoint = name === 'providers' ? '/api/providers/' : name === 'orchestrator' ? '/api/combos/' : name === 'keys' ? '/api/keys/' : name === 'aliases' ? '/api/model-aliases/' : '/api/proxy-pools/';
+      const origText = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner-icon"></span>';
       try {
-        const response = await fetch(`${apiBase}${endpoint}${encodeURIComponent(button.dataset.id)}`, { method: 'DELETE', headers });
+        const response = await fetch(`${apiBase}${endpoint}${encodeURIComponent(button.dataset.id)}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         showToast(`${name.toUpperCase()} item deleted`, 'info');
-        await renderView(name);
+        if (name === 'pools' && cachedPoolsPayload && Array.isArray(cachedPoolsPayload.proxyPools)) {
+          cachedPoolsPayload.proxyPools = cachedPoolsPayload.proxyPools.filter(p => String(p.id) !== String(button.dataset.id));
+          content.innerHTML = renderPools();
+          bindDeployButtons();
+        } else {
+          await renderView(name);
+        }
       } catch (error) {
+        button.disabled = false;
+        button.innerHTML = origText;
         showToast(`Delete failed: ${error.message}`, 'error');
       }
     };
@@ -6413,7 +6463,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
 
         const response = await fetch(`${apiBase}/api/admin/model-policy/preview`, {
           method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ accountTypeId, models: allPublished, restrictions: policy })
         });
         const payload = await response.json().catch(() => ({}));
@@ -6494,7 +6544,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
       const body = { name: keyName, isActive: isActive, accountTypeId: accountTypeId, restrictions: finalRestrictions };
       const response = await fetch(`${apiBase}${endpoint}`, {
         method,
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       const payload = await response.json();
@@ -6867,7 +6917,7 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
       const method = isNew ? 'POST' : 'PUT';
       const response = await fetch(`${apiBase}${endpoint}`, {
         method,
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       const resData = await response.json();
@@ -6875,7 +6925,7 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
       const aliasEndpoint = isNew ? '/api/model-aliases' : `/api/model-aliases/${encodeURIComponent(publicAlias)}`;
       const aliasResponse = await fetch(`${apiBase}${aliasEndpoint}`, {
         method: isNew ? 'POST' : 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ alias: publicAlias, target: `combo:${comboName}` })
       });
       const aliasData = await aliasResponse.json().catch(() => ({}));
@@ -7781,7 +7831,7 @@ function bindDeployButtons() {
             const fallbackEndpoint = endpoint.replace('/api/', '/');
             const altRes = await fetch(`${apiBase}${fallbackEndpoint}`, {
               method: 'POST',
-              headers: { ...headers, 'Content-Type': 'application/json' },
+              headers: { ...getHeaders(), 'Content-Type': 'application/json' },
               body: JSON.stringify(bodyPayload)
             }).catch(() => null);
             if (altRes && altRes.ok) response = altRes;
@@ -7848,7 +7898,9 @@ function bindDeployButtons() {
           headers: getHeaders()
         });
         const data = await res.json().catch(() => ({}));
+        const poolItem = (cachedPoolsPayload.proxyPools || []).find(p => String(p.id) === String(poolId));
         if (data.ok) {
+          if (poolItem) { poolItem.testStatus = 'active'; poolItem.isActive = true; }
           if (statusBadge) {
             statusBadge.className = 'table-badge active';
             statusBadge.textContent = 'PASSED';
@@ -7859,6 +7911,7 @@ function bindDeployButtons() {
           }
           showToast(`Proxy test passed (${data.elapsedMs || 0}ms)`, 'success');
         } else {
+          if (poolItem) { poolItem.testStatus = 'error'; }
           if (statusBadge) {
             statusBadge.className = 'table-badge error';
             statusBadge.textContent = 'ERROR';
@@ -7866,6 +7919,8 @@ function bindDeployButtons() {
           showToast(`Proxy test failed: ${data.error || 'Connection error'}`, 'error');
         }
       } catch (err) {
+        const poolItem = (cachedPoolsPayload.proxyPools || []).find(p => String(p.id) === String(poolId));
+        if (poolItem) { poolItem.testStatus = 'error'; }
         if (statusBadge) {
           statusBadge.className = 'table-badge error';
           statusBadge.textContent = 'ERROR';
@@ -7983,6 +8038,10 @@ function bindDeployButtons() {
 
       testAllBtn.disabled = false;
       testAllBtn.innerHTML = origHtml;
+
+      // Re-render UI to update "Delete Errors (N)" header button & Status filter counts
+      content.innerHTML = renderPools();
+      bindDeployButtons();
     };
   }
 
@@ -8010,16 +8069,29 @@ function bindDeployButtons() {
       deleteErrorsBtn.innerHTML = '<span class="spinner-icon"></span> Deleting...';
       let deleted = 0;
       try {
-        for (const pool of errorPools) {
-          const response = await fetch(`${apiBase}/api/proxy-pools/${encodeURIComponent(pool.id)}`, {
-            method: 'DELETE',
-            headers: getHeaders()
-          });
-          if (!response.ok) throw new Error(`Failed deleting ${pool.id}: HTTP ${response.status}`);
-          deleted++;
+        const results = await Promise.allSettled(
+          errorPools.map(pool =>
+            fetch(`${apiBase}/api/proxy-pools/${encodeURIComponent(pool.id)}`, {
+              method: 'DELETE',
+              headers: getHeaders()
+            }).then(res => {
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              return pool.id;
+            })
+          )
+        );
+        const deletedIds = new Set(
+          results.filter(r => r.status === 'fulfilled').map(r => r.value)
+        );
+        deleted = deletedIds.size;
+        if (cachedPoolsPayload && Array.isArray(cachedPoolsPayload.proxyPools)) {
+          cachedPoolsPayload.proxyPools = cachedPoolsPayload.proxyPools.filter(p => !deletedIds.has(p.id));
         }
+        poolStatusFilter = 'all';
+        poolCurrentPage = 1;
+        content.innerHTML = renderPools();
+        bindDeployButtons();
         showToast(`Deleted ${deleted} failed proxy pools`, 'success');
-        await renderView('pools');
       } catch (err) {
         showToast(`Bulk delete stopped after ${deleted}: ${err.message}`, 'error');
         await renderView('pools');
@@ -8057,6 +8129,16 @@ function bindDeployButtons() {
     };
   });
 
+  // Status filter chips
+  document.querySelectorAll('[data-filter-pool-status]').forEach((chip) => {
+    chip.onclick = () => {
+      poolStatusFilter = chip.dataset.filterPoolStatus;
+      poolCurrentPage = 1;
+      content.innerHTML = renderPools();
+      bindDeployButtons();
+    };
+  });
+
   // Page size selector
   const pageSizeSelect = document.querySelector('#pool-page-size-select');
   if (pageSizeSelect) {
@@ -8088,6 +8170,9 @@ function bindDeployButtons() {
       bindDeployButtons();
     };
   }
+
+  // Ensure all delete buttons on the current page are bound!
+  bindDeleteButtons('pools');
 }
 
 function bindSettings() {
