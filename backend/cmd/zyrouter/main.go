@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -263,7 +264,11 @@ func mountFrontend(r chi.Router) {
 	log.Printf("[frontend] serving static dashboard from %s", frontendDir)
 	fileServer := http.FileServer(http.Dir(frontendDir))
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		if strings.HasSuffix(req.URL.Path, ".js") || strings.HasSuffix(req.URL.Path, ".css") {
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		}
 		fileServer.ServeHTTP(w, req)
 	})
 }
