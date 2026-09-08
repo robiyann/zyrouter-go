@@ -545,7 +545,6 @@
      ========================================================================== */
   function renderTelegramKeyStatus(key) {
     const keyInfoEl = $('keyInfo');
-    const copyPrefixBtn = $('copyPrefixBtn');
     const generateBtn = $('generate');
     const rotateBtn = $('rotate');
     const revokeBtn = $('revoke');
@@ -555,10 +554,6 @@
     if (key) {
       const prefix = key.keyPrefix || key.prefix || 'zy_...';
       if (keyInfoEl) keyInfoEl.textContent = `${prefix}••••••••••••••••`;
-      if (copyPrefixBtn) {
-        copyPrefixBtn.classList.remove('hidden');
-        copyPrefixBtn.onclick = () => copyText(prefix, 'Prefix kunci disalin');
-      }
       if (generateBtn) generateBtn.disabled = true;
       if (rotateBtn) rotateBtn.disabled = false;
       if (revokeBtn) revokeBtn.disabled = false;
@@ -576,7 +571,6 @@
       }
     } else {
       if (keyInfoEl) keyInfoEl.textContent = 'Belum ada API key aktif';
-      if (copyPrefixBtn) copyPrefixBtn.classList.add('hidden');
       if (generateBtn) generateBtn.disabled = false;
       if (rotateBtn) rotateBtn.disabled = true;
       if (revokeBtn) revokeBtn.disabled = true;

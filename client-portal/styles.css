@@ -1594,6 +1594,20 @@ body {
   height: 13px;
 }
 
+#copyPrefixBtn { display: none !important; }
+
+.secret-vault-modal {
+  position: fixed;
+  z-index: 1200;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(620px, calc(100vw - 32px));
+  margin: 0;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72), 0 0 80px rgba(139, 255, 42, 0.25);
+}
+
 /* ==========================================================================
    VIEW 3: ALLOWED MODELS
    ========================================================================== */
