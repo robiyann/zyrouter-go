@@ -93,16 +93,16 @@ assert.ok(serverReady, 'Zyrouter server failed to start');
 console.log(`[✓] Zyrouter Server ready at ${baseUrl}`);
 
 try {
-  // TEST 1: Serve /client and /client.html
-  console.log('[TEST 1] Testing /client static serving...');
-  const clientRes = await fetch(`${baseUrl}/client`);
-  assert.equal(clientRes.status, 200, '/client must return HTTP 200');
-  const clientHtml = await clientRes.text();
-  assert.match(clientHtml, /Zyrouter/, 'must include Zyrouter title');
-  assert.match(clientHtml, /CLIENT PORTAL/, 'must include CLIENT PORTAL badge');
-  assert.match(clientHtml, /client\.js/, 'must reference client.js');
-  assert.match(clientHtml, /client\.css/, 'must reference client.css');
-  console.log('  -> PASS: /client serves HeroUI client portal');
+  // TEST 1: Verify standalone zyrouter-client app files exist
+  console.log('[TEST 1] Testing standalone zyrouter-client files & server API...');
+  const clientDir = path.resolve(rootDir, '..', 'zyrouter-client');
+  assert.ok(existsSync(path.join(clientDir, 'index.html')), 'zyrouter-client/index.html must exist');
+  assert.ok(existsSync(path.join(clientDir, 'styles.css')), 'zyrouter-client/styles.css must exist');
+  assert.ok(existsSync(path.join(clientDir, 'app.js')), 'zyrouter-client/app.js must exist');
+  assert.ok(existsSync(path.join(clientDir, 'package.json')), 'zyrouter-client/package.json must exist');
+  const helloRes = await fetch(`${baseUrl}/api/hello`);
+  assert.equal(helloRes.status, 200);
+  console.log('  -> PASS: standalone zyrouter-client directory and server API confirmed');
 
   // TEST 2: Telegram verification challenge start
   console.log('[TEST 2] Testing POST /api/user/verification/start...');
