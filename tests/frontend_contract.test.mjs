@@ -4,6 +4,12 @@ import { readFile } from 'node:fs/promises';
 const app = await readFile(new URL('../frontend/app.js', import.meta.url), 'utf8');
 const html = await readFile(new URL('../frontend/index.html', import.meta.url), 'utf8');
 
+const declaredViews = new Set([...html.matchAll(/data-view="([^"]+)"/g)].map((match) => match[1]));
+for (const view of declaredViews) {
+  const key = view.includes('-') ? `'${view}'` : view;
+  assert.match(app, new RegExp(`${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`), `missing view registry entry: ${view}`);
+}
+
 for (const endpoint of [
   '/api/providers', '/api/combos', '/api/keys', '/api/settings',
   '/api/proxy-pools', '/api/model-aliases', '/api/admin/model-policy/preview', '/api/admin/security/summary', '/admin/health/reset', '/usage/stream', '/translator/console-logs', '/translator/console-logs/stream',
