@@ -169,6 +169,8 @@
       }
       const data = await res.json();
       challenge = data.challengeId;
+      sessionStorage.setItem('zy_active_challenge', challenge);
+      sessionStorage.setItem('zy_active_challenge_expires', data.expiresAt || new Date(Date.now() + 600000).toISOString());
 
       // Update UI to Challenge Pending
       $('telegramInitialState')?.classList.add('hidden');
@@ -207,6 +209,53 @@
     const text = `${m}:${s}`;
     if ($('challenge-timer')) $('challenge-timer').textContent = text;
     if ($('timer')) $('timer').textContent = text;
+  }
+
+  function renderRestoredChallenge(expiresAt) {
+    $('telegramInitialState')?.classList.add('hidden');
+    $('challenge')?.classList.remove('hidden');
+    if ($('code')) $('code').textContent = challenge;
+    const botUrl = `https://t.me/Zyrouter_bot?start=${encodeURIComponent(challenge)}`;
+    if ($('botLink')) $('botLink').href = botUrl;
+    if ($('botRetryLink')) $('botRetryLink').href = botUrl;
+    const remaining = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000));
+    timeLeftSec = remaining || 600;
+    updateTimerDisplay(timeLeftSec);
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      timeLeftSec--;
+      updateTimerDisplay(timeLeftSec);
+      if (timeLeftSec <= 0) {
+        cancelVerification();
+        showAuthError('Waktu verifikasi telah habis. Silakan buat kode baru.');
+      }
+    }, 1000);
+  }
+
+  async function restoreChallenge() {
+    const saved = sessionStorage.getItem('zy_active_challenge');
+    if (!saved) return;
+    challenge = saved;
+    renderRestoredChallenge(sessionStorage.getItem('zy_active_challenge_expires') || new Date(Date.now() + 600000).toISOString());
+    try {
+      const res = await api(`/api/user/verification/${encodeURIComponent(challenge)}`);
+      if (res.status === 404 || res.status === 403) {
+        cancelVerification();
+        showAuthError('Challenge lama sudah tidak valid. Silakan buat challenge baru.');
+        return;
+      }
+      const data = await res.json();
+      if (data.status === 'telegram_verified') {
+        $('confirmation')?.classList.remove('hidden');
+        clearInterval(timerInterval);
+        return;
+      }
+      clearInterval(verificationPoll);
+      verificationPoll = setInterval(pollVerificationStatus, 2000);
+    } catch {
+      clearInterval(verificationPoll);
+      verificationPoll = setInterval(pollVerificationStatus, 2000);
+    }
   }
 
   async function pollVerificationStatus() {
@@ -263,6 +312,8 @@
       clearInterval(timerInterval);
       clearInterval(verificationPoll);
       challenge = '';
+      sessionStorage.removeItem('zy_active_challenge');
+      sessionStorage.removeItem('zy_active_challenge_expires');
       sessionType = 'telegram';
 
       showToast('Verifikasi berhasil! Masuk ke dashboard...', 'success');
@@ -278,6 +329,8 @@
     clearInterval(timerInterval);
     clearInterval(verificationPoll);
     challenge = '';
+    sessionStorage.removeItem('zy_active_challenge');
+    sessionStorage.removeItem('zy_active_challenge_expires');
     timeLeftSec = 600;
 
     $('challenge')?.classList.add('hidden');
@@ -1024,6 +1077,6 @@
     }
   });
 
-  // Auto-bootstrap on page load
-  loadDashboard().catch(() => {});
+  // Restore an active verification challenge before the unauthenticated bootstrap.
+  restoreChallenge().finally(() => loadDashboard().catch(() => {}));
 })();

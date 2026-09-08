@@ -173,7 +173,7 @@ func (b *BotService) handleMessage(ctx context.Context, msg *telegramMessage) {
 	if err != nil {
 		log.Warn("telegram", "verification failed", "telegramID", telegramID, "error", err)
 		b.sendMessage(ctx, msg.Chat.ID,
-			fmt.Sprintf("❌ <b>Verifikasi Gagal</b>\n\n<i>%s</i>\n\nPastikan kode rahasia belum kedaluwarsa (berlaku 5 menit). Silakan buat kode baru dari dashboard Anda.", err.Error()))
+			fmt.Sprintf("❌ <b>Verifikasi Gagal</b>\n\n<i>%s</i>\n\nPastikan kode rahasia masih aktif (berlaku 10 menit). Silakan gunakan kode terbaru dari dashboard Anda.", err.Error()))
 		return
 	}
 

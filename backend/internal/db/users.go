@@ -193,6 +193,7 @@ func (r *Repo) MarkChallengeTelegramVerified(challengeID, telegramID, username, 
 	defer tx.Rollback()
 	var expiresAt, status string
 	if err := tx.QueryRow(`SELECT expiresAt,status FROM userVerificationChallenges WHERE id=?`, challengeID).Scan(&expiresAt, &status); err != nil {
+		if err == sql.ErrNoRows { return "", fmt.Errorf("verification challenge not found") }
 		return "", err
 	}
 	expires, err := time.Parse(time.RFC3339, expiresAt)
