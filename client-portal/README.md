@@ -6,5 +6,5 @@ Standalone static client portal for `client.zyvenox.tech`.
 - Inference API: `https://api.zyvenox.tech/v1` in production.
 - Local development: `npm run dev`.
 
-The portal never uses port `3840`, exposes admin routes, or stores Telegram user
-sessions in browser storage.
+The portal exposes no admin routes and stores no Telegram user sessions in browser
+storage.
