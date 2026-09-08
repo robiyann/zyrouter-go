@@ -33,7 +33,7 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create verification browser binding")
 		return
 	}
-	id, expires, err := h.Repo.CreateVerificationChallengeForBrowser(5*time.Minute, db.HashUserSecret(browserKey))
+	id, expires, err := h.Repo.CreateVerificationChallengeForBrowser(10*time.Minute, db.HashUserSecret(browserKey))
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create verification challenge")
 		return
@@ -41,7 +41,7 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name: verificationBrowserCookie, Value: browserKey, Path: "/", HttpOnly: true,
 		Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
-		SameSite: http.SameSiteLaxMode, MaxAge: 300,
+		SameSite: http.SameSiteLaxMode, MaxAge: 600,
 	})
 	bot := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
 	deepLink := ""
