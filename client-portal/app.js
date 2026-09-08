@@ -33,6 +33,7 @@
   let globalSource = null;
   let privateSource = null;
   let isStreamPaused = false;
+  let globalSnapshotLoaded = false;
   const renderedGlobalEventIds = new Set();
 
   let activeProfile = null;
@@ -826,7 +827,7 @@
   /* ==========================================================================
      GLOBAL TELEMETRY STREAM & PRIVATE LOG STREAM (Blueprint 8 & 9)
      ========================================================================== */
-  function renderStreamEvent(e) {
+  function renderStreamEvent(e, highlightNew = true) {
     if (isStreamPaused) return;
     const list = $('logsList');
     if (!list) return;
@@ -840,7 +841,7 @@
     if (emptyState) emptyState.remove();
 
     const row = document.createElement('div');
-    row.className = 'stream-row';
+    row.className = highlightNew ? 'stream-row stream-row-new' : 'stream-row';
 
     const timeStr = new Date(e.timestamp || Date.now()).toLocaleTimeString('id-ID', {
       timeZone: 'Asia/Jakarta',
@@ -859,6 +860,17 @@
 
     list.prepend(row);
 
+    if (highlightNew) {
+      const badge = $('streamNewBadge');
+      if (badge) {
+        badge.textContent = 'NEW EVENT';
+        badge.classList.add('pulse');
+        clearTimeout(badge._resetTimer);
+        badge._resetTimer = setTimeout(() => { badge.textContent = 'LIVE'; badge.classList.remove('pulse'); }, 2400);
+      }
+      setTimeout(() => row.classList.remove('stream-row-new'), 2600);
+    }
+
     // Bounded memory: keep max 100 rows
     while (list.children.length > 100) {
       list.lastElementChild.remove();
@@ -873,6 +885,7 @@
       : `${control}/api/user/global-usage/stream`;
 
     setStreamState('CONNECTING');
+    globalSnapshotLoaded = false;
 
     globalSource = new EventSource(streamUrl, { withCredentials: true });
 
@@ -895,7 +908,8 @@
         if ($('globalRequests')) $('globalRequests').textContent = fmt(data.totalRequests);
         if ($('globalTokens')) $('globalTokens').textContent = fmt(data.totalTokens);
         if (Array.isArray(data.recent)) {
-          data.recent.forEach(renderStreamEvent);
+          data.recent.forEach((event) => renderStreamEvent(event, globalSnapshotLoaded));
+          globalSnapshotLoaded = true;
         }
       } catch {
         // Ignore JSON parse errors on ping/keep-alive
@@ -957,7 +971,6 @@
   $('clearLogsBtn')?.addEventListener('click', () => {
     const list = $('logsList');
     if (list) {
-      renderedGlobalEventIds.clear();
       list.innerHTML = '<div class="stream-empty-state"><span class="stream-radar-icon"></span><p>Tampilan dibersihkan. Menunggu event berikutnya...</p></div>';
     }
     showToast('Tampilan stream dibersihkan.', 'info');

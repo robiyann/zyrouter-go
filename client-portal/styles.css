@@ -2604,3 +2604,4 @@ pre code {
     scroll-behavior: auto !important;
   }
 }
+.stream-header-status{display:flex;align-items:center;gap:10px}.stream-new-badge{display:inline-flex;padding:3px 7px;border:1px solid var(--cyan);border-radius:4px;color:var(--cyan);font:700 .62rem var(--font-mono);opacity:.85}.stream-new-badge.pulse{color:#0a0c0f;background:var(--cyan);box-shadow:0 0 18px var(--cyan);animation:streamBadgePulse .8s ease-in-out 2}.stream-row-new{border-color:var(--cyan);background:linear-gradient(90deg,rgba(139,255,42,.16),rgba(255,255,255,.03));box-shadow:0 0 22px rgba(139,255,42,.22),inset 3px 0 var(--cyan)}.stream-row-new .stream-model{color:var(--cyan)}@keyframes streamBadgePulse{50%{transform:scale(1.06)}}
