@@ -35,6 +35,9 @@ type verificationRateState struct {
 var verificationRates = verificationRateState{hits: make(map[string][]time.Time)}
 
 func verificationClientKey(r *http.Request) string {
+	if cookie, err := r.Cookie(verificationBrowserCookie); err == nil && strings.TrimSpace(cookie.Value) != "" {
+		return "browser:" + db.HashUserSecret(cookie.Value)
+	}
 	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
 		return value
 	}
@@ -72,6 +75,15 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BrowserOriginAllowed(r) {
 		handlerutil.WriteJSONError(w, http.StatusForbidden, "csrf_origin_forbidden")
 		return
+	}
+	if cookie, cookieErr := r.Cookie(verificationBrowserCookie); cookieErr == nil && strings.TrimSpace(cookie.Value) != "" {
+		if existingID, expires, lookupErr := h.Repo.GetActiveVerificationChallenge(db.HashUserSecret(cookie.Value)); lookupErr == nil && existingID != "" {
+			bot := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
+			deepLink := ""
+			if bot != "" { deepLink = "https://t.me/" + strings.TrimPrefix(bot, "@") + "?start=" + existingID }
+			handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"challengeId": existingID, "status": "pending", "expiresAt": expires.Format(time.RFC3339), "telegramDeepLink": deepLink, "reused": true})
+			return
+		}
 	}
 	if !allowVerificationRequest(r, 5, 10*time.Minute) {
 		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "verification_start_rate_limited")

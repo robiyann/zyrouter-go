@@ -174,6 +174,15 @@ func (r *Repo) CreateVerificationChallengeForBrowser(ttl time.Duration, browserK
 	return id, expires, err
 }
 
+func (r *Repo) GetActiveVerificationChallenge(browserKey string) (string, time.Time, error) {
+	var id, expiresAt string
+	err := r.db.QueryRow(`SELECT id,expiresAt FROM userVerificationChallenges WHERE browserKey=? AND status IN ('pending','telegram_verified') AND expiresAt>? ORDER BY createdAt DESC LIMIT 1`, browserKey, time.Now().UTC().Format(time.RFC3339)).Scan(&id, &expiresAt)
+	if err == sql.ErrNoRows { return "", time.Time{}, nil }
+	if err != nil { return "", time.Time{}, err }
+	expires, err := time.Parse(time.RFC3339, expiresAt)
+	return id, expires, err
+}
+
 // MarkChallengeTelegramVerified records Telegram proof but does not create a
 // browser session. The browser must complete the second confirmation step.
 func (r *Repo) MarkChallengeTelegramVerified(challengeID, telegramID, username, displayName string) (string, error) {
