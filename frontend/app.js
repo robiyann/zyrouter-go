@@ -6664,7 +6664,7 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = [], provi
             </div>
             <div class="combo-target-picker" style="display:grid; grid-template-columns:minmax(150px,0.8fr) minmax(180px,1fr) auto auto; gap:5px; margin-top:8px; align-items:center;">
               <select id="combo-target-provider" style="background:#05070a; border:1px solid var(--line); color:var(--text); font:10px var(--mono); padding:6px 8px; border-radius:4px;">
-                ${providerOptions.map((provider) => `<option value="${escapeHtml(provider)}">${escapeHtml(provider)}</option>`).join('')}
+                ${providerOptions.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.label)}</option>`).join('')}
               </select>
               <input type="text" id="combo-target-model" placeholder="Upstream model ID" style="background:#05070a; border:1px solid var(--line); color:var(--text); font:10px var(--mono); padding:6px 8px; border-radius:4px;" />
               <button type="button" class="secondary-button" id="btn-fetch-combo-models" style="font-size:9.5px; padding:5px 7px;">Fetch</button>
@@ -6978,13 +6978,25 @@ function openCreateComboModal(comboId = null) {
     request('/api/combos').catch(() => ({ combos: [] })),
     request('/api/providers').catch(() => ({ connections: [] })),
     request('/models').catch(() => ({ data: [] })),
-    request('/api/model-aliases').catch(() => ({ aliases: {} }))
-  ]).then(([comboPayload, provPayload, modelPayload, aliasPayload]) => {
+    request('/api/model-aliases').catch(() => ({ aliases: {} })),
+    request('/api/provider-nodes').catch(() => ({ nodes: [] }))
+  ]).then(([comboPayload, provPayload, modelPayload, aliasPayload, nodesPayload]) => {
     const allActiveModels = (modelPayload.data || []).map((model) => typeof model === 'string' ? model : model.id).filter(Boolean).sort();
-    const providerOptions = Array.from(new Set([
-      ...(typeof KNOWN_PROVIDER_CATALOG !== 'undefined' ? KNOWN_PROVIDER_CATALOG.map((provider) => provider.id) : []),
-      ...(provPayload.connections || []).map((connection) => connection.provider).filter(Boolean)
-    ])).sort();
+    const providerMap = new Map();
+    (typeof KNOWN_PROVIDER_CATALOG !== 'undefined' ? KNOWN_PROVIDER_CATALOG : []).forEach((provider) => {
+      providerMap.set(provider.id, { id: provider.id, label: `${provider.name || provider.id} (${provider.id})` });
+    });
+    (nodesPayload.nodes || []).forEach((node) => {
+      if (!node || !node.id) return;
+      const friendly = node.name || node.prefix || 'Custom Provider Node';
+      providerMap.set(node.id, { id: node.id, label: `${friendly} (custom node)` });
+    });
+    (provPayload.connections || []).forEach((connection) => {
+      const id = connection.provider;
+      if (!id) return;
+      if (!providerMap.has(id)) providerMap.set(id, { id, label: `${id} (configured provider)` });
+    });
+    const providerOptions = Array.from(providerMap.values()).sort((a, b) => a.label.localeCompare(b.label));
     const comboAliases = Object.fromEntries(Object.entries(aliasPayload.aliases || {}).filter(([, target]) => String(target).startsWith('combo:')));
     let combo = { name: '', strategy: 'fallback', models: '[]' };
     let isNew = true;

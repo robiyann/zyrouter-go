@@ -51,6 +51,7 @@ assert.match(app, /kind: 'composite'/, 'combo creation must use the unified comp
 assert.match(app, /members: finalModels/, 'composite alias must submit internal routing members with one public alias');
 assert.match(app, /btn-fetch-combo-models/, 'combo editor must provide an admin-only upstream model fetch action');
 assert.match(app, /btn-add-combo-target/, 'combo editor must provide an explicit internal target action');
+assert.match(app, /nodesPayload\.nodes/, 'combo provider picker must resolve friendly custom-node metadata');
 assert.match(app, /data-test-model/, 'admin provider inventory must retain a dedicated upstream test action');
 assert.match(app, /\/api\/providers\/\$\{encodeURIComponent\(provId\)\}\/test-model/, 'upstream model tests must use the admin provider test endpoint');
 assert.match(app, /data-quick-alias/, 'internal inventory must provide an explicit publish-alias action');
