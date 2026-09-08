@@ -84,19 +84,22 @@ type ModelAlias struct {
 
 // APIKey represents a client-facing authorization key.
 type APIKey struct {
-	ID            string               `json:"id"`
-	Key           string               `json:"key"`
-	Name          *string              `json:"name,omitempty"`
-	MachineID     *string              `json:"machineId,omitempty"`
-	IsActive      int                  `json:"isActive"`               // 0 or 1
-	Restrictions  *string              `json:"restrictions,omitempty"` // JSON string representing KeyRestrictions
-	ClientID      *string              `json:"clientId,omitempty"`
-	PolicyID      *string              `json:"policyId,omitempty"`
-	UserID        *string              `json:"userId,omitempty"`
-	AccountTypeID *string              `json:"accountTypeId,omitempty"`
-	KeyHash       *string              `json:"-"`
-	UserFeatures  *UserFeatureSettings `json:"-"`
-	CreatedAt     string               `json:"createdAt"`
+	ID                  string               `json:"id"`
+	Key                 string               `json:"key"`
+	Name                *string              `json:"name,omitempty"`
+	MachineID           *string              `json:"machineId,omitempty"`
+	IsActive            int                  `json:"isActive"`               // 0 or 1
+	Restrictions        *string              `json:"restrictions,omitempty"` // JSON string representing KeyRestrictions
+	ClientID            *string              `json:"clientId,omitempty"`
+	PolicyID            *string              `json:"policyId,omitempty"`
+	UserID              *string              `json:"userId,omitempty"`
+	TelegramUserID      *string              `json:"telegramUserId,omitempty"`
+	TelegramUsername    *string              `json:"telegramUsername,omitempty"`
+	TelegramDisplayName *string              `json:"telegramDisplayName,omitempty"`
+	AccountTypeID       *string              `json:"accountTypeId,omitempty"`
+	KeyHash             *string              `json:"-"`
+	UserFeatures        *UserFeatureSettings `json:"-"`
+	CreatedAt           string               `json:"createdAt"`
 }
 
 // AccountType is the server-owned access tier for verified users.

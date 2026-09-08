@@ -173,6 +173,25 @@ func TestAdminAPIKeySupportsAccountTypeID(t *testing.T) {
 	}
 }
 
+func TestAdminKeyListIncludesTelegramIdentityAndPagination(t *testing.T) {
+	repo, cleanup := setupAdminTestDB(t)
+	defer cleanup()
+	database := repo.RawDB()
+	if _, err := database.Exec(`INSERT INTO users (id, telegramUserId, telegramUsername, displayName, accountTypeId, isActive, verifiedAt, createdAt, updatedAt) VALUES ('usr-tg', '123456789', 'alice', 'Alice', 'user', 1, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO apiKeys (id, key, keyHash, name, isActive, createdAt, userId, accountTypeId) VALUES ('key-tg', 'zy_1234567', ?, 'Telegram key', 1, '2026-09-08T02:00:00Z', 'usr-tg', 'user'), ('key-admin', 'zy_7654321', ?, 'Admin key', 1, '2026-09-08T01:00:00Z', NULL, 'administrator')`, db.HashUserSecret("zy_1234567"), db.HashUserSecret("zy_7654321")); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	h := NewAdminHandler(repo)
+	h.HandleGetKeys(rec, httptest.NewRequest(http.MethodGet, "/api/keys?page=1&pageSize=1", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"total":2`) || !strings.Contains(rec.Body.String(), `"telegramUserId":"123456789"`) || !strings.Contains(rec.Body.String(), `"telegramUsername":"alice"`) {
+		t.Fatalf("key pagination or Telegram identity missing: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func setupAdminTestDB(t *testing.T) (*db.Repo, func()) {
 	file, err := os.CreateTemp("", "admin-test-*.sqlite")
 	if err != nil {

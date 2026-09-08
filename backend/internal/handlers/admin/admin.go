@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,7 +58,18 @@ func GenerateRandomKey() (string, error) {
 // ==========================================
 
 func (h *AdminHandler) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
-	keys, err := h.repo.GetApiKeys()
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	keys, total, err := h.repo.GetApiKeysPage(page, pageSize)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -71,7 +83,13 @@ func (h *AdminHandler) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
 		copy.Key = maskAPIKey(key.Key)
 		masked = append(masked, &copy)
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"keys": masked})
+	totalPages := 0
+	if total > 0 {
+		totalPages = (total + pageSize - 1) / pageSize
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+		"keys": masked, "page": page, "pageSize": pageSize, "total": total, "totalPages": totalPages,
+	})
 }
 
 // HandleRevealKey returns one full key only when an authenticated admin

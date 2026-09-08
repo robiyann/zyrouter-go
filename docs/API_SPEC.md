@@ -96,8 +96,38 @@ Semua endpoint berikut memerlukan admin session atau API key non-client.
 
 Bulk job berjalan sequential dengan batas maksimal 50 project. Delay dapat berupa fixed atau random range. Metadata job tidak menyimpan token Vercel; restart proses akan menghentikan job yang masih berjalan.
 
-### 3.6. Client Dashboard API (`/api/client/*`)
-Semua endpoint berikut memakai client access token terbitan admin, bukan admin session atau upstream provider key.
+### 3.6. Telegram User Dashboard API (`/api/user/*`)
+Flow ini adalah flow utama untuk user yang diverifikasi melalui Telegram. Session dibuat
+setelah verification challenge selesai; `clientId` tidak pernah diterima dari request
+sebagai sumber otorisasi.
+
+Public verification flow:
+
+- `POST /api/user/verification/start` — Mulai challenge verifikasi Telegram.
+- `GET /api/user/verification/{id}` — Cek status challenge.
+- `POST /api/telegram/webhook` — Webhook bot Telegram yang dikunci dengan secret token.
+
+Session-protected dashboard flow:
+
+- `GET /api/user/profile` — Telegram ID, username, display name, active state, dan account type.
+- `GET /api/user/usage` — Usage agregat user tersebut.
+- `GET /api/user/features` — Feature flags yang diizinkan tier.
+- `PUT /api/user/features` — Update feature preferences dalam batas tier.
+- `GET /api/user/key` — Metadata key aktif, tanpa full secret.
+- `POST /api/user/key` — Generate API key pertama. Jika user sudah memiliki key aktif, response `409`.
+- `POST /api/user/key/rotate` — Revoke key lama dan generate satu key baru secara atomik.
+- `DELETE /api/user/key` — Revoke key aktif.
+
+Invariant Telegram key:
+
+- Satu verified Telegram user hanya boleh memiliki satu API key aktif.
+- Constraint database `idx_api_keys_one_active_user` menjadi guard terakhir.
+- Full secret hanya dikembalikan saat generate/rotate dan tidak pernah bisa di-reveal ulang.
+- Username Telegram boleh kosong; Telegram numeric ID tetap menjadi identity utama.
+
+### 3.7. Machine Client Dashboard API (`/api/client/*`)
+Semua endpoint berikut memakai client access token terbitan admin, bukan admin session,
+Telegram user session, atau upstream provider key. Flow ini terpisah dari user Telegram.
 
 - `GET /api/client/profile` — Profil client terautentikasi.
 - `GET /api/client/policy` — Policy prefix read-only yang ditetapkan admin.
@@ -112,6 +142,39 @@ Admin provisioning endpoints:
 - `POST /api/admin/clients` — Membuat client dan menerima access token satu kali.
 
 Client tidak dapat mengirim `allowedPrefixes`, `allowedProviders`, atau `allowedModels` untuk menimpa policy.
+
+### 3.8. Public Model Discovery & Realtime Requests
+Public data-plane requests memakai Gateway API key yang diterbitkan melalui flow Telegram
+atau machine client. Model yang dikirim wajib public alias; provider prefix dan raw upstream
+model selalu ditolak.
+
+- `GET /models` / `GET /v1/models` — Daftar alias public yang aktif.
+- `GET /models/info?id={alias}` / `GET /v1/models/info?id={alias}` — Metadata alias.
+- `GET /v1/models/chat` — Alias chat yang aktif.
+- `POST /v1/chat/completions` — OpenAI-compatible request. `stream: true` menggunakan SSE.
+- `POST /v1/messages` — Anthropic-compatible request. `stream: true` menggunakan SSE.
+- `POST /v1/responses` — Responses-compatible request.
+
+Contoh request realtime:
+
+```json
+{
+  "model": "unified-chat",
+  "messages": [{"role": "user", "content": "hello"}],
+  "stream": true
+}
+```
+
+`unified-chat` dapat berupa direct alias atau composite alias. Provider/model member
+composite tetap internal dan tidak dikembalikan ke client.
+
+### 3.9. Admin API Key Listing
+
+- `GET /api/keys?page=1&pageSize=25` — Daftar key admin dengan pagination.
+- Response mengandung `page`, `pageSize`, `total`, dan `totalPages`.
+- Field `telegramUserId`, `telegramUsername`, dan `telegramDisplayName` diisi bila key
+  dimiliki verified Telegram user; key yang dibuat langsung dari admin menampilkan nilai kosong.
+- Full secret tidak pernah muncul dalam listing.
 
 ---
 

@@ -124,6 +124,65 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 	return keys, rows.Err()
 }
 
+// GetApiKeysPage returns masked-key metadata for the admin table together with
+// Telegram identity fields when the key belongs to a verified user.
+func (r *Repo) GetApiKeysPage(page, pageSize int) ([]*models.APIKey, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	var total int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM apiKeys`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	rows, err := r.db.Query(`
+		SELECT a.id, a.key, a.keyHash, a.name, a.machineId, a.isActive, a.restrictions,
+		       a.createdAt, a.clientId, a.policyId, a.userId, a.accountTypeId,
+		       u.telegramUserId, u.telegramUsername, u.displayName
+		FROM apiKeys a
+		LEFT JOIN users u ON u.id = a.userId
+		ORDER BY a.createdAt DESC
+		LIMIT ? OFFSET ?`, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	keys := make([]*models.APIKey, 0, pageSize)
+	for rows.Next() {
+		var k models.APIKey
+		var userID, typeID, keyHash, tgID, tgUsername, tgDisplay sql.NullString
+		if err := rows.Scan(&k.ID, &k.Key, &keyHash, &k.Name, &k.MachineID, &k.IsActive, &k.Restrictions, &k.CreatedAt, &k.ClientID, &k.PolicyID, &userID, &typeID, &tgID, &tgUsername, &tgDisplay); err != nil {
+			return nil, 0, err
+		}
+		if keyHash.Valid {
+			k.KeyHash = &keyHash.String
+		}
+		if userID.Valid {
+			k.UserID = &userID.String
+		}
+		if typeID.Valid {
+			k.AccountTypeID = &typeID.String
+		}
+		if tgID.Valid {
+			k.TelegramUserID = &tgID.String
+		}
+		if tgUsername.Valid {
+			k.TelegramUsername = &tgUsername.String
+		}
+		if tgDisplay.Valid {
+			k.TelegramDisplayName = &tgDisplay.String
+		}
+		keys = append(keys, &k)
+	}
+	return keys, total, rows.Err()
+}
+
 // CreateApiKey inserts a new API key record with optional restrictions. The
 // raw secret is returned to the caller but only its prefix and one-way hash
 // are persisted.

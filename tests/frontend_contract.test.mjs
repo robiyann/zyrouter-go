@@ -28,6 +28,8 @@ assert.match(app, /btn-fetch-alias-models/, 'admin model alias form must keep th
 assert.match(app, /alias-only/i, 'frontend contract must document alias-only model access');
 assert.doesNotMatch(app, /Edit Prefix/, 'provider prefix must not be exposed as a client-facing management action');
 assert.match(app, /data-key-scope/, 'API key governance must expose scope filters');
+assert.match(app, /telegramUserId|Telegram Identity/, 'API key table must expose verified Telegram identity metadata');
+assert.match(app, /data-key-page/, 'API key table must expose pagination controls');
 assert.match(app, /Public Model Alias/, 'combo management must expose a public alias field');
 assert.match(app, /published aliases or valid provider\/model targets/, 'combo builder must restrict steps to published aliases or admin-internal targets');
 assert.match(app, /Internal Upstream Inventory/i, 'provider management must distinguish private inventory');

@@ -4064,7 +4064,7 @@ function renderCombos(payload) {
   if (!rows.length) return emptySurface('No route combos configured. Click "+ Add connection" or "+ Create combo" to compose a fallback or round-robin route.');
   return `
     <div class="data-table-container">
-      <table class="data-table">
+      <table class="data-table api-keys-table">
         <thead>
           <tr>
             <th>Strategy</th>
@@ -4107,6 +4107,12 @@ function renderCombos(payload) {
 }
 
 let keyScopeFilter = 'all';
+let keyCurrentPage = 1;
+let keyPageSize = 25;
+
+function getKeysRequestPath(page = keyCurrentPage) {
+  return `/api/keys?page=${page}&pageSize=${keyPageSize}`;
+}
 
 function getKeyScope(item) {
   if (item.clientId) return 'client';
@@ -4138,6 +4144,7 @@ function renderKeys(payload) {
             <th>Key Name</th>
             <th>Key Token</th>
             <th>Scope / Account Type</th>
+            <th>Telegram Identity</th>
             <th>Policy Restrictions</th>
             <th class="table-cell-actions">Actions</th>
           </tr>
@@ -4159,6 +4166,9 @@ function renderKeys(payload) {
               </td>
               <td><span class="table-badge active">${escapeHtml(getKeyScope(item))}</span><small style="display:block; color:var(--muted); margin-top:3px;">${escapeHtml(item.accountTypeId || (item.clientId ? 'client' : item.userId ? 'user' : 'administrator'))}</small></td>
               <td>
+                ${item.telegramUserId || item.telegramUsername ? `<strong style="display:block; color:var(--text-bright);">${escapeHtml(item.telegramUsername ? `@${item.telegramUsername}` : '--')}</strong><small style="display:block; color:var(--muted); margin-top:3px;">TG ID: ${escapeHtml(item.telegramUserId || '--')}</small>` : '<span style="color:var(--muted);">--</span>'}
+              </td>
+              <td>
                 <div style="font-size:10px; font-family:var(--mono); color:var(--muted); max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   ${escapeHtml(item.restrictions || 'No restrictions (unlimited)')}
                 </div>
@@ -4171,6 +4181,13 @@ function renderKeys(payload) {
           `).join('')}
         </tbody>
       </table>
+    </div>
+    <div class="aliases-pagination-bar api-keys-pagination">
+      <span>Page <strong>${Number(payload.page || 1)}</strong> / <strong>${Number(payload.totalPages || 1)}</strong> · ${Number(payload.total || allRows.length)} total keys</span>
+      <div class="aliases-pagination-controls">
+        <button type="button" class="alias-page-btn" data-key-page="${Math.max(1, Number(payload.page || 1) - 1)}" ${Number(payload.page || 1) <= 1 ? 'disabled' : ''}>&larr; Prev</button>
+        <button type="button" class="alias-page-btn" data-key-page="${Number(payload.page || 1) + 1}" ${Number(payload.page || 1) >= Number(payload.totalPages || 1) ? 'disabled' : ''}>Next &rarr;</button>
+      </div>
     </div>
   `;
 }
@@ -5756,7 +5773,7 @@ async function renderView(name) {
           const [combos, aliases] = await Promise.all([request('/api/combos'), request('/api/model-aliases').catch(() => ({ aliases: {} }))]);
           return { ...combos, modelAliases: aliases.aliases || {} };
         },
-        keys: () => request('/api/keys'),
+        keys: () => request(getKeysRequestPath()),
         'account-types': async () => {
           const [typesRes, usersRes, aliasesRes] = await Promise.all([
             request('/api/admin/account-types').catch(() => ({ accountTypes: [] })),
@@ -6271,11 +6288,14 @@ function bindKeyManagementFilters() {
   document.querySelectorAll('[data-key-scope]').forEach((button) => {
     button.onclick = async () => {
       keyScopeFilter = button.dataset.keyScope || 'all';
-      const payload = await request('/api/keys');
-      content.innerHTML = renderKeys(payload);
-      bindKeyManagementFilters();
-      bindKeyPolicyEditors();
-      bindDeleteButtons('keys');
+      keyCurrentPage = 1;
+      await renderView('keys');
+    };
+  });
+  document.querySelectorAll('[data-key-page]').forEach((button) => {
+    button.onclick = async () => {
+      keyCurrentPage = Math.max(1, Number(button.dataset.keyPage) || 1);
+      await renderView('keys');
     };
   });
 }
@@ -6285,7 +6305,7 @@ function bindKeyPolicyEditors() {
     button.onclick = async () => {
       try {
         const [keysPayload, provPayload, modelPayload, nodesPayload, customPayload, typesPayload] = await Promise.all([
-          request('/api/keys'),
+          request('/api/keys?page=1&pageSize=100'),
           request('/api/providers').catch(() => ({ connections: [] })),
           request('/models').catch(() => ({ data: [] })),
           request('/api/provider-nodes').catch(() => ({ nodes: [] })),
