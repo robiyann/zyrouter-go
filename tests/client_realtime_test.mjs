@@ -33,7 +33,7 @@ const build = spawn('go', ['build', '-trimpath', '-o', 'zyrouter.exe', './cmd/zy
 await new Promise((resolve, reject) => build.on('close', (code) => code === 0 ? resolve() : reject(new Error(`build failed: ${code}`))));
 const server = spawn(binPath, [], {
   cwd: backendDir,
-  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DB_PATH: dbPath, INITIAL_PASSWORD: adminPassword, TELEGRAM_WEBHOOK_SECRET: webhookSecret },
+  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DB_PATH: dbPath, INITIAL_PASSWORD: adminPassword, TELEGRAM_WEBHOOK_SECRET: webhookSecret, TELEGRAM_POLLING_ENABLED: 'false' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 const base = `http://127.0.0.1:${port}`;

@@ -49,19 +49,20 @@ func loadDotenv(path string) {
 
 // Config holds the proxy gateway configuration.
 type Config struct {
-	Host             string
-	Port             int
-	DatabasePath     string
-	JWTSecret        string
-	InitialPassword  string
-	APIKeySecret     string
-	MachineIDSalt    string
-	RTKEnabled          bool
-	CavemanEnabled      bool
-	PonytailEnabled     bool
-	EnabledProviders    []string
-	TelegramBotToken    string
-	TelegramBotUsername string
+	Host                   string
+	Port                   int
+	DatabasePath           string
+	JWTSecret              string
+	InitialPassword        string
+	APIKeySecret           string
+	MachineIDSalt          string
+	RTKEnabled             bool
+	CavemanEnabled         bool
+	PonytailEnabled        bool
+	EnabledProviders       []string
+	TelegramBotToken       string
+	TelegramBotUsername    string
+	TelegramPollingEnabled bool
 }
 
 // ResolveDataDir returns the base data directory: DATA_DIR env, else the
@@ -135,19 +136,20 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
-		Host:             host,
-		Port:             port,
-		DatabasePath:     dbPath,
-		JWTSecret:        loadJWTSecret(dataDir),
-		InitialPassword:  initialPassword,
-		APIKeySecret:     apiKeySecret,
-		MachineIDSalt:    machineIDSalt,
-		RTKEnabled:       rtkEnabled,
-		CavemanEnabled:   cavemanEnabled,
-		PonytailEnabled:     ponytailEnabled,
-		EnabledProviders:    enabledProviders,
-		TelegramBotToken:    strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
-		TelegramBotUsername: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")),
+		Host:                   host,
+		Port:                   port,
+		DatabasePath:           dbPath,
+		JWTSecret:              loadJWTSecret(dataDir),
+		InitialPassword:        initialPassword,
+		APIKeySecret:           apiKeySecret,
+		MachineIDSalt:          machineIDSalt,
+		RTKEnabled:             rtkEnabled,
+		CavemanEnabled:         cavemanEnabled,
+		PonytailEnabled:        ponytailEnabled,
+		EnabledProviders:       enabledProviders,
+		TelegramBotToken:       strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+		TelegramBotUsername:    strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")),
+		TelegramPollingEnabled: strings.ToLower(strings.TrimSpace(os.Getenv("TELEGRAM_POLLING_ENABLED"))) != "false" && os.Getenv("TELEGRAM_POLLING_ENABLED") != "0",
 	}
 }
 

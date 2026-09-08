@@ -47,6 +47,7 @@ const proxyProcess = spawn(binPath, [], {
     DB_PATH: dbPath,
     INITIAL_PASSWORD: adminPassword,
     TELEGRAM_WEBHOOK_SECRET: tgWebhookSecret,
+    TELEGRAM_POLLING_ENABLED: 'false',
     FRONTEND_DIR: path.join(rootDir, 'frontend'),
   },
   stdio: ['ignore', 'pipe', 'pipe'],

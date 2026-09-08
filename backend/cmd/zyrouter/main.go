@@ -202,7 +202,7 @@ func runServer(cCtx *cli.Context) error {
 	fmt.Fprintf(os.Stdout, "\n  🚀 Zyrouter AI Gateway (%s) listening on %s\n\n", updater.CurrentVersion, addr)
 	botCtx, botCancel := context.WithCancel(context.Background())
 	defer botCancel()
-	if cfg.TelegramBotToken != "" {
+	if cfg.TelegramBotToken != "" && cfg.TelegramPollingEnabled {
 		tgBot := telegram.NewBotService(repo, cfg.TelegramBotToken, cfg.TelegramBotUsername)
 		go tgBot.Start(botCtx)
 	}

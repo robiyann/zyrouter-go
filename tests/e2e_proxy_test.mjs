@@ -106,6 +106,7 @@ const proxyProcess = spawn(binPath, [], {
     PORT: String(testPort),
     DB_PATH: dbPath,
     INITIAL_PASSWORD: adminPassword,
+    TELEGRAM_POLLING_ENABLED: 'false',
     FRONTEND_DIR: path.join(rootDir, 'frontend'),
   },
   stdio: ['ignore', 'pipe', 'pipe'],
