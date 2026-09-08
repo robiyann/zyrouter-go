@@ -242,6 +242,9 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 				var ts, prov, mod, status string
 				var prompt, completion int
 				if err := rows.Scan(&ts, &prov, &mod, &prompt, &completion, &status); err == nil {
+					if status == "success" || status == "ok" {
+						status = "200"
+					}
 					displayProvider := labels.Provider(repo, prov)
 					displayModel := labels.Model(repo, prov, mod)
 					k := fmt.Sprintf("%s|%s|%s", ts, displayProvider, displayModel)

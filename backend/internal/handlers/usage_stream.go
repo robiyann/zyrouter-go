@@ -233,6 +233,9 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 			var ts, prov, mod, status string
 			var prompt, completion int
 			if err := recentRows.Scan(&ts, &prov, &mod, &prompt, &completion, &status); err == nil {
+				if status == "success" || status == "ok" {
+					status = "200"
+				}
 				displayProvider := labels.Provider(repo, prov)
 				displayModel := labels.Model(repo, prov, mod)
 				recent = append(recent, usagetracker.RecentRequest{

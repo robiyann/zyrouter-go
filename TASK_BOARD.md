@@ -53,6 +53,7 @@
 ---
 
 ## 📌 Log Klaim Terkini
+- `2026-09-08`: **Antigravity** menstandarisasi status request ke format HTTP status code (`200`) secara end-to-end (Go engine backend `usage.go`, `usage_stream.go`, `usagetracker/tracker.go`, serta normalisasi frontend di `app.js` pada Usage Ledger, Console Stream, dan Overview Event box), mengeliminasi inkonsistensi label status yang sebelumnya tercampur antara `"ok"` (in-memory buffer) dan `"success"` (SQLite DB).
 - `2026-09-08`: **Antigravity** menambahkan cyber-style live stream animation & neon glow pulse pada Console Stream dan Usage Ledger (`frontend/styles.css`, `frontend/app.js`), radar pulse ring pada stream status indicator, dan ripple badge pings pada row baru.
 - `2026-09-08`: **Antigravity** memperbaiki bug real-time live streaming pada Console Stream (`zyrouter/frontend/app.js`): mengatasi `ReferenceError: timeStr is not defined` pada `bindLogStream`, membersihkan `#console-empty-row`, mencegah listener leak saat navigasi antar tab dengan mekanisme teardown `startStream`, dan menambahkan regression assertions pada contract test.
 - `2026-09-08`: **Antigravity & Codex** menyelesaikan TASK-014: Melengkapi automated test suite dengan `tests/e2e_proxy_test.mjs` (11 skenario integrasi live mock), memasang retry loop pada `InsertAuthLogs` di SQLite, mengintegrasikan E2E ke `tests/verify_plan.ps1`, dan memvalidasi seluruh test suite (Go unit, vet, build, frontend syntax & contract, e2e proxy). Status hijau 100%.

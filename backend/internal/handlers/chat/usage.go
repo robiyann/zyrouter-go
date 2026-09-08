@@ -64,9 +64,9 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
 	var usageErr error
 	if info.UserID != "" {
-		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
+		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "200", totalTokens, metaJSON, tokensJSON)
 	} else {
-		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "success", totalTokens, metaJSON, tokensJSON)
+		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "200", totalTokens, metaJSON, tokensJSON)
 	}
 	if err := usageErr; err != nil {
 		log.Error("usage", "insert failed", "error", err)
@@ -119,7 +119,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	reqData, err := json.Marshal(map[string]any{
 		"id": reqID, "provider": providerLabel, "providerId": info.Provider, "model": modelLabel, "modelId": info.Model,
 		"connectionId": info.ConnectionID, "account": accountLabel,
-		"proxy": proxyLabel, "strategy": stratLabel, "status": "success",
+		"proxy": proxyLabel, "strategy": stratLabel, "status": "200",
 		"timestamp": now.Format("2006-01-02T15:04:05.000Z"),
 		"latency":   map[string]int64{"ttft": ttftMs, "total": latencyMs},
 		"tokens": map[string]int{
@@ -134,7 +134,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		log.Error("usage", "marshal request detail failed", "error", err)
 		return
 	}
-	if err := h.Repo.InsertRequestDetail(reqID, info.Provider, info.Model, info.ConnectionID, "success", string(reqData)); err != nil {
+	if err := h.Repo.InsertRequestDetail(reqID, info.Provider, info.Model, info.ConnectionID, "200", string(reqData)); err != nil {
 		log.Error("usage", "insert request detail failed", "error", err)
 	}
 
@@ -183,7 +183,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		Cost:             cost,
 		DurationMs:       latencyMs,
 		Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
-		Status:           "ok",
+		Status:           "200",
 	}, h.Repo)
 }
 

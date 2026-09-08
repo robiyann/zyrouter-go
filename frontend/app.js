@@ -5285,6 +5285,7 @@ function renderUsage(payload) {
                 const dateStr = formatWIBDate(item.timestamp);
                 const toks = Number((item.promptTokens || 0) + (item.completionTokens || 0));
                 const isErr = item.status === 'error' || String(item.status).startsWith('4') || String(item.status).startsWith('5');
+                const displayStatus = (item.status === 'ok' || item.status === 'success') ? '200' : String(item.status || item.count || '200');
                 const pName = (item.provider || 'gateway').toLowerCase();
                 const accName = item.account || item.connectionId || '--';
                 const proxyName = item.proxy || 'Direct';
@@ -5311,7 +5312,7 @@ function renderUsage(payload) {
                       </div>
                     </td>
                     <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
-                    <td style="text-align: right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(item.status || item.count || '200')}</span></td>
+                    <td style="text-align: right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(displayStatus)}</span></td>
                   </tr>
                 `;
               }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--dim); padding:20px;">No requests recorded yet.</td></tr>'}
@@ -5435,7 +5436,7 @@ function renderLogs(payload = {}) {
               ` : recent.map((req, idx) => {
                 const timeStr = formatWIBTimestamp(req.timestamp);
                 const isErr = req.status === 'error' || String(req.status).startsWith('4') || String(req.status).startsWith('5');
-                const statusCode = req.status || 200;
+                const statusCode = (req.status === 'ok' || req.status === 'success') ? 200 : (req.status || 200);
                 const statusDotColor = isErr ? '#ef4444' : '#22c55e';
                 const totalTokens = (req.promptTokens || 0) + (req.completionTokens || 0);
                 const latencySec = req.durationMs ? (req.durationMs / 1000).toFixed(2) + 's' : (req.latency ? req.latency : '1.42s');
@@ -8623,7 +8624,7 @@ function bindLogStream() {
 
         const timeStr = formatWIBTimestamp(topReq.timestamp);
         const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
-        const statusCode = topReq.status || 200;
+        const statusCode = (topReq.status === 'ok' || topReq.status === 'success') ? 200 : (topReq.status || 200);
         const statusDotColor = isErr ? '#ef4444' : '#22c55e';
         const totalTokens = (topReq.promptTokens || 0) + (topReq.completionTokens || 0);
         const latencySec = topReq.durationMs ? (topReq.durationMs / 1000).toFixed(2) + 's' : (topReq.latency ? topReq.latency : '1.78s');
@@ -8891,7 +8892,7 @@ async function loadOverview() {
       if (overviewStreamBox) {
         overviewStreamBox.innerHTML = recentReqs.slice(0, 7).map((req, idx) => {
           const isErr = req.status === 'error' || String(req.status).startsWith('4') || String(req.status).startsWith('5');
-          const statusCode = req.status || 200;
+          const statusCode = (req.status === 'ok' || req.status === 'success') ? 200 : (req.status || 200);
           const statusColor = isErr ? '#ef4444' : '#22c55e';
           const toks = (req.promptTokens || 0) + (req.completionTokens || 0);
           const pName = (req.provider || 'gateway').toLowerCase();
@@ -9582,6 +9583,7 @@ startStream('/api/usage/stream', (payload) => {
         const cToks = Number(topReq.completionTokens || 0);
         const toks = pToks + cToks;
         const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
+        const displayStatus = (topReq.status === 'ok' || topReq.status === 'success') ? '200' : String(topReq.status || 200);
         const proxyName = topReq.proxy || 'Direct';
         const tr = document.createElement('tr');
         tr.dataset.requestKey = requestKey;
@@ -9592,7 +9594,7 @@ startStream('/api/usage/stream', (payload) => {
           <td><div style="line-height:1.25;"><strong style="color:var(--text-bright); font-size:11px;">${escapeHtml(topReq.provider || '--')}</strong><small style="display:block; font-size:8.5px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">${escapeHtml(topReq.account || topReq.connectionId || '--')}</small></div></td>
           <td><div style="line-height:1.25;"><span class="table-badge ${proxyName !== 'Direct' && proxyName !== '--' ? 'purple' : ''}" style="font-size:8px; padding:1px 5px;">${escapeHtml(proxyName)}</span>${topReq.strategy ? `<small style="display:block; font-size:7.5px; font-family:var(--mono); color:#71717a; text-transform:uppercase; margin-top:2px;">${escapeHtml(topReq.strategy)}</small>` : ''}</div></td>
           <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
-          <td style="text-align:right;"><span class="table-badge ${isErr ? 'inactive' : 'active'} live-badge-ping" style="font-size:7.5px;">${escapeHtml(String(topReq.status || 200))}</span></td>
+          <td style="text-align:right;"><span class="table-badge ${isErr ? 'inactive' : 'active'} live-badge-ping" style="font-size:7.5px;">${escapeHtml(displayStatus)}</span></td>
         `;
         usageTbody.insertBefore(tr, usageTbody.firstChild);
         while (usageTbody.children.length > usageRecentPageSize) usageTbody.removeChild(usageTbody.lastChild);
@@ -9604,7 +9606,7 @@ startStream('/api/usage/stream', (payload) => {
     if (overviewStreamBox && topReq && topReq.model) {
       const timeStr = formatWIBTime(topReq.timestamp);
       const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
-      const statusCode = topReq.status || 200;
+      const statusCode = (topReq.status === 'ok' || topReq.status === 'success') ? 200 : (topReq.status || 200);
       const statusColor = isErr ? '#ef4444' : '#22c55e';
       const toks = (topReq.promptTokens || 0) + (topReq.completionTokens || 0);
       const pName = (topReq.provider || 'gateway').toLowerCase();
