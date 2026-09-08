@@ -125,6 +125,35 @@ function formatTokenCount(value) {
   if (absolute >= 1e3) return `${(amount / 1e3).toFixed(absolute >= 1e5 ? 1 : 2)}K`;
   return Math.round(amount).toLocaleString('en-US');
 }
+
+function formatWIBParts(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return parts;
+}
+
+function formatWIBTimestamp(value) {
+  const parts = formatWIBParts(value);
+  return parts ? `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} WIB` : '--';
+}
+
+function formatWIBTime(value) {
+  const parts = formatWIBParts(value);
+  return parts ? `${parts.hour}:${parts.minute}:${parts.second}` : '--:--:--';
+}
+
+function formatWIBDate(value) {
+  const parts = formatWIBParts(value);
+  return parts ? `${parts.day}/${parts.month}/${parts.year}` : '';
+}
 function emptySurface(message = 'No data connected') {
   return `<div class="card generic-empty"><span class="empty-symbol large">+</span><h2>${escapeHtml(message)}</h2><p>Data on this surface is read from the Go engine and SQLite database.</p></div>`;
 }
@@ -212,6 +241,7 @@ function renderFullLoginGate() {
       window.localStorage.removeItem('zyrouter.apiKey');
       showToast('Welcome back! Dashboard unlocked.', 'success');
       overlay.remove();
+      ensureGlobalStream();
 
       // Reload view with fresh credentials
       const currentView = window.location.hash.slice(1) || 'overview';
@@ -5251,8 +5281,8 @@ function renderUsage(payload) {
           </thead>
           <tbody id="usage-recent-tbody">
               ${pageRecentItems.length ? pageRecentItems.map((item) => {
-                const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--';
-                const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+                const timeStr = formatWIBTime(item.timestamp);
+                const dateStr = formatWIBDate(item.timestamp);
                 const toks = Number((item.promptTokens || 0) + (item.completionTokens || 0));
                 const isErr = item.status === 'error' || String(item.status).startsWith('4') || String(item.status).startsWith('5');
                 const pName = (item.provider || 'gateway').toLowerCase();
@@ -5403,7 +5433,7 @@ function renderLogs(payload = {}) {
                   </td>
                 </tr>
               ` : recent.map((req, idx) => {
-                const timeStr = req.timestamp ? new Date(req.timestamp).toISOString().replace('T', ' ').slice(0, 23) + 'Z' : new Date().toISOString().replace('T', ' ').slice(0, 23) + 'Z';
+                const timeStr = formatWIBTimestamp(req.timestamp);
                 const isErr = req.status === 'error' || String(req.status).startsWith('4') || String(req.status).startsWith('5');
                 const statusCode = req.status || 200;
                 const statusDotColor = isErr ? '#ef4444' : '#22c55e';
@@ -5475,7 +5505,7 @@ function renderAuthLogs(payload = {}) {
   const security = payload.securitySummary || {};
   const rows = logs.length ? logs.map((entry) => `
     <tr>
-      <td>${escapeHtml(new Date(entry.timestamp || Date.now()).toLocaleString())}</td>
+      <td>${escapeHtml(formatWIBTimestamp(entry.timestamp || Date.now()))}</td>
       <td><span class="table-badge ${Number(entry.status) >= 400 ? 'danger' : 'active'}">${escapeHtml(entry.event || '--')}</span></td>
       <td><code>${escapeHtml(entry.ip || '--')}</code></td>
       <td>${escapeHtml(`${entry.method || ''} ${entry.path || ''}`.trim() || '--')}</td>
@@ -8828,13 +8858,7 @@ async function loadOverview() {
           const toks = (req.promptTokens || 0) + (req.completionTokens || 0);
           const pName = (req.provider || 'gateway').toLowerCase();
           const cleanP = pName.startsWith('openai-compatible') ? 'custom' : pName;
-          const timeStr = req.timestamp
-            ? new Date(req.timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              })
-            : '--:--:--';
+          const timeStr = formatWIBTime(req.timestamp);
 
           return `
             <div class="console-log-row" style="background:#05070a; border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -9509,8 +9533,8 @@ startStream('/api/usage/stream', (payload) => {
       if (!alreadyRendered) {
         const emptyTr = usageTbody.querySelector('td[colspan]');
         if (emptyTr) emptyTr.closest('tr').remove();
-        const timeStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const dateStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+        const timeStr = formatWIBTime(topReq.timestamp);
+        const dateStr = formatWIBDate(topReq.timestamp);
         const pToks = Number(topReq.promptTokens || 0);
         const cToks = Number(topReq.completionTokens || 0);
         const toks = pToks + cToks;
@@ -9534,7 +9558,7 @@ startStream('/api/usage/stream', (payload) => {
     // 2. Live prepend to Overview Event Activity Box
     const overviewStreamBox = document.querySelector('#overview-recent-stream-box');
     if (overviewStreamBox && topReq && topReq.model) {
-      const timeStr = topReq.timestamp ? new Date(topReq.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--';
+      const timeStr = formatWIBTime(topReq.timestamp);
       const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
       const statusCode = topReq.status || 200;
       const statusColor = isErr ? '#ef4444' : '#22c55e';
@@ -9576,6 +9600,7 @@ async function bootstrapDashboardAuth() {
 
   if (dashboardAuthenticated) {
     document.querySelector('#full-login-overlay')?.remove();
+    ensureGlobalStream();
     setView(window.location.hash.slice(1) || 'overview');
   } else {
     renderFullLoginGate();

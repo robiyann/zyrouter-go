@@ -1,5 +1,13 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-08] - [Codex] - Dashboard Realtime Stream & WIB Timestamps
+- **Modul**: `Usage Ledger / Console Stream / Dashboard SSE`
+- **Deskripsi Perubahan**:
+  - Memulai global usage SSE setelah dashboard authentication berhasil; Usage Ledger tidak lagi menunggu navigasi ke Console Stream.
+  - Menambahkan format timestamp eksplisit zona waktu `Asia/Jakarta` dengan suffix `WIB` untuk Usage, Console Stream, Overview, dan Auth Log.
+  - Menjaga reconnect SSE setelah koneksi terputus.
+- **Status Task**: Selesai / Terhubung ke Observability
+
 ### [2026-09-08] - [Codex] - Unified Composite Model Aliases
 - **Modul**: `Model Aliases / Combo Routing / Client Policy`
 - **Deskripsi Perubahan**:
