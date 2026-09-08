@@ -30,6 +30,12 @@ assert.doesNotMatch(app, /Edit Prefix/, 'provider prefix must not be exposed as 
 assert.match(app, /data-key-scope/, 'API key governance must expose scope filters');
 assert.match(app, /telegramUserId|Telegram Identity/, 'API key table must expose verified Telegram identity metadata');
 assert.match(app, /data-key-page/, 'API key table must expose pagination controls');
+assert.match(app, /data-key-account-type/, 'API key table must expose account type filter');
+assert.match(app, /data-key-created-from/, 'API key table must expose generated-from filter');
+assert.match(app, /data-key-created-to/, 'API key table must expose generated-to filter');
+assert.match(app, /accountTypeId/, 'API key request must send account type filter');
+assert.match(app, /createdFrom/, 'API key request must send generated-from filter');
+assert.match(app, /createdTo/, 'API key request must send generated-to filter');
 assert.match(app, /Public Model Alias/, 'combo management must expose a public alias field');
 assert.match(app, /published aliases or valid provider\/model targets/, 'combo builder must restrict steps to published aliases or admin-internal targets');
 assert.match(app, /Internal Upstream Inventory/i, 'provider management must distinguish private inventory');
@@ -67,4 +73,3 @@ assert.match(app, /emptyRow\.remove\(\)/, 'bindLogStream must remove empty row w
 assert.match(app, /ensureGlobalStream\(\)/, 'dashboard must start realtime SSE after authentication');
 assert.doesNotMatch(app, /Successfully imported .* models from upstream/, 'provider fetch must not auto-create public/custom model records');
 console.log('frontend backend contract checks passed');
-

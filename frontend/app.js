@@ -4139,9 +4139,16 @@ function renderCombos(payload) {
 let keyScopeFilter = 'all';
 let keyCurrentPage = 1;
 let keyPageSize = 25;
+let keyAccountTypeFilter = 'all';
+let keyCreatedFrom = '';
+let keyCreatedTo = '';
 
 function getKeysRequestPath(page = keyCurrentPage) {
-  return `/api/keys?page=${page}&pageSize=${keyPageSize}`;
+  const params = new URLSearchParams({ page, pageSize: keyPageSize, scope: keyScopeFilter });
+  if (keyAccountTypeFilter !== 'all') params.set('accountTypeId', keyAccountTypeFilter);
+  if (keyCreatedFrom) params.set('createdFrom', keyCreatedFrom);
+  if (keyCreatedTo) params.set('createdTo', keyCreatedTo);
+  return `/api/keys?${params.toString()}`;
 }
 
 function getKeyScope(item) {
@@ -4152,8 +4159,7 @@ function getKeyScope(item) {
 
 function renderKeys(payload) {
   const allRows = payload.keys || [];
-  const rows = allRows.filter((item) => keyScopeFilter === 'all' || getKeyScope(item) === keyScopeFilter);
-  if (!rows.length) return emptySurface('No API keys configured');
+  const rows = allRows;
   const scopeCounts = { all: allRows.length, gateway: 0, user: 0, client: 0 };
   allRows.forEach((item) => { scopeCounts[getKeyScope(item)]++; });
   return `
@@ -4164,6 +4170,13 @@ function renderKeys(payload) {
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">
         ${[['all','All'],['gateway','Gateway'],['user','Verified User'],['client','Client Scoped']].map(([scope, label]) => `<button type="button" class="alias-filter-chip ${keyScopeFilter === scope ? 'active' : ''}" data-key-scope="${scope}">${label} (${scopeCounts[scope]})</button>`).join('')}
+      </div>
+      <div class="api-key-filters" style="display:flex; align-items:end; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <label style="font-size:10px; color:var(--muted);">Account Type<select data-key-account-type style="display:block; min-width:150px; margin-top:3px;"><option value="all" ${keyAccountTypeFilter === 'all' ? 'selected' : ''}>All account types</option><option value="administrator" ${keyAccountTypeFilter === 'administrator' ? 'selected' : ''}>Administrator</option><option value="user" ${keyAccountTypeFilter === 'user' ? 'selected' : ''}>User</option><option value="paid_user" ${keyAccountTypeFilter === 'paid_user' ? 'selected' : ''}>Paid User</option></select></label>
+        <label style="font-size:10px; color:var(--muted);">Generated from<input type="date" data-key-created-from value="${escapeHtml(keyCreatedFrom)}" style="display:block; margin-top:3px;"></label>
+        <label style="font-size:10px; color:var(--muted);">Generated to<input type="date" data-key-created-to value="${escapeHtml(keyCreatedTo)}" style="display:block; margin-top:3px;"></label>
+        <button type="button" class="secondary-button" data-key-filter-apply style="font-size:9.5px; padding:6px 9px;">Apply Filters</button>
+        <button type="button" class="secondary-button" data-key-filter-clear style="font-size:9.5px; padding:6px 9px;">Clear</button>
       </div>
     </div>
     <div class="data-table-container">
@@ -4180,7 +4193,7 @@ function renderKeys(payload) {
           </tr>
         </thead>
         <tbody>
-          ${rows.map((item) => `
+          ${rows.length ? rows.map((item) => `
             <tr>
               <td>
                 <span class="table-badge ${item.isActive === 1 ? 'active' : 'inactive'}">
@@ -4208,7 +4221,7 @@ function renderKeys(payload) {
                 <button class="danger-button" data-delete="keys" data-id="${escapeHtml(item.id)}">Delete</button>
               </td>
             </tr>
-          `).join('')}
+          `).join('') : '<tr><td colspan="7" style="padding:18px; text-align:center; color:var(--muted);">No API keys match the current filters.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -6322,6 +6335,17 @@ function bindKeyManagementFilters() {
       keyCurrentPage = 1;
       await renderView('keys');
     };
+  });
+  document.querySelector('[data-key-filter-apply]')?.addEventListener('click', async () => {
+    keyAccountTypeFilter = document.querySelector('[data-key-account-type]')?.value || 'all';
+    keyCreatedFrom = document.querySelector('[data-key-created-from]')?.value || '';
+    keyCreatedTo = document.querySelector('[data-key-created-to]')?.value || '';
+    keyCurrentPage = 1;
+    await renderView('keys');
+  });
+  document.querySelector('[data-key-filter-clear]')?.addEventListener('click', async () => {
+    keyAccountTypeFilter = 'all'; keyCreatedFrom = ''; keyCreatedTo = ''; keyCurrentPage = 1;
+    await renderView('keys');
   });
   document.querySelectorAll('[data-key-page]').forEach((button) => {
     button.onclick = async () => {

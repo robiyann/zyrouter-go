@@ -60,6 +60,10 @@ func GenerateRandomKey() (string, error) {
 func (h *AdminHandler) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+	scope := r.URL.Query().Get("scope")
+	accountType := r.URL.Query().Get("accountTypeId")
+	createdFrom := r.URL.Query().Get("createdFrom")
+	createdTo := r.URL.Query().Get("createdTo")
 	if page < 1 {
 		page = 1
 	}
@@ -69,7 +73,7 @@ func (h *AdminHandler) HandleGetKeys(w http.ResponseWriter, r *http.Request) {
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	keys, total, err := h.repo.GetApiKeysPage(page, pageSize)
+	keys, total, err := h.repo.GetApiKeysPageFiltered(page, pageSize, scope, accountType, createdFrom, createdTo)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return

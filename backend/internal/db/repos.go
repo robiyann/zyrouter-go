@@ -127,6 +127,12 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 // GetApiKeysPage returns masked-key metadata for the admin table together with
 // Telegram identity fields when the key belongs to a verified user.
 func (r *Repo) GetApiKeysPage(page, pageSize int) ([]*models.APIKey, int, error) {
+	return r.GetApiKeysPageFiltered(page, pageSize, "", "", "", "")
+}
+
+// GetApiKeysPageFiltered returns masked API-key metadata with server-side
+// scope, account-type, and creation-date filters.
+func (r *Repo) GetApiKeysPageFiltered(page, pageSize int, scope, accountType, createdFrom, createdTo string) ([]*models.APIKey, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -136,19 +142,41 @@ func (r *Repo) GetApiKeysPage(page, pageSize int) ([]*models.APIKey, int, error)
 	if pageSize > 100 {
 		pageSize = 100
 	}
+	where := " WHERE 1=1"
+	args := make([]any, 0, 6)
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "user":
+		where += " AND a.userId IS NOT NULL AND a.clientId IS NULL"
+	case "client":
+		where += " AND a.clientId IS NOT NULL"
+	case "gateway":
+		where += " AND a.userId IS NULL AND a.clientId IS NULL"
+	}
+	if accountType = strings.TrimSpace(accountType); accountType != "" && !strings.EqualFold(accountType, "all") {
+		where += " AND lower(COALESCE(a.accountTypeId,'')) = lower(?)"
+		args = append(args, accountType)
+	}
+	if createdFrom = strings.TrimSpace(createdFrom); createdFrom != "" {
+		where += " AND a.createdAt >= ?"
+		args = append(args, createdFrom+"T00:00:00Z")
+	}
+	if createdTo = strings.TrimSpace(createdTo); createdTo != "" {
+		where += " AND a.createdAt < ?"
+		args = append(args, createdTo+"T23:59:59.999Z")
+	}
 	var total int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM apiKeys`).Scan(&total); err != nil {
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM apiKeys a`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	offset := (page - 1) * pageSize
+	queryArgs := append(append([]any{}, args...), pageSize, offset)
 	rows, err := r.db.Query(`
 		SELECT a.id, a.key, a.keyHash, a.name, a.machineId, a.isActive, a.restrictions,
 		       a.createdAt, a.clientId, a.policyId, a.userId, a.accountTypeId,
 		       u.telegramUserId, u.telegramUsername, u.displayName
 		FROM apiKeys a
 		LEFT JOIN users u ON u.id = a.userId
-		ORDER BY a.createdAt DESC
-		LIMIT ? OFFSET ?`, pageSize, offset)
+		`+where+` ORDER BY a.createdAt DESC LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
