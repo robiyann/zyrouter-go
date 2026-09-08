@@ -27,6 +27,7 @@ import (
 	"zyrouter/backend/internal/middleware"
 	"zyrouter/backend/internal/providers"
 	"zyrouter/backend/internal/shutdown"
+	"zyrouter/backend/internal/telegram"
 	"zyrouter/backend/internal/updater"
 )
 
@@ -199,10 +200,16 @@ func runServer(cCtx *cli.Context) error {
 	}()
 
 	fmt.Fprintf(os.Stdout, "\n  🚀 Zyrouter AI Gateway (%s) listening on %s\n\n", updater.CurrentVersion, addr)
-	log.Printf("Server is ready to handle requests at %s", addr)
+	botCtx, botCancel := context.WithCancel(context.Background())
+	defer botCancel()
+	if cfg.TelegramBotToken != "" {
+		tgBot := telegram.NewBotService(repo, cfg.TelegramBotToken, cfg.TelegramBotUsername)
+		go tgBot.Start(botCtx)
+	}
 
 	<-signals // first signal → begin graceful shutdown
 	fmt.Fprintln(os.Stdout, "\n  Shutting down...")
+	botCancel()
 
 	// Signal in-flight SSE streams to end promptly: the stall reader closes each
 	// upstream body, handlers emit a final [DONE], and Shutdown completes well

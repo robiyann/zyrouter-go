@@ -114,4 +114,18 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 		t.Fatalf("unexpected invalid user key lookup: %+v %v", active, err)
 	}
 
+	// Test re-login with existing Telegram user
+	reloginStart := httptest.NewRecorder()
+	r.ServeHTTP(reloginStart, httptest.NewRequest(http.MethodPost, "/verify/start", nil))
+	var reloginChallenge struct {
+		ID string `json:"challengeId"`
+	}
+	_ = json.Unmarshal(reloginStart.Body.Bytes(), &reloginChallenge)
+	reloginUser, err := repo.VerifyChallenge(reloginChallenge.ID, "12345", "tester_updated", "Test User Updated", "user")
+	if err != nil {
+		t.Fatalf("re-login failed for existing telegram user: %v", err)
+	}
+	if reloginUser.TelegramUsername == nil || *reloginUser.TelegramUsername != "tester_updated" {
+		t.Fatalf("re-login username not updated: %+v", reloginUser)
+	}
 }

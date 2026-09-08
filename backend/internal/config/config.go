@@ -56,10 +56,12 @@ type Config struct {
 	InitialPassword  string
 	APIKeySecret     string
 	MachineIDSalt    string
-	RTKEnabled       bool
-	CavemanEnabled   bool
-	PonytailEnabled  bool
-	EnabledProviders []string
+	RTKEnabled          bool
+	CavemanEnabled      bool
+	PonytailEnabled     bool
+	EnabledProviders    []string
+	TelegramBotToken    string
+	TelegramBotUsername string
 }
 
 // ResolveDataDir returns the base data directory: DATA_DIR env, else the
@@ -84,6 +86,7 @@ func ResolveDataDir() string {
 // LoadConfig loads the configuration from environment variables and platform defaults.
 func LoadConfig() *Config {
 	loadDotenv(".env")
+	loadDotenv("../.env")
 	portStr := os.Getenv("PORT")
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 {
@@ -141,8 +144,10 @@ func LoadConfig() *Config {
 		MachineIDSalt:    machineIDSalt,
 		RTKEnabled:       rtkEnabled,
 		CavemanEnabled:   cavemanEnabled,
-		PonytailEnabled:  ponytailEnabled,
-		EnabledProviders: enabledProviders,
+		PonytailEnabled:     ponytailEnabled,
+		EnabledProviders:    enabledProviders,
+		TelegramBotToken:    strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+		TelegramBotUsername: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")),
 	}
 }
 

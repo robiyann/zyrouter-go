@@ -170,7 +170,9 @@ func (r *Repo) CreateVerificationChallenge(ttl time.Duration) (string, time.Time
 }
 
 func (r *Repo) VerifyChallenge(challengeID, telegramID, username, displayName, defaultType string) (*models.User, error) {
-	if strings.TrimSpace(challengeID) == "" || strings.TrimSpace(telegramID) == "" {
+	challengeID = strings.TrimSpace(challengeID)
+	telegramID = strings.TrimSpace(telegramID)
+	if challengeID == "" || telegramID == "" {
 		return nil, fmt.Errorf("challenge and telegram id are required")
 	}
 	tx, err := r.db.Begin()
@@ -186,12 +188,25 @@ func (r *Repo) VerifyChallenge(challengeID, telegramID, username, displayName, d
 	if err != nil || time.Now().UTC().After(expires) || status != "pending" {
 		return nil, fmt.Errorf("verification challenge expired or already used")
 	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
 	var existingID string
-	if err := tx.QueryRow(`SELECT id FROM users WHERE telegramUserId = ?`, telegramID).Scan(&existingID); err == nil {
-		return nil, fmt.Errorf("telegram account is already registered")
+	err = tx.QueryRow(`SELECT id FROM users WHERE telegramUserId = ?`, telegramID).Scan(&existingID)
+	if err == nil {
+		if username != "" || displayName != "" {
+			_, _ = tx.Exec(`UPDATE users SET telegramUsername = COALESCE(NULLIF(?, ''), telegramUsername), displayName = COALESCE(NULLIF(?, ''), displayName), updatedAt = ? WHERE id = ?`, username, displayName, now, existingID)
+		}
+		if _, err := tx.Exec(`UPDATE userVerificationChallenges SET telegramUserId=?, telegramUsername=?, telegramDisplayName=?, status='verified', verifiedAt=? WHERE id=? AND status='pending'`, telegramID, username, displayName, now, challengeID); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return r.GetUserByID(existingID)
 	} else if err != sql.ErrNoRows {
 		return nil, err
 	}
+
 	if defaultType == "" {
 		defaultType = "user"
 	}
@@ -199,7 +214,6 @@ func (r *Repo) VerifyChallenge(challengeID, telegramID, username, displayName, d
 	if err := tx.QueryRow(`SELECT isActive FROM accountTypes WHERE id = ?`, defaultType).Scan(&active); err != nil || active != 1 {
 		return nil, fmt.Errorf("default account type is unavailable")
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	userID := "usr_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	if _, err := tx.Exec(`INSERT INTO users (id, telegramUserId, telegramUsername, displayName, accountTypeId, isActive, verifiedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`, userID, telegramID, username, displayName, defaultType, now, now, now); err != nil {
 		return nil, err
