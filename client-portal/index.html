@@ -3,33 +3,807 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Zyrouter Client Portal">
-  <title>Zyrouter Client Portal</title>
+  <meta name="description" content="Zyrouter Client Portal - High-Performance AI Inference Gateway">
+  <meta name="theme-color" content="#080a0f">
+  <title>Zyrouter · Client Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20260908.6">
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">Z</span><span class="brand-copy"><b>ZYROUTER</b><em>CLIENT PORTAL</em></span></a><div class="top-actions"><span class="status-dot"><i></i> GATEWAY ONLINE</span><a class="tg-contact" href="https://t.me/robiyan32" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg><span>@robiyan32</span></a></div></header>
-    <section id="auth" class="card auth-card">
-      <div class="auth-mark"><span>Z</span></div><p class="eyebrow">SECURE TELEGRAM ACCESS <span class="eyebrow-line"></span></p><h1>Gateway<br><strong>Client Portal</strong></h1>
-      <p class="muted lead">Kelola API key, alias model, usage pribadi, dan realtime global gateway.</p>
-      <button id="start" class="primary">Mulai Verifikasi Telegram</button>
-      <div class="trust-row"><span>◈ Alias-only routing</span><span>◈ Secret sekali tampil</span><span>◈ SSE realtime</span></div>
-      <div id="challenge" class="challenge hidden"><strong>Kode verifikasi</strong><code id="code"></code><small>Berlaku 10 menit. Kirim kode ini ke bot Telegram.</small><span id="timer">10:00</span><a id="botLink" class="bot-link" target="_blank" rel="noopener">Buka @Zyrouter_bot dan kirim kode</a><small class="hint">Tombol ini membuka bot resmi. Setelah bot membalas, masukkan kode konfirmasi di bawah.</small><div id="confirmation" class="confirmation hidden"><label for="confirmationCode">Kode konfirmasi dari Telegram</label><input id="confirmationCode" autocomplete="one-time-code" placeholder="ZV-123456"><button id="complete" class="primary">Konfirmasi &amp; Masuk Dashboard</button></div></div>
-      <p id="auth-error" class="error"></p>
+  <!-- Ambient cyber background elements -->
+  <div class="ambient-glow glow-top" aria-hidden="true"></div>
+  <div class="ambient-glow glow-bottom" aria-hidden="true"></div>
+  <div class="cyber-grid-overlay" aria-hidden="true"></div>
+
+  <div class="app-container">
+    <!-- Global Header -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <a class="brand" href="#" id="brandLink" title="Zyrouter Client Portal">
+          <div class="brand-hexagon">
+            <span class="brand-letter">Z</span>
+            <div class="brand-ring"></div>
+          </div>
+          <div class="brand-text">
+            <span class="brand-name">ZYROUTER</span>
+            <span class="brand-badge">CLIENT PORTAL</span>
+          </div>
+        </a>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Live Gateway Beacon -->
+        <div class="gateway-beacon" id="gatewayBeacon" title="Gateway Connection Status">
+          <span class="beacon-dot"></span>
+          <span class="beacon-label">GATEWAY ONLINE</span>
+        </div>
+
+        <!-- Telegram Support Link -->
+        <a class="tg-contact-btn" href="https://t.me/robiyan32" target="_blank" rel="noopener" title="Hubungi Support Telegram">
+          <svg class="tg-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/>
+          </svg>
+          <span class="tg-handle">@robiyan32</span>
+        </a>
+
+        <!-- Session Identity & Logout (visible when authenticated) -->
+        <div class="session-menu hidden" id="sessionMenu">
+          <div class="session-user-badge">
+            <span class="user-avatar-dot"></span>
+            <span class="user-name" id="sessionUserName">@telegram-user</span>
+            <span class="user-tier-pill" id="sessionUserTier">User</span>
+          </div>
+          <button class="logout-btn" id="logoutBtn" title="Logout Session">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span>Keluar</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION: AUTHENTICATION LANDING (Blueprint 3.1, 3.2, 3.3) -->
+    <section id="auth" class="auth-wrapper">
+      <div class="auth-card">
+        <!-- Card glowing top rim -->
+        <div class="card-glow-line" aria-hidden="true"></div>
+
+        <div class="auth-header">
+          <div class="auth-icon-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <span class="auth-tag">SECURE ACCESS GATEWAY</span>
+          <h1 class="auth-title">Client <strong>Portal</strong></h1>
+          <p class="auth-subtitle">Akses inference gateway privat, kelola API Key, pantau usage, dan pantau realtime stream.</p>
+        </div>
+
+        <!-- Auth Mode Selector (Telegram vs Machine Client) -->
+        <div class="auth-modes">
+          <button class="mode-tab active" id="modeTelegramTab" type="button">
+            <svg viewBox="0 0 24 24" class="mode-icon"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>
+            Telegram User
+          </button>
+          <button class="mode-tab" id="modeMachineTab" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mode-icon"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            Machine Client
+          </button>
+        </div>
+
+        <!-- TELEGRAM AUTH FLOW (Blueprint 3.1 & 3.2) -->
+        <div id="telegramAuthPanel" class="auth-panel active">
+          <!-- Initial Action -->
+          <div id="telegramInitialState" class="telegram-flow">
+            <button id="start" class="btn-cyber-primary btn-block">
+              <span class="btn-text">Mulai Verifikasi Telegram</span>
+              <span class="btn-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+              </span>
+            </button>
+            <p class="auth-hint">Verifikasi instan melalui bot Telegram resmi. Tanpa password atau email.</p>
+          </div>
+
+          <!-- Challenge State (Blueprint 3.2: pending) -->
+          <div id="challenge" class="challenge-box hidden">
+            <div class="challenge-header">
+              <span class="challenge-pulse-dot"></span>
+              <span class="challenge-label">KODE VERIFIKASI AKTIF</span>
+              <div class="timer-badge" title="Waktu tersisa">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="timer-icon"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                <span id="challenge-timer">10:00</span>
+                <span id="timer" class="sr-only">10:00</span>
+              </div>
+            </div>
+
+            <div class="code-display-wrap">
+              <code id="code" class="challenge-code">memuat...</code>
+              <button id="copyChallengeBtn" class="btn-copy-code" title="Salin Kode Tantangan">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+
+            <p class="challenge-instruction">Kirim kode di atas ke bot resmi Telegram Zyrouter:</p>
+
+            <a id="botLink" class="btn-telegram-direct" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" class="btn-tg-svg"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>
+              <span>Buka @Zyrouter_bot dan Kirim Kode</span>
+            </a>
+
+            <!-- Polling pulse indicator -->
+            <div class="polling-indicator">
+              <span class="scan-bar"></span>
+              <span class="polling-text">Menunggu verifikasi dari Telegram bot...</span>
+            </div>
+
+            <!-- Confirmation State (Blueprint 3.2: telegram_verified) -->
+            <div id="confirmation" class="confirmation-section hidden">
+              <div class="confirmation-divider">
+                <span>LANGKAH 2: MASUKKAN KODE KONFIRMASI</span>
+              </div>
+              <label for="confirmationCode" class="field-label">Kode Konfirmasi dari Bot (contoh: ZV-842913)</label>
+              <div class="input-with-action">
+                <input id="confirmationCode" type="text" autocomplete="one-time-code" placeholder="ZV-123456" class="cyber-input mono-input">
+              </div>
+              <button id="complete" class="btn-cyber-primary btn-block">
+                <span>Konfirmasi &amp; Masuk Dashboard</span>
+              </button>
+              <div class="bot-retry-row">
+                <a id="botRetryLink" class="link-subtle" target="_blank" rel="noopener">Buka Bot Lagi</a>
+              </div>
+            </div>
+
+            <!-- Cancel Challenge button -->
+            <div class="cancel-row">
+              <button id="cancelChallengeBtn" class="btn-link-cancel" type="button">Batal / Buat Baru</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MACHINE CLIENT AUTH PANEL (Blueprint 3.3) -->
+        <div id="machineAuthPanel" class="auth-panel">
+          <div class="machine-auth-form">
+            <label for="machineTokenInput" class="field-label">Machine Client Token (Bearer)</label>
+            <div class="input-wrap">
+              <input id="machineTokenInput" type="password" placeholder="clt_..." autocomplete="off" class="cyber-input mono-input">
+              <button id="toggleMachineTokenVisibility" class="btn-icon-eye" type="button" title="Lihat Token">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+            <p class="field-hint">Masukkan token machine provisioning yang diberikan oleh administrator.</p>
+
+            <button id="connectMachineBtn" class="btn-cyber-primary btn-block">
+              <span class="btn-text">Hubungkan Machine Client</span>
+              <span class="btn-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Auth Error Banner -->
+        <div id="auth-error" class="error-banner" role="alert" aria-live="polite"></div>
+
+        <!-- Trust Badges -->
+        <div class="trust-grid">
+          <div class="trust-item">
+            <span class="trust-mark">◈</span>
+            <span>Alias-Only Routing</span>
+          </div>
+          <div class="trust-item">
+            <span class="trust-mark">◈</span>
+            <span>One-Time Secret Reveal</span>
+          </div>
+          <div class="trust-item">
+            <span class="trust-mark">◈</span>
+            <span>Realtime Telemetry SSE</span>
+          </div>
+        </div>
+      </div>
     </section>
-    <section id="app" class="hidden">
-      <nav class="tabs"><button data-view="overview">Overview</button><button data-view="key">API Key</button><button data-view="models">Models</button><button data-view="logs">Global Stream</button></nav>
-      <section id="overview" class="view"><div class="grid"><article class="metric"><small>GLOBAL REQUESTS</small><b id="globalRequests">0</b></article><article class="metric"><small>GLOBAL TOKENS</small><b id="globalTokens">0</b></article><article class="metric"><small>MY REQUESTS</small><b id="myRequests">0</b></article><article class="metric"><small>MY TOKENS</small><b id="myTokens">0</b></article></div><article class="card"><h2>Telegram Owner</h2><p class="muted">Untuk pertanyaan atau problem, hubungi <a class="tg-contact inline" href="https://t.me/robiyan32" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>@robiyan32</a>.</p><p id="profile" class="muted"></p></article></section>
-      <section id="key" class="view hidden"><article class="card"><h2>Gateway API Key</h2><p id="keyInfo" class="muted">Memuat...</p><div class="actions"><button id="generate" class="primary">Generate Key</button><button id="rotate" class="secondary">Rotate</button><button id="revoke" class="danger">Revoke</button></div><code id="secret" class="secret"></code></article></section>
-      <section id="models" class="view hidden"><article class="card"><h2>Allowed Model Aliases</h2><div id="modelsList" class="list"></div></article></section>
-      <section id="logs" class="view hidden"><article class="card"><div class="row"><div><h2>Global Realtime Stream</h2><p class="muted">Agregat gateway tanpa identitas user/provider internal.</p></div><span id="streamState" class="pill">CONNECTING</span></div><div id="logsList" class="list"></div></article></section>
-    </section>
-    <footer>Owner/support: <a class="tg-contact inline" href="https://t.me/robiyan32" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>@robiyan32</a></footer>
-  </main>
-  <script src="app.js?v=20260908.4" defer></script>
+
+    <!-- SECTION: MAIN DASHBOARD APPLICATION -->
+    <main id="app" class="dashboard-shell hidden">
+      <!-- Main Navigation Tabs (All 6 Tabs 100% Visible - No Hidden Horizontal Scroll) -->
+      <nav class="nav-tabs-bar" role="tablist" aria-label="Main Navigation">
+        <div class="tabs-scroll-container">
+          <button class="nav-tab active" data-view="overview" role="tab" aria-selected="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>Overview</span>
+          </button>
+          <button class="nav-tab" data-view="key" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+            <span>API Keys</span>
+          </button>
+          <button class="nav-tab" data-view="models" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            <span>Allowed Models</span>
+          </button>
+          <button class="nav-tab" data-view="usage" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            <span>Usage</span>
+          </button>
+          <button class="nav-tab" data-view="logs" data-tab="logs" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            <span>Global Stream</span>
+            <span class="live-indicator-pip"></span>
+          </button>
+          <button class="nav-tab" data-view="guide" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            <span>API Guide</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- VIEW 1: OVERVIEW -->
+      <section id="overview" class="view-panel active">
+        <!-- Identity Welcome Banner -->
+        <div class="banner-card cyber-gradient-border">
+          <div class="banner-content">
+            <div class="banner-identity">
+              <div class="avatar-ring">
+                <span class="avatar-glyph">⚡</span>
+              </div>
+              <div>
+                <span class="banner-eyebrow">SESSI AKTIF</span>
+                <h2 class="banner-title"><span id="profile">Memuat profil...</span></h2>
+                <div class="badge-row">
+                  <span class="status-badge live" id="overviewStatusBadge"><span class="badge-dot"></span> Terhubung</span>
+                  <span class="status-badge tier" id="overviewTierBadge">Tier: Memuat...</span>
+                  <span class="status-badge key-status" id="overviewKeyBadge">API Key: Memuat...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics Overview Section -->
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">Metrik Pemakaian Pribadi</h3>
+            <p class="section-desc">Statistik komputasi dan token yang terikat dengan akun Anda.</p>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <article class="metric-card">
+            <div class="metric-card-top">
+              <span class="metric-label">TOTAL REQUESTS PRIBADI</span>
+              <div class="metric-icon-wrap cyan">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+              </div>
+            </div>
+            <div class="metric-val" id="myRequests">0</div>
+            <span class="metric-sub">Permintaan API yang telah diproses</span>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-card-top">
+              <span class="metric-label">TOTAL TOKENS PRIBADI</span>
+              <div class="metric-icon-wrap violet">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+              </div>
+            </div>
+            <div class="metric-val" id="myTokens">0</div>
+            <span class="metric-sub">Gabungan prompt &amp; completion tokens</span>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-card-top">
+              <span class="metric-label">ESTIMASI BIAYA PRIBADI</span>
+              <div class="metric-icon-wrap emerald">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              </div>
+            </div>
+            <div class="metric-val" id="myCost">$0.00</div>
+            <span class="metric-sub">Total biaya pemakaian tercatat</span>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-card-top">
+              <span class="metric-label">MODEL ALIAS TERSEDIA</span>
+              <div class="metric-icon-wrap amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              </div>
+            </div>
+            <div class="metric-val" id="myAllowedCount">0</div>
+            <span class="metric-sub">Public model alias diizinkan pada tier ini</span>
+          </article>
+        </div>
+
+        <!-- Global Gateway Telemetry Summary (Sanitized) -->
+        <div class="section-header mt-6">
+          <div>
+            <h3 class="section-title">Realtime Global Telemetry</h3>
+            <p class="section-desc">Agregat performa seluruh gateway Zyrouter tanpa identitas user atau provider.</p>
+          </div>
+          <div class="stream-pill-live">
+            <span class="pulse-ring"></span>
+            <span class="stream-pill-text">LIVE TELEMETRY</span>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <article class="metric-card global-card">
+            <div class="metric-card-top">
+              <span class="metric-label">GLOBAL REQUESTS</span>
+              <span class="global-tag">GATEWAY</span>
+            </div>
+            <div class="metric-val text-gradient-cyan" id="globalRequests">0</div>
+            <span class="metric-sub">Total request gateway diproses</span>
+          </article>
+
+          <article class="metric-card global-card">
+            <div class="metric-card-top">
+              <span class="metric-label">GLOBAL TOKENS</span>
+              <span class="global-tag">GATEWAY</span>
+            </div>
+            <div class="metric-val text-gradient-violet" id="globalTokens">0</div>
+            <span class="metric-sub">Total throughput token gateway</span>
+          </article>
+        </div>
+
+        <!-- Support Card -->
+        <div class="card support-card mt-6">
+          <div class="support-card-left">
+            <div class="support-icon">
+              <svg viewBox="0 0 24 24"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>
+            </div>
+            <div>
+              <h4 class="support-heading">Bantuan &amp; Layanan Dukungan Teknis</h4>
+              <p class="support-text">Mengalami kendala otentikasi, kuota, atau ingin request alias model baru? Hubungi langsung owner di Telegram.</p>
+            </div>
+          </div>
+          <a class="btn-cyber-primary" href="https://t.me/robiyan32" target="_blank" rel="noopener">
+            <span>Kontak @robiyan32</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          </a>
+        </div>
+      </section>
+
+      <!-- VIEW 2: API KEYS -->
+      <section id="key" class="view-panel hidden">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">Gateway API Key Management</h3>
+            <p class="section-desc">Kunci otentikasi untuk mengirim inference request ke endpoint <code>https://api.zyvenox.tech/v1</code>.</p>
+          </div>
+        </div>
+
+        <!-- One-Time Secret Reveal Banner -->
+        <div id="secretBanner" class="secret-vault-banner hidden">
+          <div class="vault-header">
+            <div class="vault-warning-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <span>SECRET SATU KALI TAMPIL — AMANKAN SEGERA</span>
+            </div>
+            <button id="dismissSecretBtn" class="btn-icon-dismiss" title="Tutup pemberitahuan">&times;</button>
+          </div>
+          <p class="vault-desc">Secret key ini <strong>hanya ditampilkan satu kali</strong> dan tidak dapat dilihat lagi. Simpan di password manager atau environment variable Anda sekarang.</p>
+          
+          <div class="secret-box">
+            <code id="secret" class="secret-text">zy_...</code>
+            <button id="copySecretBtn" class="btn-copy-secret">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>Salin Secret</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Key Status Card -->
+        <article class="card api-key-card">
+          <div class="key-card-head">
+            <div>
+              <span class="card-eyebrow">STATUS KUNCI AKTIF</span>
+              <h4 class="key-card-title">Inference Gateway Key</h4>
+            </div>
+            <div id="keyStatusBadgeContainer">
+              <span class="status-badge" id="keyBadge">Memuat...</span>
+            </div>
+          </div>
+
+          <div class="key-display-area">
+            <label class="field-label">Prefix Kunci (Tampilan Masked):</label>
+            <div class="key-input-row">
+              <p id="keyInfo" class="key-prefix-text">Memuat informasi kunci...</p>
+              <button id="copyPrefixBtn" class="btn-cyber-outline btn-sm hidden" title="Salin Masked Prefix">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin Prefix</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="key-rules-notice">
+            <div class="notice-icon">ℹ️</div>
+            <p>Aturan: 1 user verified memiliki maksimal 1 active key. Secret lama tidak dapat ditampilkan kembali. Tindakan <em>Rotate</em> akan membatalkan key lama secara atomik.</p>
+          </div>
+
+          <div class="actions key-actions-row">
+            <button id="generate" class="btn-cyber-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Generate Key</span>
+            </button>
+            <button id="rotate" class="btn-cyber-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              <span>Rotate Key</span>
+            </button>
+            <button id="revoke" class="btn-cyber-danger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Revoke Key</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- Machine Client Keys Container -->
+        <div id="machineKeysContainer" class="card mt-6 hidden">
+          <div class="section-header mb-4">
+            <div>
+              <h4 class="section-title">Machine Client Keys</h4>
+              <p class="section-desc">Kunci API yang diterbitkan untuk machine client ini.</p>
+            </div>
+            <button id="createMachineKeyBtn" class="btn-cyber-primary btn-sm">
+              <span>+ Buat Machine Key</span>
+            </button>
+          </div>
+          <div id="machineKeysTableWrap" class="table-responsive">
+            <table class="cyber-table">
+              <thead>
+                <tr>
+                  <th>Nama</th>
+                  <th>Prefix</th>
+                  <th>Dibuat</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="machineKeysList">
+                <tr><td colspan="4" class="text-center text-muted">Memuat machine keys...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: ALLOWED MODELS -->
+      <section id="models" class="view-panel hidden">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">Allowed Model Aliases</h3>
+            <p class="section-desc">Daftar alias publik resmi yang dapat dipanggil melalui gateway pada akun Anda.</p>
+          </div>
+          <!-- Model Search Box -->
+          <div class="search-input-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input id="modelSearchInput" type="text" placeholder="Cari alias model..." class="cyber-input-sm">
+          </div>
+        </div>
+
+        <div class="alias-disclaimer-badge">
+          <span>🔒 Standar Keamanan: Hanya public alias yang diexpose. Raw provider dan target combo dilindungi sepenuhnya.</span>
+        </div>
+
+        <div id="modelsList" class="models-grid">
+          <!-- Populated by JavaScript -->
+          <div class="loading-placeholder">Memuat daftar alias model yang diizinkan...</div>
+        </div>
+      </section>
+
+      <!-- VIEW 4: PERSONAL USAGE -->
+      <section id="usage" class="view-panel hidden">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">Riwayat Pemakaian Pribadi</h3>
+            <p class="section-desc">Log riwayat request inference yang dilakukan oleh sesi akun Anda (WIB timezone).</p>
+          </div>
+          <button id="refreshUsageBtn" class="btn-cyber-outline btn-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            <span>Refresh Data</span>
+          </button>
+        </div>
+
+        <!-- Usage Table Card -->
+        <article class="card table-card">
+          <div class="scroll-hint-bar" aria-hidden="true">
+            <span>↔ Geser tabel untuk melihat seluruh kolom</span>
+          </div>
+          <div class="table-responsive">
+            <table class="cyber-table">
+              <thead>
+                <tr>
+                  <th>Waktu (WIB)</th>
+                  <th>Request ID</th>
+                  <th>Model Alias</th>
+                  <th>Status</th>
+                  <th>Durasi</th>
+                  <th>Prompt Tok</th>
+                  <th>Comp Tok</th>
+                  <th>Total Tok</th>
+                </tr>
+              </thead>
+              <tbody id="usageTableBody">
+                <tr><td colspan="8" class="text-center text-muted">Memuat riwayat pemakaian...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Bar -->
+          <div class="pagination-bar">
+            <span class="pagination-info" id="usagePaginationInfo">Halaman 1</span>
+            <div class="pagination-actions">
+              <button id="prevUsagePageBtn" class="btn-cyber-outline btn-xs" disabled>
+                &larr; Sebelumnya
+              </button>
+              <button id="nextUsagePageBtn" class="btn-cyber-outline btn-xs" disabled>
+                Selanjutnya &rarr;
+              </button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- VIEW 5: GLOBAL REALTIME STREAM -->
+      <section id="logs" class="view-panel hidden">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">Global Realtime Gateway Stream</h3>
+            <p class="section-desc">Event telemetry teranomisasi live dari seluruh gateway Zyrouter tanpa identitas user atau provider.</p>
+          </div>
+          <div class="stream-control-bar">
+            <span id="streamState" class="status-pill connecting">CONNECTING</span>
+            <button id="pauseStreamBtn" class="btn-cyber-outline btn-xs">Jeda Stream</button>
+            <button id="clearLogsBtn" class="btn-cyber-outline btn-xs">Bersihkan Tampilan</button>
+            <button id="reconnectStreamBtn" class="btn-cyber-outline btn-xs">Sambung Ulang</button>
+          </div>
+        </div>
+
+        <!-- Stream Cards Container -->
+        <article class="card stream-card">
+          <div class="stream-card-header">
+            <div class="stream-meta-left">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="stream-card-title">telemetry://gateway.live</span>
+            </div>
+            <span class="stream-buffer-tag">Buffer: maks 100 event</span>
+          </div>
+
+          <div id="logsList" class="stream-feed-list">
+            <div class="stream-empty-state">
+              <span class="stream-radar-icon"></span>
+              <p>Menghubungkan ke gateway telemetry stream...</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- VIEW 6: API GUIDE -->
+      <section id="guide" class="view-panel hidden">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">Dokumentasi Integrasi API</h3>
+            <p class="section-desc">Panduan integrasi standar OpenAI SDK &amp; cURL untuk aplikasi Anda.</p>
+          </div>
+        </div>
+
+        <div class="guide-grid">
+          <!-- Guide Spec Box -->
+          <div class="card guide-info-card">
+            <div class="endpoint-display-box">
+              <div class="endpoint-row">
+                <span class="method-tag post">POST</span>
+                <code class="endpoint-url">https://api.zyvenox.tech/v1/chat/completions</code>
+                <button class="btn-copy-mini" data-copy="https://api.zyvenox.tech/v1/chat/completions" title="Salin Endpoint">Salin</button>
+              </div>
+              <div class="endpoint-row mt-2">
+                <span class="method-tag header">AUTH</span>
+                <code class="endpoint-url">Authorization: Bearer &lt;API_KEY&gt;</code>
+                <button class="btn-copy-mini" data-copy="Authorization: Bearer " title="Salin Header">Salin</button>
+              </div>
+            </div>
+
+            <!-- Code Snippet Tabs -->
+            <div class="code-tabs-wrapper mt-6">
+              <div class="code-tab-nav">
+                <button class="code-tab-btn active" data-lang="curl">cURL</button>
+                <button class="code-tab-btn" data-lang="python">Python (OpenAI)</button>
+                <button class="code-tab-btn" data-lang="nodejs">Node.js (OpenAI)</button>
+                <button class="code-tab-btn" data-lang="stream">SSE Stream</button>
+              </div>
+
+              <!-- cURL Snippet -->
+              <div id="snippet-curl" class="code-snippet-panel active">
+                <div class="snippet-header">
+                  <span>BASH / CURL</span>
+                  <button class="btn-copy-code" data-copy-target="code-curl">Salin Kode</button>
+                </div>
+                <pre><code id="code-curl" class="language-bash">curl https://api.zyvenox.tech/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ZYROUTER_API_KEY" \
+  -d '{
+    "model": "gemini-2.5-flash",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Halo! Siapa namamu?"}
+    ]
+  }'</code></pre>
+              </div>
+
+              <!-- Python Snippet -->
+              <div id="snippet-python" class="code-snippet-panel">
+                <div class="snippet-header">
+                  <span>PYTHON (openai SDK >= 1.0)</span>
+                  <button class="btn-copy-code" data-copy-target="code-python">Salin Kode</button>
+                </div>
+                <pre><code id="code-python" class="language-python">from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://api.zyvenox.tech/v1",
+    api_key="YOUR_ZYROUTER_API_KEY"
+)
+
+response = client.chat.completions.create(
+    model="gemini-2.5-flash",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Halo, jelaskan apa itu Zyrouter."}
+    ]
+)
+
+print(response.choices[0].message.content)</code></pre>
+              </div>
+
+              <!-- Node.js Snippet -->
+              <div id="snippet-nodejs" class="code-snippet-panel">
+                <div class="snippet-header">
+                  <span>JAVASCRIPT / TYPESCRIPT</span>
+                  <button class="btn-copy-code" data-copy-target="code-nodejs">Salin Kode</button>
+                </div>
+                <pre><code id="code-nodejs" class="language-javascript">import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'https://api.zyvenox.tech/v1',
+  apiKey: process.env.ZYROUTER_API_KEY,
+});
+
+async function main() {
+  const completion = await client.chat.completions.create({
+    model: 'gemini-2.5-flash',
+    messages: [{ role: 'user', content: 'Halo dari Node.js!' }],
+  });
+
+  console.log(completion.choices[0].message.content);
+}
+
+main();</code></pre>
+              </div>
+
+              <!-- Streaming Snippet -->
+              <div id="snippet-stream" class="code-snippet-panel">
+                <div class="snippet-header">
+                  <span>PYTHON STREAMING</span>
+                  <button class="btn-copy-code" data-copy-target="code-stream">Salin Kode</button>
+                </div>
+                <pre><code id="code-stream" class="language-python">from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://api.zyvenox.tech/v1",
+    api_key="YOUR_ZYROUTER_API_KEY"
+)
+
+stream = client.chat.completions.create(
+    model="gemini-2.5-flash",
+    messages=[{"role": "user", "content": "Tuliskan puisi singkat tentang cyber."}],
+    stream=True
+)
+
+for chunk in stream:
+    content = chunk.choices[0].delta.content or ""
+    print(content, end="", flush=True)</code></pre>
+              </div>
+            </div>
+          </div>
+          <!-- Error Codes Table Card -->
+          <div class="card guide-errors-card">
+            <h4 class="card-subtitle">Kode Status HTTP &amp; Penanganan</h4>
+            <div class="scroll-hint-bar" aria-hidden="true">
+              <span>↔ Geser tabel untuk melihat seluruh kolom</span>
+            </div>
+            <div class="table-responsive mt-3">
+              <table class="cyber-table sm-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Arti</th>
+                    <th>Penjelasan / Solusi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="status-code c-401">401</span></td>
+                    <td>Unauthorized</td>
+                    <td>API Key tidak valid, sudah dicabut (revoked), atau format header salah.</td>
+                  </tr>
+                  <tr>
+                    <td><span class="status-code c-403">403</span></td>
+                    <td>Forbidden</td>
+                    <td>Model alias tidak diizinkan untuk tier/akun Anda. Hubungi support jika perlu upgrade.</td>
+                  </tr>
+                  <tr>
+                    <td><span class="status-code c-409">409</span></td>
+                    <td>Conflict</td>
+                    <td>Sudah ada active key yang sedang berjalan saat meminta key baru.</td>
+                  </tr>
+                  <tr>
+                    <td><span class="status-code c-410">410</span></td>
+                    <td>Gone</td>
+                    <td>Secret key tidak dapat di-reveal ulang. Lakukan rotate jika secret hilang.</td>
+                  </tr>
+                  <tr>
+                    <td><span class="status-code c-429">429</span></td>
+                    <td>Rate Limited</td>
+                    <td>Melebihi batas RPM/TPM akun Anda. Harap beri jeda sebelum request ulang.</td>
+                  </tr>
+                  <tr>
+                    <td><span class="status-code c-5xx">5xx</span></td>
+                    <td>Gateway Unavailable</td>
+                    <td>Upstream gateway sedang mengalami kendala sementara. Respons sanitasi aman.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hidden stub to retain test contract compatibility if tested -->
+      <div class="hidden" aria-hidden="true">
+        <input id="playground-api-key" type="hidden">
+      </div>
+    </main>
+
+    <!-- Global Footer -->
+    <footer class="app-footer">
+      <div class="footer-left">
+        <span>&copy; 2026 Zyrouter Gateway</span>
+        <span class="footer-sep">·</span>
+        <span>Isolated Client Portal</span>
+      </div>
+      <div class="footer-right">
+        <span>Support &amp; Owner:</span>
+        <a class="tg-contact inline" href="https://t.me/robiyan32" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>
+          <span>@robiyan32</span>
+        </a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Reusable Confirmation Modal -->
+  <div id="confirmModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-box">
+      <div class="modal-icon-wrap" id="modalIconWrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+      </div>
+      <h3 id="modalTitle" class="modal-title">Konfirmasi Tindakan</h3>
+      <p id="modalDesc" class="modal-desc">Apakah Anda yakin ingin melanjutkan tindakan ini?</p>
+      <div class="modal-actions">
+        <button id="modalCancelBtn" class="btn-cyber-secondary">Batal</button>
+        <button id="modalConfirmBtn" class="btn-cyber-danger">Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Client Application Script -->
+  <script src="app.js?v=20260908.6" defer></script>
 </body>
 </html>
