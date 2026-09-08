@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1182,6 +1183,21 @@ func (h *AdminHandler) HandleSetModelAlias(w http.ResponseWriter, r *http.Reques
 	body.Target = strings.TrimSpace(body.Target)
 	if body.Alias == "" || strings.Contains(body.Alias, "/") {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "alias must be a non-empty bare client model ID")
+		return
+	}
+	var conflictingAlias string
+	err := h.repo.RawDB().QueryRow(`
+		SELECT alias FROM (
+			SELECT alias FROM modelAliases
+			UNION ALL
+			SELECT key AS alias FROM kv WHERE scope = 'modelAliases'
+		) WHERE lower(alias) = lower(?) LIMIT 1`, body.Alias).Scan(&conflictingAlias)
+	if err != nil && err != sql.ErrNoRows {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to validate model alias uniqueness")
+		return
+	}
+	if err == nil && conflictingAlias != body.Alias {
+		handlerutil.WriteJSONError(w, http.StatusConflict, "model_alias_conflict: alias IDs are case-insensitive")
 		return
 	}
 	if strings.HasPrefix(strings.ToLower(body.Target), "combo:") {

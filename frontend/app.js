@@ -2755,69 +2755,6 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
     };
   }
 
-  // Fetch Models from Upstream /models
-  const importModelsBtn = document.querySelector('#btn-import-models-upstream');
-  if (importModelsBtn) {
-    importModelsBtn.onclick = async () => {
-      const activeConn = conns.find(isItemActive) || conns[0];
-      const targetId = activeConn ? activeConn.id : provId;
-      importModelsBtn.disabled = true;
-      const origText = importModelsBtn.innerHTML;
-      importModelsBtn.innerHTML = '<span class="spinner-icon"></span> Fetching...';
-      try {
-        const res = await fetch(`${apiBase}/api/providers/${encodeURIComponent(targetId)}/models`, {
-          headers: getHeaders()
-        });
-        const resText = await res.text();
-        let data = {};
-        try { data = JSON.parse(resText); } catch {}
-        if (!res.ok) throw new Error(data.error || resText || `${res.status} ${res.statusText}`);
-        const fetchedModels = data.models || data.data || [];
-        if (!fetchedModels.length) {
-          showToast('No models returned from upstream /models', 'info');
-          return;
-        }
-
-        let addedCount = 0;
-        for (const m of fetchedModels) {
-          let mID = typeof m === 'string' ? m.trim() : (m.id || m.name || '').trim();
-          if (!mID) continue;
-          if (mID.startsWith(`${activePrefix}/`)) mID = mID.slice(activePrefix.length + 1);
-          if (!mID) continue;
-
-          // Add to DB custom models with the full model ID preserved
-          try {
-            await fetch(`${apiBase}/api/custom-models`, {
-              method: 'POST',
-              headers: { ...headers, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                provider: provId,
-                providerAlias: meta.alias || provId,
-                id: mID,
-                type: 'llm',
-                name: mID
-              })
-            });
-            addedCount++;
-          } catch {}
-        }
-
-        showToast(`Successfully imported ${addedCount} models from upstream!`, 'success');
-        await renderProviderDetail(provId);
-      } catch (err) {
-        showToast(`Fetch models failed: ${err.message}`, 'error');
-      } finally {
-        importModelsBtn.disabled = false;
-        importModelsBtn.innerHTML = origText;
-      }
-    };
-  }
-
-  // Publish a client-facing alias; raw upstream IDs remain inventory-only.
-  const addModelBtn = document.querySelector('#btn-add-provider-alias');
-  if (addModelBtn) {
-    addModelBtn.onclick = () => openCreateAliasModal('', `${provId}/`);
-  }
   // Delete Provider Node Action (for OpenAI / Anthropic Compatible Nodes)
   const deleteNodeBtn = document.querySelector('#btn-delete-provider-node');
   if (deleteNodeBtn) {

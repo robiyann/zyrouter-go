@@ -271,3 +271,18 @@ func TestHandleTestProviderModel_Validation(t *testing.T) {
 	}
 }
 
+func TestHandleSetModelAliasRejectsCaseInsensitiveCollision(t *testing.T) {
+	repo, cleanup := setupAdminTestDB(t)
+	defer cleanup()
+	if err := repo.SetModelAliasRecord("Fast-Gemini", "gemini", "gemini-2.5-pro", nil, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewAdminHandler(repo)
+	req := httptest.NewRequest(http.MethodPost, "/api/model-aliases", strings.NewReader(`{"alias":"fast-gemini","target":"openai/gpt-4o","provider":"openai","upstreamModel":"gpt-4o"}`))
+	rec := httptest.NewRecorder()
+	h.HandleSetModelAlias(rec, req)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "model_alias_conflict") {
+		t.Fatalf("expected case-insensitive alias collision, status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
