@@ -193,7 +193,9 @@ func (r *Repo) MarkChallengeTelegramVerified(challengeID, telegramID, username, 
 	defer tx.Rollback()
 	var expiresAt, status string
 	if err := tx.QueryRow(`SELECT expiresAt,status FROM userVerificationChallenges WHERE id=?`, challengeID).Scan(&expiresAt, &status); err != nil {
-		if err == sql.ErrNoRows { return "", fmt.Errorf("verification challenge not found") }
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("verification challenge not found")
+		}
 		return "", err
 	}
 	expires, err := time.Parse(time.RFC3339, expiresAt)
@@ -219,13 +221,23 @@ func (r *Repo) CompleteVerification(challengeID, browserKey, code, defaultType s
 	}
 	defer tx.Rollback()
 	var expiresAt, status, browserHash, tgID, username, displayName, confirmationHash, confirmationExpires string
-	if err := tx.QueryRow(`SELECT expiresAt,status,browserKey,telegramUserId,telegramUsername,telegramDisplayName,confirmationHash,confirmationExpiresAt FROM userVerificationChallenges WHERE id=?`, challengeID).Scan(&expiresAt, &status, &browserHash, &tgID, &username, &displayName, &confirmationHash, &confirmationExpires); err != nil {
+	var confirmationAttempts int
+	if err := tx.QueryRow(`SELECT expiresAt,status,browserKey,telegramUserId,telegramUsername,telegramDisplayName,confirmationHash,confirmationExpiresAt,confirmationAttempts FROM userVerificationChallenges WHERE id=?`, challengeID).Scan(&expiresAt, &status, &browserHash, &tgID, &username, &displayName, &confirmationHash, &confirmationExpires, &confirmationAttempts); err != nil {
 		return nil, err
 	}
 	if browserHash == "" || HashUserSecret(browserKey) != browserHash {
 		return nil, fmt.Errorf("verification challenge is not bound to this browser")
 	}
-	if status != "telegram_verified" || time.Now().UTC().After(parseTimeOrZero(expiresAt)) || time.Now().UTC().After(parseTimeOrZero(confirmationExpires)) || HashUserSecret(strings.TrimSpace(code)) != confirmationHash {
+	if status != "telegram_verified" || confirmationAttempts >= 5 || time.Now().UTC().After(parseTimeOrZero(expiresAt)) || time.Now().UTC().After(parseTimeOrZero(confirmationExpires)) {
+		return nil, fmt.Errorf("invalid or expired confirmation code")
+	}
+	if HashUserSecret(strings.TrimSpace(code)) != confirmationHash {
+		if _, updateErr := tx.Exec(`UPDATE userVerificationChallenges SET confirmationAttempts=confirmationAttempts+1 WHERE id=? AND status='telegram_verified'`, challengeID); updateErr != nil {
+			return nil, updateErr
+		}
+		if commitErr := tx.Commit(); commitErr != nil {
+			return nil, commitErr
+		}
 		return nil, fmt.Errorf("invalid or expired confirmation code")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -260,12 +272,16 @@ func (r *Repo) CompleteVerification(challengeID, browserKey, code, defaultType s
 }
 
 func confirmationCode() (string, error) {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	buf := make([]byte, 16)
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
-	n := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
-	return fmt.Sprintf("ZV-%06d", n%1000000), nil
+	for i, value := range raw {
+		buf[i] = alphabet[int(value)%len(alphabet)]
+	}
+	return "ZV-" + string(buf), nil
 }
 
 func (r *Repo) VerifyChallenge(challengeID, telegramID, username, displayName, defaultType string) (*models.User, error) {
