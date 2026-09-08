@@ -1,0 +1,11 @@
+{
+  "name": "zyrouter-client-portal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve -l 3000 .",
+    "start": "npx serve -l 3000 .",
+    "check": "node --check app.js"
+  }
+}

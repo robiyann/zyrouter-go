@@ -1,6 +1,7 @@
 package db
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -171,6 +172,99 @@ func (r *Repo) CreateVerificationChallengeForBrowser(ttl time.Duration, browserK
 	expires := now.Add(ttl)
 	_, err := r.db.Exec(`INSERT INTO userVerificationChallenges (id, expiresAt, browserKey, status, createdAt) VALUES (?, ?, ?, 'pending', ?)`, id, expires.Format(time.RFC3339), browserKey, now.Format(time.RFC3339))
 	return id, expires, err
+}
+
+// MarkChallengeTelegramVerified records Telegram proof but does not create a
+// browser session. The browser must complete the second confirmation step.
+func (r *Repo) MarkChallengeTelegramVerified(challengeID, telegramID, username, displayName string) (string, error) {
+	challengeID = strings.TrimSpace(challengeID)
+	telegramID = strings.TrimSpace(telegramID)
+	if challengeID == "" || telegramID == "" {
+		return "", fmt.Errorf("challenge and telegram id are required")
+	}
+	code, err := confirmationCode()
+	if err != nil {
+		return "", err
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	var expiresAt, status string
+	if err := tx.QueryRow(`SELECT expiresAt,status FROM userVerificationChallenges WHERE id=?`, challengeID).Scan(&expiresAt, &status); err != nil {
+		return "", err
+	}
+	expires, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil || time.Now().UTC().After(expires) || status != "pending" {
+		return "", fmt.Errorf("verification challenge expired or already used")
+	}
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`UPDATE userVerificationChallenges SET telegramUserId=?,telegramUsername=?,telegramDisplayName=?,status='telegram_verified',verifiedAt=?,confirmationHash=?,confirmationExpiresAt=? WHERE id=? AND status='pending'`, telegramID, username, displayName, now.Format(time.RFC3339), HashUserSecret(code), now.Add(5*time.Minute).Format(time.RFC3339), challengeID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// CompleteVerification consumes the one-time Telegram confirmation code and
+// creates the browser session only after the browser binding is validated.
+func (r *Repo) CompleteVerification(challengeID, browserKey, code, defaultType string) (*models.User, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var expiresAt, status, browserHash, tgID, username, displayName, confirmationHash, confirmationExpires string
+	if err := tx.QueryRow(`SELECT expiresAt,status,browserKey,telegramUserId,telegramUsername,telegramDisplayName,confirmationHash,confirmationExpiresAt FROM userVerificationChallenges WHERE id=?`, challengeID).Scan(&expiresAt, &status, &browserHash, &tgID, &username, &displayName, &confirmationHash, &confirmationExpires); err != nil {
+		return nil, err
+	}
+	if browserHash == "" || HashUserSecret(browserKey) != browserHash {
+		return nil, fmt.Errorf("verification challenge is not bound to this browser")
+	}
+	if status != "telegram_verified" || time.Now().UTC().After(parseTimeOrZero(expiresAt)) || time.Now().UTC().After(parseTimeOrZero(confirmationExpires)) || HashUserSecret(strings.TrimSpace(code)) != confirmationHash {
+		return nil, fmt.Errorf("invalid or expired confirmation code")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var userID string
+	err = tx.QueryRow(`SELECT id FROM users WHERE telegramUserId=?`, tgID).Scan(&userID)
+	if err == sql.ErrNoRows {
+		if defaultType == "" {
+			defaultType = "user"
+		}
+		var active int
+		if err := tx.QueryRow(`SELECT isActive FROM accountTypes WHERE id=?`, defaultType).Scan(&active); err != nil || active != 1 {
+			return nil, fmt.Errorf("default account type is unavailable")
+		}
+		userID = "usr_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		if _, err := tx.Exec(`INSERT INTO users (id,telegramUserId,telegramUsername,displayName,accountTypeId,isActive,verifiedAt,createdAt,updatedAt) VALUES (?,?,?,?,?,1,?,?,?)`, userID, tgID, username, displayName, defaultType, now, now, now); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	} else if username != "" || displayName != "" {
+		if _, err := tx.Exec(`UPDATE users SET telegramUsername=COALESCE(NULLIF(?,''),telegramUsername),displayName=COALESCE(NULLIF(?,''),displayName),updatedAt=? WHERE id=?`, username, displayName, now, userID); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE userVerificationChallenges SET status='completed',confirmationHash=NULL,confirmationExpiresAt=NULL WHERE id=? AND status='telegram_verified'`, challengeID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetUserByID(userID)
+}
+
+func confirmationCode() (string, error) {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	n := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+	return fmt.Sprintf("ZV-%06d", n%1000000), nil
 }
 
 func (r *Repo) VerifyChallenge(challengeID, telegramID, username, displayName, defaultType string) (*models.User, error) {

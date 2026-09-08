@@ -95,7 +95,7 @@ console.log(`[✓] Zyrouter Server ready at ${baseUrl}`);
 try {
   // TEST 1: Verify standalone zyrouter-client app files exist
   console.log('[TEST 1] Testing standalone zyrouter-client files & server API...');
-  const clientDir = path.resolve(rootDir, '..', 'zyrouter-client');
+  const clientDir = path.join(rootDir, 'client-portal');
   assert.ok(existsSync(path.join(clientDir, 'index.html')), 'zyrouter-client/index.html must exist');
   assert.ok(existsSync(path.join(clientDir, 'styles.css')), 'zyrouter-client/styles.css must exist');
   assert.ok(existsSync(path.join(clientDir, 'app.js')), 'zyrouter-client/app.js must exist');
@@ -158,25 +158,29 @@ try {
   });
   assert.equal(webhookRes.status, 200);
   const webhookData = await webhookRes.json();
-  assert.equal(webhookData.status, 'verified', 'webhook response must be verified');
-  console.log('  -> PASS: telegram webhook verified identity (cybergod / 777888999)');
+  assert.equal(webhookData.status, 'telegram_verified', 'webhook must require browser confirmation');
+  assert.ok(webhookData.confirmationCode, 'webhook must return a confirmation code in test mode');
+  console.log('  -> PASS: telegram identity verified; confirmation code issued');
 
-  // TEST 5: Poll challenge status after verification -> Obtain user_session cookie
-  console.log('[TEST 5] Testing challenge polling & HttpOnly cookie issuance...');
+  // TEST 5: Poll challenge status, then complete confirmation -> obtain user_session cookie
+  console.log('[TEST 5] Testing Telegram confirmation and HttpOnly cookie issuance...');
   const pollRes = await fetch(`${baseUrl}/api/user/verification/${challengeId}`, { headers: { Cookie: verificationCookie } });
   assert.equal(pollRes.status, 200);
-  const cookieHeader = pollRes.headers.get('set-cookie') || '';
+  const pollData = await pollRes.json();
+  assert.equal(pollData.status, 'telegram_verified');
+  assert.equal(pollData.user, undefined);
+
+  const completeRes = await fetch(`${baseUrl}/api/user/verification/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: verificationCookie }, body: JSON.stringify({ challengeId, confirmationCode: webhookData.confirmationCode }) });
+  assert.equal(completeRes.status, 200);
+  const cookieHeader = completeRes.headers.get('set-cookie') || '';
   assert.match(cookieHeader, /user_session=/, 'set-cookie must issue user_session cookie');
   assert.match(cookieHeader, /HttpOnly/i, 'session cookie must be HttpOnly');
-
-  const pollData = await pollRes.json();
-  assert.equal(pollData.status, 'verified');
-  assert.ok(pollData.user, 'must return user object');
-  assert.equal(pollData.user.telegramUsername, 'cybergod');
-  assert.equal(pollData.sessionToken, undefined, 'session token must not be exposed to browser JavaScript');
+  const completeData = await completeRes.json();
+  assert.equal(completeData.status, 'verified');
+  assert.equal(completeData.user.telegramUsername, 'cybergod');
 
   const sessionCookie = cookieHeader.split(';')[0];
-  console.log(`  -> PASS: user verified, session cookie received (${sessionCookie.slice(0, 24)}...)`);
+  console.log(`  -> PASS: Telegram confirmation completed, session cookie received (${sessionCookie.slice(0, 24)}...)`);
 
   // Helper for authenticated user requests
   async function userFetch(endpoint, opts = {}) {

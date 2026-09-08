@@ -75,13 +75,19 @@ try {
   const start = await jsonRequest('/api/user/verification/start', { method: 'POST' });
   const challengeId = start.body.challengeId;
   const verificationCookie = cookieOf(start.response);
-  await jsonRequest('/api/telegram/webhook', {
+  const telegramVerification = await jsonRequest('/api/telegram/webhook', {
     method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': webhookSecret },
     body: JSON.stringify({ message: { from: { id: 9001, username: 'realtime_user', first_name: 'Realtime' }, text: `/start ${challengeId}` } }),
   });
   const verified = await fetch(`${base}/api/user/verification/${challengeId}`, { headers: { Cookie: verificationCookie } });
   assert.equal(verified.status, 200);
-  const userCookie = cookieOf(verified);
+  const verifiedBody = await verified.json();
+  assert.equal(verifiedBody.status, 'telegram_verified');
+  assert.equal(telegramVerification.response.status, 200);
+  assert.equal(telegramVerification.body.status, 'telegram_verified');
+  const complete = await fetch(`${base}/api/user/verification/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: verificationCookie }, body: JSON.stringify({ challengeId, confirmationCode: telegramVerification.body.confirmationCode }) });
+  assert.equal(complete.status, 200);
+  const userCookie = cookieOf(complete);
   const userHeaders = { Cookie: userCookie };
   const keyResponse = await jsonRequest('/api/user/key', { method: 'POST', headers: userHeaders, body: '{}' });
   assert.equal(keyResponse.response.status, 201);

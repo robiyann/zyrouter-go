@@ -1,4 +1,4 @@
-﻿package telegram
+package telegram
 
 import (
 	"bytes"
@@ -169,7 +169,7 @@ func (b *BotService) handleMessage(ctx context.Context, msg *telegramMessage) {
 		name = msg.From.Username
 	}
 
-	user, err := b.repo.VerifyChallenge(code, telegramID, msg.From.Username, name, "user")
+	confirmationCode, err := b.repo.MarkChallengeTelegramVerified(code, telegramID, msg.From.Username, name)
 	if err != nil {
 		log.Warn("telegram", "verification failed", "telegramID", telegramID, "error", err)
 		b.sendMessage(ctx, msg.Chat.ID,
@@ -184,9 +184,9 @@ func (b *BotService) handleMessage(ctx context.Context, msg *telegramMessage) {
 		userTag = name
 	}
 
-	log.Info("telegram", "challenge verified successfully", "userId", user.ID, "telegramID", telegramID, "tag", userTag)
+	log.Info("telegram", "challenge verified by telegram", "telegramID", telegramID, "tag", userTag)
 	b.sendMessage(ctx, msg.Chat.ID,
-		fmt.Sprintf("✅ <b>Verifikasi Berhasil!</b>\n\nAkun Telegram Anda (<b>%s</b>) telah berhasil di-binding ke akun Zyrouter Portal Anda.\n\nSilakan kembali ke browser Anda untuk mengakses Client Dashboard.", userTag))
+		fmt.Sprintf("✅ <b>Telegram berhasil diverifikasi!</b>\n\nAkun: <b>%s</b>\n\nKode konfirmasi dashboard:\n<code>%s</code>\n\nMasukkan kode ini kembali ke Client Portal dalam 5 menit untuk menyelesaikan binding.", userTag, confirmationCode))
 }
 
 func (b *BotService) getMe(ctx context.Context) (*telegramUser, error) {

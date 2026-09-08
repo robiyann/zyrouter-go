@@ -81,6 +81,8 @@ func EnsureSchema(db *sql.DB) error {
 			telegramUsername TEXT,
 			telegramDisplayName TEXT,
 			status TEXT NOT NULL DEFAULT 'pending',
+			confirmationHash TEXT,
+			confirmationExpiresAt TEXT,
 			createdAt TEXT NOT NULL,
 			verifiedAt TEXT
 		);`,
@@ -275,6 +277,8 @@ func EnsureSchema(db *sql.DB) error {
 	migrateColumnIfNotExists(db, "apiKeys", "keyHash", "TEXT")
 	migrateColumnIfNotExists(db, "usageHistory", "userId", "TEXT")
 	migrateColumnIfNotExists(db, "userVerificationChallenges", "browserKey", "TEXT")
+	migrateColumnIfNotExists(db, "userVerificationChallenges", "confirmationHash", "TEXT")
+	migrateColumnIfNotExists(db, "userVerificationChallenges", "confirmationExpiresAt", "TEXT")
 	migrateColumnIfNotExists(db, "combos", "strategy", "TEXT DEFAULT 'fallback'")
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_one_active_user ON apiKeys(userId) WHERE userId IS NOT NULL AND isActive = 1`); err != nil {
 		return fmt.Errorf("create user api key uniqueness index: %w", err)

@@ -93,6 +93,34 @@ func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
 	handlerutil.WriteJSON(w, http.StatusOK, response)
 }
 
+func (h *Handler) CompleteVerification(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ChallengeID      string `json:"challengeId"`
+		ConfirmationCode string `json:"confirmationCode"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil || strings.TrimSpace(body.ChallengeID) == "" || strings.TrimSpace(body.ConfirmationCode) == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "challengeId and confirmationCode are required")
+		return
+	}
+	cookie, err := r.Cookie(verificationBrowserCookie)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "verification browser binding is missing")
+		return
+	}
+	user, err := h.Repo.CompleteVerification(body.ChallengeID, cookie.Value, body.ConfirmationCode, "user")
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	session, err := randomToken(32)
+	if err != nil || h.Repo.CreateUserSession(user.ID, session, 24*time.Hour) != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create user session")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "user_session", Value: session, Path: "/", HttpOnly: true, Secure: r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"), SameSite: http.SameSiteLaxMode, MaxAge: 86400})
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"status": "verified", "user": sanitizeUser(user), "redirect": "/#dashboard"})
+}
+
 // TelegramWebhook receives only server-to-server bot updates. Configure Telegram
 // with TELEGRAM_WEBHOOK_SECRET and reject every request without the exact secret.
 func (h *Handler) TelegramWebhook(w http.ResponseWriter, r *http.Request) {
@@ -120,12 +148,12 @@ func (h *Handler) TelegramWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(update.Message.From.FirstName + " " + update.Message.From.LastName)
-	user, err := h.Repo.VerifyChallenge(parts[1], fmtInt64(update.Message.From.ID), update.Message.From.Username, name, "user")
+	confirmationCode, err := h.Repo.MarkChallengeTelegramVerified(parts[1], fmtInt64(update.Message.From.ID), update.Message.From.Username, name)
 	if err != nil {
 		handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "rejected", "reason": err.Error()})
 		return
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"status": "verified", "userId": user.ID})
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"status": "telegram_verified", "confirmationCode": confirmationCode})
 }
 
 func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {

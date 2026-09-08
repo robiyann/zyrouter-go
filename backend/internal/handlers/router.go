@@ -192,6 +192,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	// locked bot webhook. No database or admin data is exposed by these routes.
 	r.Post("/api/user/verification/start", userH.StartVerification)
 	r.Get("/api/user/verification/{id}", userH.VerificationStatus)
+	r.Post("/api/user/verification/complete", userH.CompleteVerification)
 	r.Post("/api/telegram/webhook", userH.TelegramWebhook)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireUserSession(repo))
