@@ -197,6 +197,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		DurationMs:       latencyMs,
 		Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 		Status:           "200",
+		PublicModel:      publicModel,
 	}, h.Repo)
 	clientstream.Get().Publish(clientStreamSubject(info.UserID, info.ClientID), clientstream.Event{
 		ID: clientRequestID + ":completed", Type: "request.completed", Timestamp: now.Format(time.RFC3339Nano),

@@ -12,6 +12,8 @@ import (
 
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
+	"zyrouter/backend/internal/middleware"
+	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/usagetracker"
 )
 
@@ -34,12 +36,57 @@ func publicAlias(repo *db.Repo, model string) string {
 	return "unpublished"
 }
 
-func clientTelemetry(repo *db.Repo) (map[string]any, error) {
+func allowedAliasesForClient(repo *db.Repo, r *http.Request) map[string]bool {
+	allowed := make(map[string]bool)
+	if user := middleware.GetAuthenticatedUser(r); user != nil {
+		aliases, _ := repo.GetAccountTypeModels(user.AccountTypeID)
+		for _, alias := range aliases {
+			allowed[strings.ToLower(alias)] = true
+		}
+		return allowed
+	}
+	if client := middleware.GetAuthenticatedClient(r); client != nil && client.PolicyID != nil {
+		if policy, err := repo.GetClientPolicy(*client.PolicyID); err == nil && policy != nil {
+			var data models.KeyRestrictions
+			if json.Unmarshal([]byte(policy.Data), &data) == nil {
+				for _, alias := range data.AllowedModels {
+					allowed[strings.ToLower(alias)] = true
+				}
+			}
+		}
+	}
+	return allowed
+}
+
+func filterClientTelemetry(data map[string]any, allowed map[string]bool) map[string]any {
+	if allowed == nil {
+		return data
+	}
+	filtered := make(map[string]any, len(data))
+	for key, value := range data {
+		if key != "recent" {
+			filtered[key] = value
+		}
+	}
+	recent := make([]map[string]any, 0)
+	if items, ok := data["recent"].([]map[string]any); ok {
+		for _, item := range items {
+			alias, _ := item["publicModel"].(string)
+			if allowed[strings.ToLower(alias)] {
+				recent = append(recent, item)
+			}
+		}
+	}
+	filtered["recent"] = recent
+	return filtered
+}
+
+func clientTelemetry(repo *db.Repo, allowed map[string]bool) (map[string]any, error) {
 	clientTelemetryCache.Lock()
 	if clientTelemetryCache.data != nil && time.Since(clientTelemetryCache.at) < time.Second {
 		data := clientTelemetryCache.data
 		clientTelemetryCache.Unlock()
-		return data, nil
+		return filterClientTelemetry(data, allowed), nil
 	}
 	clientTelemetryCache.Unlock()
 	snapshot, err := buildPublicTelemetry(repo)
@@ -49,7 +96,7 @@ func clientTelemetry(repo *db.Repo) (map[string]any, error) {
 	recent := make([]map[string]any, 0, len(snapshot.RecentRequests))
 	for _, item := range snapshot.RecentRequests {
 		recent = append(recent, map[string]any{
-			"timestamp": item["timestamp"], "model": publicAlias(repo, fmt.Sprint(item["model"])),
+			"timestamp": item["timestamp"], "model": publicAlias(repo, fmt.Sprint(item["model"])), "publicModel": item["publicModel"],
 			"status": item["status"], "promptTokens": item["promptTokens"],
 			"completionTokens": item["completionTokens"], "totalTokens": item["totalTokens"],
 			"durationMs": item["durationMs"],
@@ -64,12 +111,12 @@ func clientTelemetry(repo *db.Repo) (map[string]any, error) {
 	clientTelemetryCache.at = time.Now()
 	clientTelemetryCache.data = data
 	clientTelemetryCache.Unlock()
-	return data, nil
+	return filterClientTelemetry(data, allowed), nil
 }
 
 func HandleClientTelemetryStats(repo *db.Repo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := clientTelemetry(repo)
+		body, err := clientTelemetry(repo, allowedAliasesForClient(repo, r))
 		if err != nil {
 			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load global telemetry")
 			return
@@ -89,7 +136,7 @@ func HandleClientTelemetryStream(repo *db.Repo) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("X-Accel-Buffering", "no")
 		send := func() bool {
-			body, err := clientTelemetry(repo)
+			body, err := clientTelemetry(repo, allowedAliasesForClient(repo, r))
 			if err != nil {
 				return false
 			}
@@ -205,7 +252,8 @@ func buildPublicTelemetry(repo *db.Repo) (publicTelemetrySnapshot, error) {
 	for _, recent := range state.RecentRequests {
 		snapshot.RecentRequests = append(snapshot.RecentRequests, map[string]any{
 			"id": recent.ID, "timestamp": recent.Timestamp, "model": recent.Model,
-			"provider": recent.Provider, "status": recent.Status,
+			"publicModel": recent.PublicModel,
+			"provider":    recent.Provider, "status": recent.Status,
 			"promptTokens": recent.PromptTokens, "completionTokens": recent.CompletionTokens,
 			"totalTokens": recent.PromptTokens + recent.CompletionTokens,
 			"durationMs":  recent.DurationMs, "latency": recent.Latency,

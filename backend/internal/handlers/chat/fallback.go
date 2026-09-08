@@ -463,6 +463,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 			DurationMs:       latencyMs,
 			Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 			Status:           fmt.Sprintf("%d", statusCode),
+			PublicModel:      publicModelFromContext(ctx),
 		}, h.Repo)
 
 		// Record in SQLite requestDetails
