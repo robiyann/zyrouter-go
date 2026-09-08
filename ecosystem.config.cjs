@@ -1,8 +1,11 @@
+const path = require('path');
+const projectRoot = __dirname;
+
 module.exports = {
   apps: [
     {
       name: 'zyrouter',
-      cwd: __dirname,
+      cwd: projectRoot,
       script: process.platform === 'win32' ? './backend/zyrouter.exe' : './backend/zyrouter',
       interpreter: 'none',
       exec_mode: 'fork',
@@ -13,7 +16,7 @@ module.exports = {
       env: {
         HOST: '127.0.0.1',
         PORT: '20128',
-        FRONTEND_DIR: './frontend'
+        FRONTEND_DIR: path.join(projectRoot, 'frontend')
       }
     }
   ]
