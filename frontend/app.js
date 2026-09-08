@@ -6601,7 +6601,7 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = [], provi
   const publicAlias = combo.publicAlias || '';
 
   return `
-    <form class="inline-form policy-builder-form" id="combo-builder-form" data-combo-id="${escapeHtml(combo.id || '')}" data-available-aliases="${escapeHtml(JSON.stringify(allActiveModels))}" style="max-width:740px;">
+    <form class="inline-form policy-builder-form combo-builder-form" id="combo-builder-form" data-combo-id="${escapeHtml(combo.id || '')}" data-available-aliases="${escapeHtml(JSON.stringify(allActiveModels))}" style="max-width:740px;">
       <div class="form-head">
         <div>
           <span class="kicker">ORCHESTRATION / ROUTING PIPELINE</span>
@@ -6660,9 +6660,9 @@ function comboBuilderForm(combo = {}, isNew = false, allActiveModels = [], provi
             <div class="custom-input-row">
               <input type="text" id="custom-combo-model-input" placeholder="Alias or provider/model, e.g. openai/gpt-4o" />
               <button type="button" class="secondary-button" id="btn-add-custom-combo-step">+ Add Step</button>
-              ${allActiveModels.length === 0 ? '<button type="button" class="secondary-button" id="btn-open-combo-aliases">Manage Model Aliases first</button>' : ''}
+              ${allActiveModels.length === 0 ? '<button type="button" class="secondary-button" id="btn-open-combo-aliases">Manage direct aliases (optional)</button>' : ''}
             </div>
-            <div style="display:grid; grid-template-columns:minmax(150px,0.8fr) minmax(180px,1fr) auto auto; gap:5px; margin-top:8px; align-items:center;">
+            <div class="combo-target-picker" style="display:grid; grid-template-columns:minmax(150px,0.8fr) minmax(180px,1fr) auto auto; gap:5px; margin-top:8px; align-items:center;">
               <select id="combo-target-provider" style="background:#05070a; border:1px solid var(--line); color:var(--text); font:10px var(--mono); padding:6px 8px; border-radius:4px;">
                 ${providerOptions.map((provider) => `<option value="${escapeHtml(provider)}">${escapeHtml(provider)}</option>`).join('')}
               </select>

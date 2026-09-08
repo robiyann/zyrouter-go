@@ -2049,6 +2049,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   gap: 4px;
 }
 
+.combo-builder-form {
+  width: 100%;
+  max-width: 740px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.combo-target-picker {
+  min-width: 0;
+}
+
 .preset-chip {
   background: #111722;
   border: 1px solid var(--line);
@@ -3027,6 +3038,52 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     z-index: 40;
     background: rgba(0, 0, 0, 0.58);
     backdrop-filter: blur(2px);
+  }
+}
+
+@media (max-width: 640px) {
+  .combo-builder-form {
+    padding: 12px !important;
+  }
+
+  .combo-builder-form .form-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .combo-builder-form .mode-tabs {
+    width: 100%;
+  }
+
+  .combo-builder-form .mode-tab {
+    flex: 1;
+  }
+
+  .combo-target-picker {
+    grid-template-columns: 1fr !important;
+  }
+
+  .combo-target-picker select,
+  .combo-target-picker input,
+  .combo-target-picker button {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .combo-step-row {
+    flex-wrap: wrap;
+  }
+
+  .combo-step-row > div:last-child {
+    margin-left: auto;
+  }
+
+  #combo-raw-json {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }
 
