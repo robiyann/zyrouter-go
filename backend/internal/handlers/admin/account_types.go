@@ -20,12 +20,31 @@ func (h *AdminHandler) HandleGetAccountTypes(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *AdminHandler) HandleUpsertAccountType(w http.ResponseWriter, r *http.Request) {
-	var item models.AccountType
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+	var body struct {
+		models.AccountType
+		IsActive *int `json:"isActive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	item := body.AccountType
+	if body.IsActive != nil {
+		item.IsActive = *body.IsActive
+	} else if r.Method == http.MethodPost {
+		item.IsActive = 1
+	} else {
+		// On PUT, preserve existing isActive if omitted
+		if existing, err := h.repo.GetAccountType(item.ID); err == nil && existing != nil {
+			item.IsActive = existing.IsActive
+		} else {
+			item.IsActive = 1
+		}
+	}
 	item.ID = strings.TrimSpace(item.ID)
+	if item.ID == "" {
+		item.ID = strings.TrimSpace(chi.URLParam(r, "id"))
+	}
 	item.Name = strings.TrimSpace(item.Name)
 	if item.ID == "" || item.Name == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "id and name are required")

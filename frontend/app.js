@@ -3,6 +3,7 @@ const views = {
   providers: ['NODES', 'Provider nodes', 'Manage live connections to your routing fabric.', 'Add connection'],
   orchestrator: ['FLOWS', 'Combo orchestrator', 'Compose fallback, round-robin, sticky, and fusion strategies.', 'Create combo'],
   keys: ['KEYS', 'API key governance', 'Control gateway access with public aliases and provider restrictions.', 'Create API key'],
+  'account-types': ['TIERS', 'Account Types & Users', 'Manage access tiers, model permissions per tier, and verified users.', 'Create Account Type'],
   usage: ['LEDGER', 'Usage ledger', 'Inspect token volume and cost from the SQLite rollup.', 'Export ledger'],
   logs: ['TRACE', 'Stream inspector', 'Observe translator events and request traces as they happen.', 'Connect stream'],
   authlogs: ['SECURITY', 'Auth log', 'Review dashboard login attempts and rejected admin access.', 'Refresh auth log'],
@@ -4153,6 +4154,539 @@ function renderKeys(payload) {
   `;
 }
 
+let accountTypesTab = 'tiers'; // 'tiers' | 'users'
+let cachedProviderConnections = [];
+
+function renderAccountTypes(payload) {
+  const accountTypes = (payload && payload.accountTypes) || [];
+  const users = (payload && payload.users) || [];
+  const modelAliases = (payload && payload.modelAliases) || [];
+
+  return `
+    <div class="card" style="padding:16px; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div>
+          <span class="kicker">ACCESS CONTROL / TIER-BASED GOVERNANCE</span>
+          <h2 style="font-size:16px; margin:2px 0 0;">Account Types &amp; User Governance</h2>
+          <p style="font-size:11.5px; color:var(--muted); margin:3px 0 0;">
+            Model restrictions and token quotas are enforced at the Account Type tier level. Client API keys and verified users inherit model allowances from their assigned tier.
+          </p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="table-badge purple">${accountTypes.length} TIERS</span>
+          <span class="table-badge green">${users.length} VERIFIED USERS</span>
+          <button class="solid-button" id="btn-open-create-tier" type="button" style="font-size:11px; padding:6px 12px;">
+            <span>+</span> Create Account Type
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:6px; margin-top:12px; border-bottom:1px solid var(--line); padding-bottom:8px;">
+        <button type="button" class="alias-filter-chip ${accountTypesTab === 'tiers' ? 'active' : ''}" id="tab-btn-tiers">
+          Access Tiers (${accountTypes.length})
+        </button>
+        <button type="button" class="alias-filter-chip ${accountTypesTab === 'users' ? 'active' : ''}" id="tab-btn-users">
+          Verified Telegram Users (${users.length})
+        </button>
+      </div>
+    </div>
+
+    ${accountTypesTab === 'tiers' ? renderTiersList(accountTypes, modelAliases) : renderUsersList(users, accountTypes)}
+  `;
+}
+
+function renderTiersList(accountTypes, modelAliases) {
+  if (!accountTypes.length) return emptySurface('No account types configured.');
+
+  return `
+    <div class="data-table-container card" style="padding:0; overflow:hidden;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:90px;">Status</th>
+            <th>Tier ID &amp; Name</th>
+            <th>Quota Mode</th>
+            <th>Token Limits</th>
+            <th>Rate Limit</th>
+            <th>Feature Flags</th>
+            <th class="table-cell-actions">Tier Governance</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${accountTypes.map((typ) => {
+            const isSystem = typ.isSystem === 1;
+            return `
+              <tr id="tier-row-${escapeHtml(typ.id)}">
+                <td>
+                  <span class="table-badge ${typ.isActive === 1 ? 'active' : 'inactive'}" style="font-size:7.5px;">
+                    ${typ.isActive === 1 ? 'ACTIVE' : 'INACTIVE'}
+                  </span>
+                  ${isSystem ? '<span class="table-badge purple" style="font-size:7px; display:block; margin-top:2px;">SYSTEM</span>' : ''}
+                </td>
+                <td>
+                  <strong style="color:var(--text-bright);">${escapeHtml(typ.name)}</strong>
+                  <code style="display:block; font-size:10px; color:var(--muted); font-family:var(--mono);">${escapeHtml(typ.id)}</code>
+                  ${typ.description ? `<small style="display:block; font-size:10px; color:#8ea2b8; margin-top:2px;">${escapeHtml(typ.description)}</small>` : ''}
+                </td>
+                <td>
+                  <span class="table-badge" style="font-size:8px; text-transform:uppercase; background:rgba(255,255,255,0.05);">
+                    ${escapeHtml(typ.quotaMode || 'unlimited')}
+                  </span>
+                </td>
+                <td>
+                  <div style="font-size:11px; font-family:var(--mono);">
+                    <div>Daily: <strong>${typ.dailyTokenLimit > 0 ? formatTokenCount(typ.dailyTokenLimit) : 'Unlimited'}</strong></div>
+                    <div style="color:var(--muted); font-size:10px;">Monthly: ${typ.monthlyTokenLimit > 0 ? formatTokenCount(typ.monthlyTokenLimit) : 'Unlimited'}</div>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size:11px; font-family:var(--mono);">
+                    ${typ.requestsPerMinute > 0 ? `${typ.requestsPerMinute} req/min` : 'Unlimited'}
+                  </span>
+                </td>
+                <td>
+                  <div style="display:flex; gap:4px; flex-wrap:wrap; font-size:9px;">
+                    <span class="table-badge ${typ.allowRTK ? 'active' : 'inactive'}">RTK</span>
+                    <span class="table-badge ${typ.allowCaveman ? 'active' : 'inactive'}">Caveman</span>
+                    <span class="table-badge ${typ.allowPonytail ? 'active' : 'inactive'}">Ponytail</span>
+                  </div>
+                </td>
+                <td class="table-cell-actions">
+                  ${typ.id === 'administrator' ? `
+                    <span class="table-badge green" style="font-size:8.5px; padding:3px 6px;">All Models Permitted</span>
+                  ` : `
+                    <button class="solid-button" data-manage-tier-models="${escapeHtml(typ.id)}" data-tier-name="${escapeHtml(typ.name)}" style="font-size:9.5px; padding:3px 8px;">
+                      Manage Models
+                    </button>
+                  `}
+                  <button class="secondary-button" data-edit-tier="${escapeHtml(typ.id)}" style="font-size:9.5px; padding:3px 7px;">
+                    Edit Tier
+                  </button>
+                  ${!isSystem ? `
+                    <button class="danger-button" data-delete-tier="${escapeHtml(typ.id)}" style="font-size:9.5px; padding:3px 7px;">
+                      Delete
+                    </button>
+                  ` : ''}
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderUsersList(users, accountTypes) {
+  if (!users.length) return emptySurface('No verified Telegram users found.');
+
+  return `
+    <div class="data-table-container card" style="padding:0; overflow:hidden;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:90px;">Status</th>
+            <th>Telegram User</th>
+            <th>Display Name</th>
+            <th>Assigned Account Type</th>
+            <th>Active Gateway Key</th>
+            <th class="table-cell-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${users.map((u) => `
+            <tr>
+              <td>
+                <span class="table-badge ${u.isActive === 1 ? 'active' : 'inactive'}" style="font-size:7.5px;">
+                  ${u.isActive === 1 ? 'ACTIVE' : 'INACTIVE'}
+                </span>
+              </td>
+              <td>
+                <strong>${escapeHtml(u.telegramUsername ? `@${u.telegramUsername}` : u.id)}</strong>
+                <small style="display:block; font-size:10px; color:var(--muted); font-family:var(--mono);">ID: ${escapeHtml(u.telegramUserId || u.id)}</small>
+              </td>
+              <td>
+                <span>${escapeHtml(u.displayName || '--')}</span>
+              </td>
+              <td>
+                <select class="user-tier-selector" data-user-id="${escapeHtml(u.id)}" style="background:#05070a; border:1px solid var(--line); color:var(--text); padding:4px 8px; font:11px var(--mono); border-radius:4px;">
+                  ${accountTypes.map((t) => `<option value="${escapeHtml(t.id)}" ${u.accountTypeId === t.id ? 'selected' : ''}>${escapeHtml(t.name)} (${escapeHtml(t.id)})</option>`).join('')}
+                </select>
+              </td>
+              <td>
+                ${u.hasActiveKey ? `
+                  <code style="color:var(--lime); font-size:10.5px;">${escapeHtml(u.keyPrefix || 'zy_***')}</code>
+                ` : `
+                  <span style="color:var(--muted); font-size:10px;">No Active Key</span>
+                `}
+              </td>
+              <td class="table-cell-actions">
+                ${u.hasActiveKey ? `
+                  <button class="danger-button" data-revoke-user-key="${escapeHtml(u.id)}" style="font-size:9.5px; padding:3px 7px;">
+                    Revoke Key
+                  </button>
+                ` : '<span style="font-size:10px; color:var(--muted);">--</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openTierModal(tier = null) {
+  const isEdit = Boolean(tier);
+  const existing = document.querySelector('#tier-edit-modal');
+  if (existing) existing.remove();
+
+  const formHtml = `
+    <div id="tier-edit-modal" style="position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; padding:16px;">
+      <form class="card" id="tier-edit-form" style="max-width:550px; width:100%; padding:20px; background:#080b10; border:1px solid var(--line); border-radius:8px;">
+        <div class="card-top" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <span class="kicker">ACCOUNT TYPE TIER</span>
+            <h3 style="font-size:15px; margin:2px 0 0;">${isEdit ? `Edit Tier: ${escapeHtml(tier.name)}` : 'Create New Account Type'}</h3>
+          </div>
+          <button type="button" class="cancel-button" id="btn-close-tier-modal" style="padding:2px 6px;">&times;</button>
+        </div>
+
+        <div style="display:grid; gap:12px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Tier Identifier (id)
+              <input name="id" value="${escapeHtml(tier?.id || '')}" placeholder="e.g. pro_user" ${isEdit ? 'readonly style="opacity:0.7;"' : 'required'} style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+            </label>
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Tier Name
+              <input name="name" value="${escapeHtml(tier?.name || '')}" placeholder="e.g. Pro User" required style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+            </label>
+          </div>
+
+          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+            Description
+            <input name="description" value="${escapeHtml(tier?.description || '')}" placeholder="Tier description and purpose" style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+          </label>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Quota Mode
+              <select name="quotaMode" style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;">
+                <option value="unlimited" ${(tier?.quotaMode || 'unlimited') === 'unlimited' ? 'selected' : ''}>Unlimited</option>
+                <option value="custom" ${tier?.quotaMode === 'custom' ? 'selected' : ''}>Custom Token Quota</option>
+              </select>
+            </label>
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Requests / Minute
+              <input name="requestsPerMinute" type="number" min="0" value="${tier?.requestsPerMinute || 0}" placeholder="0 = Unlimited" style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+            </label>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Daily Token Limit
+              <input name="dailyTokenLimit" type="number" min="0" value="${tier?.dailyTokenLimit || 0}" placeholder="0 = Unlimited" style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+            </label>
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Monthly Token Limit
+              <input name="monthlyTokenLimit" type="number" min="0" value="${tier?.monthlyTokenLimit || 0}" placeholder="0 = Unlimited" style="width:100%; margin-top:4px; padding:7px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+            </label>
+          </div>
+
+          <div style="display:flex; gap:16px; flex-wrap:wrap; padding:8px 0;">
+            <label style="font-size:11px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" name="allowRTK" ${tier?.allowRTK ? 'checked' : ''} /> Allow RTK Compression
+            </label>
+            <label style="font-size:11px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" name="allowCaveman" ${tier?.allowCaveman ? 'checked' : ''} /> Allow Caveman Mode
+            </label>
+            <label style="font-size:11px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" name="allowPonytail" ${tier?.allowPonytail ? 'checked' : ''} /> Allow Ponytail Mode
+            </label>
+            <label style="font-size:11px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" name="isActive" ${tier?.isActive !== 0 ? 'checked' : ''} /> Active Tier
+            </label>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
+          <button type="button" class="cancel-button" id="btn-cancel-tier">Cancel</button>
+          <button type="submit" class="solid-button" id="btn-save-tier">${isEdit ? 'Update Tier' : 'Create Tier'}</button>
+        </div>
+        <p class="form-error" style="color:var(--danger); font-size:11px; margin-top:6px;"></p>
+      </form>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', formHtml);
+  const modal = document.querySelector('#tier-edit-modal');
+  const form = modal.querySelector('#tier-edit-form');
+  const close = () => modal.remove();
+
+  modal.querySelector('#btn-close-tier-modal').onclick = close;
+  modal.querySelector('#btn-cancel-tier').onclick = close;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const saveBtn = form.querySelector('#btn-save-tier');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-icon"></span> Saving...';
+    form.querySelector('.form-error').textContent = '';
+
+    const formData = new FormData(form);
+    const body = {
+      id: String(formData.get('id') || '').trim(),
+      name: String(formData.get('name') || '').trim(),
+      description: String(formData.get('description') || '').trim(),
+      quotaMode: String(formData.get('quotaMode') || 'unlimited'),
+      requestsPerMinute: Number(formData.get('requestsPerMinute')) || 0,
+      dailyTokenLimit: Number(formData.get('dailyTokenLimit')) || 0,
+      monthlyTokenLimit: Number(formData.get('monthlyTokenLimit')) || 0,
+      allowRTK: formData.has('allowRTK'),
+      allowCaveman: formData.has('allowCaveman'),
+      allowPonytail: formData.has('allowPonytail'),
+      isActive: formData.has('isActive') ? 1 : 0
+    };
+
+    try {
+      const endpoint = isEdit ? `/api/admin/account-types/${encodeURIComponent(body.id)}` : '/api/admin/account-types';
+      const method = isEdit ? 'PUT' : 'POST';
+      const res = await fetch(`${apiBase}${endpoint}`, {
+        method,
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+
+      showToast(`Tier "${body.name}" saved successfully`, 'success');
+      close();
+      await renderView('account-types');
+    } catch (err) {
+      form.querySelector('.form-error').textContent = err.message;
+      saveBtn.disabled = false;
+      saveBtn.textContent = isEdit ? 'Update Tier' : 'Create Tier';
+    }
+  };
+}
+
+async function openManageTierModelsModal(tierId, tierName, allAliases = []) {
+  const existing = document.querySelector('#manage-tier-models-modal');
+  if (existing) existing.remove();
+
+  let assignedAliases = [];
+  try {
+    const res = await fetch(`${apiBase}/api/admin/account-types/${encodeURIComponent(tierId)}/models`, { headers: getHeaders() });
+    const payload = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(payload.aliases)) {
+      assignedAliases = payload.aliases;
+    }
+  } catch {}
+
+  const assignedSet = new Set(assignedAliases.map(a => a.toLowerCase()));
+  const sortedAliases = [...allAliases].sort();
+
+  const modalHtml = `
+    <div id="manage-tier-models-modal" style="position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div class="card" style="max-width:650px; width:100%; max-height:85vh; display:flex; flex-direction:column; padding:20px; background:#080b10; border:1px solid var(--line); border-radius:8px;">
+        <div class="card-top" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <span class="kicker">MODEL RESTRICTIONS &bull; TIER LEVEL</span>
+            <h3 style="font-size:15px; margin:2px 0 0;">Allowed Models: ${escapeHtml(tierName)}</h3>
+            <p style="font-size:11px; color:var(--muted); margin:2px 0 0;">
+              Only checked published model aliases can be queried by users or keys assigned to this tier.
+            </p>
+          </div>
+          <button type="button" class="cancel-button" id="btn-close-tier-models" style="padding:2px 6px;">&times;</button>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
+          <input type="text" id="tier-model-search" placeholder="Search published aliases..." style="flex:1; padding:6px 10px; background:#05070a; border:1px solid var(--line); font:11px var(--mono); color:var(--text); border-radius:4px;" />
+          <button type="button" class="secondary-button" id="btn-tier-select-all" style="font-size:10px; padding:4px 8px;">Select All</button>
+          <button type="button" class="secondary-button" id="btn-tier-deselect-all" style="font-size:10px; padding:4px 8px;">Deselect All</button>
+        </div>
+
+        <div id="tier-models-grid" style="flex:1; overflow-y:auto; border:1px solid var(--line); border-radius:6px; padding:10px; background:#05070a; display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px; max-height:380px;">
+          ${sortedAliases.length === 0 ? `
+            <p style="grid-column:1/-1; text-align:center; color:var(--muted); font-size:11px; padding:20px 0;">No published model aliases found. Create aliases in Model Aliases view first.</p>
+          ` : sortedAliases.map((alias) => `
+            <label class="tier-model-checkbox-label" style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono); padding:6px 8px; background:#080b10; border:1px solid var(--line-subtle); border-radius:4px; cursor:pointer;">
+              <input type="checkbox" class="tier-model-cb" value="${escapeHtml(alias)}" ${assignedSet.has(alias.toLowerCase()) ? 'checked' : ''} />
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(alias)}</span>
+            </label>
+          `).join('')}
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; border-top:1px solid var(--line); padding-top:10px;">
+          <span id="tier-models-selected-count" style="font-size:11px; font-family:var(--mono); color:var(--muted);">
+            ${assignedSet.size} of ${sortedAliases.length} models enabled
+          </span>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="cancel-button" id="btn-cancel-tier-models">Cancel</button>
+            <button type="button" class="solid-button" id="btn-save-tier-models">Save Permissions</button>
+          </div>
+        </div>
+        <p class="form-error" style="color:var(--danger); font-size:11px; margin-top:6px; text-align:right;"></p>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const modal = document.querySelector('#manage-tier-models-modal');
+  const close = () => modal.remove();
+
+  modal.querySelector('#btn-close-tier-models').onclick = close;
+  modal.querySelector('#btn-cancel-tier-models').onclick = close;
+
+  const searchInput = modal.querySelector('#tier-model-search');
+  const countLabel = modal.querySelector('#tier-models-selected-count');
+  const updateCount = () => {
+    const checked = modal.querySelectorAll('.tier-model-cb:checked').length;
+    countLabel.textContent = `${checked} of ${sortedAliases.length} models enabled`;
+  };
+
+  modal.querySelectorAll('.tier-model-cb').forEach(cb => cb.addEventListener('change', updateCount));
+
+  searchInput.oninput = () => {
+    const q = searchInput.value.trim().toLowerCase();
+    modal.querySelectorAll('.tier-model-checkbox-label').forEach((label) => {
+      const text = label.textContent.trim().toLowerCase();
+      label.style.display = !q || text.includes(q) ? 'flex' : 'none';
+    });
+  };
+
+  modal.querySelector('#btn-tier-select-all').onclick = () => {
+    modal.querySelectorAll('.tier-model-cb').forEach(cb => { cb.checked = true; });
+    updateCount();
+  };
+  modal.querySelector('#btn-tier-deselect-all').onclick = () => {
+    modal.querySelectorAll('.tier-model-cb').forEach(cb => { cb.checked = false; });
+    updateCount();
+  };
+
+  modal.querySelector('#btn-save-tier-models').onclick = async () => {
+    const saveBtn = modal.querySelector('#btn-save-tier-models');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-icon"></span> Saving...';
+    modal.querySelector('.form-error').textContent = '';
+
+    const selected = Array.from(modal.querySelectorAll('.tier-model-cb:checked')).map(cb => cb.value);
+
+    try {
+      const res = await fetch(`${apiBase}/api/admin/account-types/${encodeURIComponent(tierId)}/models`, {
+        method: 'POST',
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aliases: selected })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+
+      showToast(`Model permissions updated for ${tierName} (${selected.length} enabled)`, 'success');
+      close();
+    } catch (err) {
+      modal.querySelector('.form-error').textContent = err.message;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Permissions';
+    }
+  };
+}
+
+function bindAccountTypeActions(payload) {
+  const tabTiers = document.querySelector('#tab-btn-tiers');
+  const tabUsers = document.querySelector('#tab-btn-users');
+  if (tabTiers) {
+    tabTiers.onclick = () => {
+      accountTypesTab = 'tiers';
+      renderView('account-types');
+    };
+  }
+  if (tabUsers) {
+    tabUsers.onclick = () => {
+      accountTypesTab = 'users';
+      renderView('account-types');
+    };
+  }
+
+  const createBtn = document.querySelector('#btn-open-create-tier');
+  if (createBtn) {
+    createBtn.onclick = () => openTierModal(null);
+  }
+
+  document.querySelectorAll('[data-edit-tier]').forEach((btn) => {
+    btn.onclick = () => {
+      const tierId = btn.dataset.editTier;
+      const tier = (payload.accountTypes || []).find(t => t.id === tierId);
+      if (tier) openTierModal(tier);
+    };
+  });
+
+  document.querySelectorAll('[data-delete-tier]').forEach((btn) => {
+    btn.onclick = async () => {
+      const tierId = btn.dataset.deleteTier;
+      if (!confirm(`Delete custom account type "${tierId}"?`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/admin/account-types/${encodeURIComponent(tierId)}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+        showToast(`Account type "${tierId}" deleted`, 'success');
+        await renderView('account-types');
+      } catch (err) {
+        alert(`Failed to delete tier: ${err.message}`);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-manage-tier-models]').forEach((btn) => {
+    btn.onclick = () => {
+      const tierId = btn.dataset.manageTierModels;
+      const tierName = btn.dataset.tierName || tierId;
+      openManageTierModelsModal(tierId, tierName, payload.modelAliases || []);
+    };
+  });
+
+  document.querySelectorAll('.user-tier-selector').forEach((select) => {
+    select.onchange = async () => {
+      const userId = select.dataset.userId;
+      const newTypeId = select.value;
+      try {
+        const res = await fetch(`${apiBase}/api/admin/users/${encodeURIComponent(userId)}/account-type`, {
+          method: 'PUT',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountTypeId: newTypeId })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+        showToast(`User account type updated to "${newTypeId}"`, 'success');
+      } catch (err) {
+        alert(`Failed to update user account type: ${err.message}`);
+        await renderView('account-types');
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-revoke-user-key]').forEach((btn) => {
+    btn.onclick = async () => {
+      const userId = btn.dataset.revokeUserKey;
+      if (!confirm('Revoke active API key for this user?')) return;
+      try {
+        const res = await fetch(`${apiBase}/api/admin/users/${encodeURIComponent(userId)}/key`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+        showToast('User API key revoked', 'success');
+        await renderView('account-types');
+      } catch (err) {
+        alert(`Failed to revoke key: ${err.message}`);
+      }
+    };
+  });
+}
+
 function renderSettings(payload) {
   if (!payload) return emptySurface('No settings loaded');
   const source = JSON.stringify(payload, null, 2);
@@ -5093,6 +5627,18 @@ async function renderView(name) {
           return { ...combos, modelAliases: aliases.aliases || {} };
         },
         keys: () => request('/api/keys'),
+        'account-types': async () => {
+          const [typesRes, usersRes, aliasesRes] = await Promise.all([
+            request('/api/admin/account-types').catch(() => ({ accountTypes: [] })),
+            request('/api/admin/users').catch(() => ({ users: [] })),
+            request('/api/model-aliases').catch(() => ({ aliases: {} }))
+          ]);
+          return {
+            accountTypes: typesRes.accountTypes || [],
+            users: usersRes.users || [],
+            modelAliases: Object.keys(aliasesRes.aliases || (aliasesRes.records ? aliasesRes.records.reduce((acc, r) => { if (r.alias) acc[r.alias] = true; return acc; }, {}) : {}))
+          };
+        },
         usage: () => request('/api/usage/stats?period=all&days=all'),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: async () => {
@@ -5103,10 +5649,17 @@ async function renderView(name) {
           return { ...logs, securitySummary };
         },
         pools: () => request('/api/proxy-pools'),
-        aliases: () => request('/api/model-aliases'),
+        aliases: async () => {
+          const [aliasRes, provRes] = await Promise.all([
+            request('/api/model-aliases'),
+            request('/api/providers').catch(() => ({ connections: [] }))
+          ]);
+          cachedProviderConnections = provRes.connections || [];
+          return aliasRes;
+        },
         settings: () => request('/api/settings')
       }[name] || (() => Promise.resolve(null)))();
-    content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'usage' ? renderUsage(payload) : name === 'logs' ? renderLogs(payload) : name === 'authlogs' ? renderAuthLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
+    content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'account-types' ? renderAccountTypes(payload) : name === 'usage' ? renderUsage(payload) : name === 'logs' ? renderLogs(payload) : name === 'authlogs' ? renderAuthLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
     
     if (name === 'settings') bindSettings();
     if (name === 'pools') bindDeployButtons();
@@ -5122,6 +5675,9 @@ async function renderView(name) {
     if (name === 'keys') {
       bindKeyManagementFilters();
       bindKeyPolicyEditors();
+    }
+    if (name === 'account-types') {
+      bindAccountTypeActions(payload);
     }
     if (name === 'logs') bindLogStream();
     if (name === 'authlogs') bindAuthLogs();
@@ -5461,7 +6017,7 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
     suggestedPrefixes: Array.from(suggestedPrefixes)
   };
 }
-function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = []) {
+function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = [], accountTypes = []) {
   const current = parseRestrictionsObject(item.restrictions);
   const publishedAliases = Array.from(new Set((availableModels || []).map((model) => typeof model === 'string' ? model : model.id).filter((model) => model && !String(model).includes('/')))).sort();
   const providerState = getActiveProviderModels(availableProviders, [], providerNodes, customModels);
@@ -5489,10 +6045,16 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
         </div>
       </div>
 
-      <div class="form-grid-2">
+      <div class="form-grid-3" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
         <label>
           API Key Name
           <input name="name" id="policy-key-name" value="${escapeHtml(item.name || '')}" placeholder="e.g. Production Agent Key" required />
+        </label>
+        <label>
+          Account Type Tier
+          <select name="accountTypeId" id="policy-key-account-type">
+            ${(accountTypes && accountTypes.length ? accountTypes : [{ id: 'administrator', name: 'Administrator' }, { id: 'user', name: 'User' }, { id: 'paid_user', name: 'Paid User' }]).map((t) => `<option value="${escapeHtml(t.id)}" ${(item.accountTypeId || 'administrator') === t.id ? 'selected' : ''}>${escapeHtml(t.name || t.id)}</option>`).join('')}
+          </select>
         </label>
         <label>
           Active State
@@ -5501,6 +6063,13 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
             <option value="0" ${item.isActive === 0 ? 'selected' : ''}>Disabled (Revoked)</option>
           </select>
         </label>
+      </div>
+
+      <div class="tier-governance-banner" style="background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:6px; padding:10px 12px; margin:10px 0 14px; display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined" style="color:#38bdf8; font-size:18px;">verified_user</span>
+        <div style="font-size:11px; color:#cbd5e1; line-height:1.4;">
+          <strong>Tier-Based Model Governance Active:</strong> Client model access is inherited from the assigned Account Type. Manage model permissions per tier under <strong>Account Types &rarr; Manage Models</strong>.
+        </div>
       </div>
 
       <!-- VISUAL BUILDER SURFACE -->
@@ -5664,12 +6233,13 @@ function bindKeyPolicyEditors() {
   document.querySelectorAll('[data-edit-key]').forEach((button) => {
     button.onclick = async () => {
       try {
-        const [keysPayload, provPayload, modelPayload, nodesPayload, customPayload] = await Promise.all([
+        const [keysPayload, provPayload, modelPayload, nodesPayload, customPayload, typesPayload] = await Promise.all([
           request('/api/keys'),
           request('/api/providers').catch(() => ({ connections: [] })),
           request('/models').catch(() => ({ data: [] })),
           request('/api/provider-nodes').catch(() => ({ nodes: [] })),
-          request('/api/custom-models').catch(() => ({ customModels: [] }))
+          request('/api/custom-models').catch(() => ({ customModels: [] })),
+          request('/api/admin/account-types').catch(() => ({ accountTypes: [] }))
         ]);
         const item = (keysPayload.keys || []).find((k) => k.id === button.dataset.editKey);
         if (!item) throw new Error('API key not found');
@@ -5679,7 +6249,7 @@ function bindKeyPolicyEditors() {
         const existingForm = document.querySelector('#key-policy-form');
         if (existingForm) existingForm.remove();
 
-        content.insertAdjacentHTML('afterbegin', keyPolicyForm(item, false, connections, models, nodesPayload.nodes || [], customPayload.customModels || []));
+        content.insertAdjacentHTML('afterbegin', keyPolicyForm(item, false, connections, models, nodesPayload.nodes || [], customPayload.customModels || [], typesPayload.accountTypes || []));
         setupPolicyBuilderInteractions(item, false);
       } catch (err) {
         alert(`Failed to open policy editor: ${err.message}`);
@@ -6054,7 +6624,9 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
     try {
       const endpoint = isNew ? '/api/keys' : `/api/keys/${item.id}`;
       const method = isNew ? 'POST' : 'PUT';
-      const body = { name: keyName, isActive: isActive, restrictions: finalRestrictions };
+      const typeSelect = form.querySelector('#policy-key-account-type');
+      const accountTypeId = typeSelect ? typeSelect.value : (item.accountTypeId || 'administrator');
+      const body = { name: keyName, isActive: isActive, accountTypeId: accountTypeId, restrictions: finalRestrictions };
       const response = await fetch(`${apiBase}${endpoint}`, {
         method,
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -6800,14 +7372,15 @@ function openCreateKeyModal() {
     request('/api/providers').catch(() => ({ connections: [] })),
     request('/models').catch(() => ({ data: [] })),
     request('/api/provider-nodes').catch(() => ({ nodes: [] })),
-    request('/api/custom-models').catch(() => ({ customModels: [] }))
-  ]).then(([provPayload, modelPayload, nodesPayload, customPayload]) => {
+    request('/api/custom-models').catch(() => ({ customModels: [] })),
+    request('/api/admin/account-types').catch(() => ({ accountTypes: [] }))
+  ]).then(([provPayload, modelPayload, nodesPayload, customPayload, typesPayload]) => {
     const providers = provPayload.connections || [];
     const models = modelPayload.data || [];
     const existingForm = document.querySelector('#key-policy-form');
     if (existingForm) existingForm.remove();
-    content.insertAdjacentHTML('afterbegin', keyPolicyForm({ name: '', isActive: 1, restrictions: '{}' }, true, providers, models, nodesPayload.nodes || [], customPayload.customModels || []));
-    setupPolicyBuilderInteractions({ name: '', isActive: 1, restrictions: '{}' }, true);
+    content.insertAdjacentHTML('afterbegin', keyPolicyForm({ name: '', isActive: 1, accountTypeId: 'administrator', restrictions: '{}' }, true, providers, models, nodesPayload.nodes || [], customPayload.customModels || [], typesPayload.accountTypes || []));
+    setupPolicyBuilderInteractions({ name: '', isActive: 1, accountTypeId: 'administrator', restrictions: '{}' }, true);
   });
 }
 

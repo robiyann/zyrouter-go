@@ -74,6 +74,7 @@ func SetupRoutes(r interface {
 	r.Post("/api/model-aliases", adminH.HandleSetModelAlias)
 	r.Put("/api/model-aliases/{alias}", adminH.HandleSetModelAlias)
 	r.Delete("/api/model-aliases/{alias}", adminH.HandleDeleteModelAlias)
+	r.Post("/api/model-aliases/{alias}/test", adminH.HandleTestModelAlias)
 
 	r.Get("/api/custom-models", adminH.HandleGetCustomModels)
 	r.Post("/api/custom-models", adminH.HandleAddCustomModel)

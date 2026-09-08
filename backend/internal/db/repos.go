@@ -127,14 +127,18 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 // CreateApiKey inserts a new API key record with optional restrictions. The
 // raw secret is returned to the caller but only its prefix and one-way hash
 // are persisted.
-func (r *Repo) CreateApiKey(id, rawKey, name, machineID string, restrictions *string) (*models.APIKey, error) {
+func (r *Repo) CreateApiKey(id, rawKey, name, machineID, accountTypeID string, restrictions *string) (*models.APIKey, error) {
 	if err := validateAliasRestrictions(restrictions); err != nil {
 		return nil, err
 	}
+	accountTypeID = strings.TrimSpace(accountTypeID)
+	if accountTypeID == "" {
+		accountTypeID = "administrator"
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := r.db.Exec(
-		`INSERT INTO apiKeys (id, key, keyHash, name, machineId, isActive, restrictions, createdAt, accountTypeId) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'administrator')`,
-		id, keyPrefix(rawKey), HashUserSecret(rawKey), name, machineID, restrictions, now,
+		`INSERT INTO apiKeys (id, key, keyHash, name, machineId, isActive, restrictions, createdAt, accountTypeId) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+		id, keyPrefix(rawKey), HashUserSecret(rawKey), name, machineID, restrictions, now, accountTypeID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create api key: %w", err)
@@ -146,13 +150,13 @@ func (r *Repo) CreateApiKey(id, rawKey, name, machineID string, restrictions *st
 		MachineID:     &machineID,
 		IsActive:      1,
 		Restrictions:  restrictions,
-		AccountTypeID: stringPtr("administrator"),
+		AccountTypeID: &accountTypeID,
 		CreatedAt:     now,
 	}, nil
 }
 
-// UpdateApiKey updates an existing API key's name, active state, or restrictions.
-func (r *Repo) UpdateApiKey(id string, name *string, isActive *int, restrictions *string) error {
+// UpdateApiKey updates an existing API key's name, active state, account type, or restrictions.
+func (r *Repo) UpdateApiKey(id string, name *string, isActive *int, accountTypeID *string, restrictions *string) error {
 	if err := validateAliasRestrictions(restrictions); err != nil {
 		return err
 	}
@@ -167,6 +171,10 @@ func (r *Repo) UpdateApiKey(id string, name *string, isActive *int, restrictions
 	if isActive != nil {
 		sets = append(sets, "isActive = ?")
 		args = append(args, *isActive)
+	}
+	if accountTypeID != nil && strings.TrimSpace(*accountTypeID) != "" {
+		sets = append(sets, "accountTypeId = ?")
+		args = append(args, strings.TrimSpace(*accountTypeID))
 	}
 	if restrictions != nil {
 		sets = append(sets, "restrictions = ?")

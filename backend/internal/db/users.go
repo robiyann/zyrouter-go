@@ -275,6 +275,7 @@ func (r *Repo) UpdateUserAccountType(userID, accountTypeID string) error {
 	if count == 0 {
 		return sql.ErrNoRows
 	}
+	_, _ = r.db.Exec(`UPDATE apiKeys SET accountTypeId=? WHERE userId=?`, accountTypeID, userID)
 	return nil
 }
 

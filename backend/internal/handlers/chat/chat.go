@@ -229,22 +229,22 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	if strings.Contains(requested, "/") {
 		return auth.ErrProviderPrefixForbidden
 	}
-	// Verified user keys are alias-only. Their access is resolved from the
-	// account type, never from mutable restrictions copied onto the key.
-	if key.UserID != nil && strings.TrimSpace(*key.UserID) != "" {
-		if strings.Contains(requested, "/") {
-			return fmt.Errorf("client api keys must use the public model alias without a provider prefix")
-		}
+	// All keys inherit their model access from the account type tier.
+	// Administrator tier bypasses restriction; other tiers require the alias in accountTypeModels.
+	typeID := ""
+	if key.AccountTypeID != nil {
+		typeID = strings.TrimSpace(*key.AccountTypeID)
+	}
+	if typeID == "" && key.UserID == nil {
+		typeID = "administrator"
+	}
+	if h.Repo != nil && typeID != "" && typeID != "administrator" {
 		aliasTarget, err := h.Repo.GetModelAlias(requested)
 		if err != nil {
 			return fmt.Errorf("model alias lookup failed: %w", err)
 		}
 		if strings.TrimSpace(aliasTarget) == "" {
 			return fmt.Errorf("model alias '%s' does not exist", requested)
-		}
-		typeID := ""
-		if key.AccountTypeID != nil {
-			typeID = *key.AccountTypeID
 		}
 		allowed, err := h.Repo.IsAliasAllowedForAccountType(typeID, requested)
 		if err != nil {
@@ -405,8 +405,8 @@ func (h *ChatHandler) handlePublishedAliasModels(w http.ResponseWriter, r *http.
 	}
 	apiKey := middleware.GetAuthenticatedApiKey(r)
 	allowedAccountAliases := map[string]bool(nil)
-	if apiKey != nil && apiKey.UserID != nil && strings.TrimSpace(*apiKey.UserID) != "" && apiKey.AccountTypeID != nil && *apiKey.AccountTypeID != "administrator" {
-		list, listErr := h.Repo.GetAccountTypeModels(*apiKey.AccountTypeID)
+	if apiKey != nil && apiKey.AccountTypeID != nil && strings.TrimSpace(*apiKey.AccountTypeID) != "" && strings.TrimSpace(*apiKey.AccountTypeID) != "administrator" {
+		list, listErr := h.Repo.GetAccountTypeModels(strings.TrimSpace(*apiKey.AccountTypeID))
 		if listErr != nil {
 			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load account model permissions")
 			return

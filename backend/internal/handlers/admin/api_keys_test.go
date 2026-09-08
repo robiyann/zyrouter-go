@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -112,3 +113,95 @@ func TestSecuritySummaryIsAggregateOnly(t *testing.T) {
 		t.Fatalf("unexpected or sensitive security summary: status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAdminAPIKeySupportsAccountTypeID(t *testing.T) {
+	file, err := os.CreateTemp("", "admin-key-type-*.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	defer os.Remove(file.Name())
+	database, err := db.OpenDatabase(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	h := NewAdminHandler(db.NewRepo(database))
+	req := httptest.NewRequest(http.MethodPost, "/api/keys", strings.NewReader(`{"name":"user-key","accountTypeId":"user"}`))
+	created := httptest.NewRecorder()
+	h.HandleCreateKey(created, req)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+	var response struct {
+		ID            string `json:"id"`
+		Key           string `json:"key"`
+		AccountTypeID string `json:"accountTypeId"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.AccountTypeID != "user" {
+		t.Fatalf("expected accountTypeId 'user', got %q", response.AccountTypeID)
+	}
+
+	var storedType string
+	if err := database.QueryRow(`SELECT accountTypeId FROM apiKeys WHERE id = ?`, response.ID).Scan(&storedType); err != nil {
+		t.Fatal(err)
+	}
+	if storedType != "user" {
+		t.Fatalf("expected stored accountTypeId 'user', got %q", storedType)
+	}
+
+	// Update accountTypeId
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/keys/"+response.ID, strings.NewReader(`{"accountTypeId":"paid_user"}`))
+	chiCtx := chi.NewRouteContext()
+	chiCtx.URLParams.Add("id", response.ID)
+	updateReq = updateReq.WithContext(context.WithValue(updateReq.Context(), chi.RouteCtxKey, chiCtx))
+	updated := httptest.NewRecorder()
+	h.HandleUpdateKey(updated, updateReq)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update status=%d body=%s", updated.Code, updated.Body.String())
+	}
+
+	if err := database.QueryRow(`SELECT accountTypeId FROM apiKeys WHERE id = ?`, response.ID).Scan(&storedType); err != nil {
+		t.Fatal(err)
+	}
+	if storedType != "paid_user" {
+		t.Fatalf("expected updated stored accountTypeId 'paid_user', got %q", storedType)
+	}
+}
+
+func TestHandleTestModelAlias(t *testing.T) {
+	file, err := os.CreateTemp("", "admin-alias-test-*.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	defer os.Remove(file.Name())
+	database, err := db.OpenDatabase(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	repo := db.NewRepo(database)
+	if err := repo.SetModelAliasRecord("test-alias", "google", "gemini-2.5-pro", nil, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	h := NewAdminHandler(repo)
+
+	testReq := httptest.NewRequest(http.MethodPost, "/api/model-aliases/test-alias/test", nil)
+	chiCtx := chi.NewRouteContext()
+	chiCtx.URLParams.Add("alias", "test-alias")
+	testReq = testReq.WithContext(context.WithValue(testReq.Context(), chi.RouteCtxKey, chiCtx))
+	rec := httptest.NewRecorder()
+	h.HandleTestModelAlias(rec, testReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("test alias status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"resolved":true`) || !strings.Contains(rec.Body.String(), `"google"`) {
+		t.Fatalf("unexpected alias test body: %s", rec.Body.String())
+	}
+}
+

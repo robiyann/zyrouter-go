@@ -87,9 +87,10 @@ func maskAPIKey(value string) string {
 
 func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name         string                  `json:"name"`
-		MachineID    string                  `json:"machineId,omitempty"`
-		Restrictions *models.KeyRestrictions `json:"restrictions,omitempty"`
+		Name          string                  `json:"name"`
+		MachineID     string                  `json:"machineId,omitempty"`
+		AccountTypeID string                  `json:"accountTypeId,omitempty"`
+		Restrictions  *models.KeyRestrictions `json:"restrictions,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -111,15 +112,29 @@ func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 		restrictionsStr = &s
 	}
 
-	apiKey, err := h.repo.CreateApiKey(id, keyStr, body.Name, body.MachineID, restrictionsStr)
+	accountTypeID := strings.TrimSpace(body.AccountTypeID)
+	if accountTypeID == "" {
+		accountTypeID = "administrator"
+	}
+	if typ, err := h.repo.GetAccountType(accountTypeID); err != nil || typ == nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid accountTypeId: "+accountTypeID)
+		return
+	}
+
+	apiKey, err := h.repo.CreateApiKey(id, keyStr, body.Name, body.MachineID, accountTypeID, restrictionsStr)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	accountTypeVal := "administrator"
+	if apiKey.AccountTypeID != nil && *apiKey.AccountTypeID != "" {
+		accountTypeVal = *apiKey.AccountTypeID
+	}
+
 	handlerutil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"id": apiKey.ID, "name": apiKey.Name, "key": keyStr,
-		"accountTypeId": "administrator", "isActive": apiKey.IsActive,
+		"accountTypeId": accountTypeVal, "isActive": apiKey.IsActive,
 		"restrictions": apiKey.Restrictions, "createdAt": apiKey.CreatedAt,
 		"warning": "Store this key securely. It will not be shown again.",
 	})
@@ -133,13 +148,23 @@ func (h *AdminHandler) HandleUpdateKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name         *string                 `json:"name,omitempty"`
-		IsActive     *int                    `json:"isActive,omitempty"`
-		Restrictions *models.KeyRestrictions `json:"restrictions,omitempty"`
+		Name          *string                 `json:"name,omitempty"`
+		IsActive      *int                    `json:"isActive,omitempty"`
+		AccountTypeID *string                 `json:"accountTypeId,omitempty"`
+		Restrictions  *models.KeyRestrictions `json:"restrictions,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	if body.AccountTypeID != nil && strings.TrimSpace(*body.AccountTypeID) != "" {
+		trimmed := strings.TrimSpace(*body.AccountTypeID)
+		if typ, err := h.repo.GetAccountType(trimmed); err != nil || typ == nil {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid accountTypeId: "+trimmed)
+			return
+		}
+		body.AccountTypeID = &trimmed
 	}
 
 	var restrictionsStr *string
@@ -149,7 +174,7 @@ func (h *AdminHandler) HandleUpdateKey(w http.ResponseWriter, r *http.Request) {
 		restrictionsStr = &s
 	}
 
-	if err := h.repo.UpdateApiKey(id, body.Name, body.IsActive, restrictionsStr); err != nil {
+	if err := h.repo.UpdateApiKey(id, body.Name, body.IsActive, body.AccountTypeID, restrictionsStr); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -875,6 +900,46 @@ func (h *AdminHandler) HandleDeleteModelAlias(w http.ResponseWriter, r *http.Req
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *AdminHandler) HandleTestModelAlias(w http.ResponseWriter, r *http.Request) {
+	alias := chi.URLParam(r, "alias")
+	if strings.TrimSpace(alias) == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing alias parameter")
+		return
+	}
+	target, err := h.repo.GetModelAlias(alias)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if strings.TrimSpace(target) == "" {
+		handlerutil.WriteJSONError(w, http.StatusNotFound, "model alias not found: "+alias)
+		return
+	}
+	rec, _ := h.repo.GetModelAliasRecord(alias)
+	provider := ""
+	upstreamModel := ""
+	if rec != nil {
+		provider = rec.Provider
+		upstreamModel = rec.UpstreamModel
+	} else if parts := strings.SplitN(target, "/", 2); len(parts) == 2 {
+		provider = parts[0]
+		upstreamModel = parts[1]
+	} else if strings.HasPrefix(strings.ToLower(target), "combo:") {
+		provider = "__combo__"
+		upstreamModel = strings.TrimPrefix(target, "combo:")
+	}
+
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+		"status":        "ok",
+		"alias":         alias,
+		"target":        target,
+		"provider":      provider,
+		"upstreamModel": upstreamModel,
+		"resolved":      true,
+		"message":       fmt.Sprintf("Alias '%s' resolves to %s / %s", alias, provider, upstreamModel),
+	})
 }
 
 // HandlePreviewModelPolicy evaluates a draft API-key policy against published

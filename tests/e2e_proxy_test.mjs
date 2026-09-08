@@ -377,8 +377,88 @@ try {
     console.log('  -> PASS: security summary verified (hashed at rest)');
   }
 
+  // Scenario 12: Account Type Model Governance & Tier Enforcement
+  {
+    console.log('[TEST 12] Testing Account Type tier creation & model restriction...');
+    // 1. Create custom account type
+    const createTypeRes = await fetch(`${baseUrl}/api/admin/account-types`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookieHeader },
+      body: JSON.stringify({
+        id: 'e2e-tier',
+        name: 'E2E Tier',
+        quotaMode: 'unlimited',
+      }),
+    });
+    assert.equal(createTypeRes.status, 200);
+
+    // 2. Allow only 'fast-llm' for this tier
+    const setModelsRes = await fetch(`${baseUrl}/api/admin/account-types/e2e-tier/models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookieHeader },
+      body: JSON.stringify({ aliases: ['fast-llm'] }),
+    });
+    assert.equal(setModelsRes.status, 200);
+
+    // 3. Create API key assigned to 'e2e-tier'
+    const keyRes = await fetch(`${baseUrl}/api/keys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookieHeader },
+      body: JSON.stringify({
+        name: 'e2e-tier-key',
+        accountTypeId: 'e2e-tier',
+      }),
+    });
+    assert.equal(keyRes.status, 201);
+    const tierKeyData = await keyRes.json();
+    assert.equal(tierKeyData.accountTypeId, 'e2e-tier');
+
+    // 4. Allowed model request must succeed
+    const allowedChat = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tierKeyData.key}`,
+      },
+      body: JSON.stringify({
+        model: 'fast-llm',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+    assert.equal(allowedChat.status, 200, 'Model allowed for account type must succeed');
+
+    // 5. Published model not assigned to this tier must be blocked (HTTP 403)
+    const blockedChat = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tierKeyData.key}`,
+      },
+      body: JSON.stringify({
+        model: 'smart-combo',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+    assert.equal(blockedChat.status, 403, 'Model not in account type models must return 403 Forbidden');
+    console.log('  -> PASS: tier-based model restriction strictly enforced (HTTP 403 on unassigned alias)');
+  }
+
+  // Scenario 13: Model Alias Test Endpoint
+  {
+    console.log('[TEST 13] Testing POST /api/model-aliases/{alias}/test...');
+    const testRes = await fetch(`${baseUrl}/api/model-aliases/fast-llm/test`, {
+      method: 'POST',
+      headers: { Cookie: cookieHeader },
+    });
+    assert.equal(testRes.status, 200);
+    const testData = await testRes.json();
+    assert.equal(testData.status, 'ok');
+    assert.equal(testData.resolved, true);
+    console.log('  -> PASS: model alias test endpoint verified');
+  }
+
   console.log('================================================================');
-  console.log('🎉 ALL 11 E2E PROXY & GOVERNANCE INTEGRATION SCENARIOS PASSED! 🎉');
+  console.log('🎉 ALL 13 E2E PROXY & GOVERNANCE INTEGRATION SCENARIOS PASSED! 🎉');
   console.log('================================================================');
 } finally {
   // Graceful teardown

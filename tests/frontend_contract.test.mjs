@@ -7,6 +7,7 @@ const html = await readFile(new URL('../frontend/index.html', import.meta.url), 
 for (const endpoint of [
   '/api/providers', '/api/combos', '/api/keys', '/api/settings',
   '/api/proxy-pools', '/api/model-aliases', '/api/admin/model-policy/preview', '/api/admin/security/summary', '/admin/health/reset', '/usage/stream', '/translator/console-logs', '/translator/console-logs/stream',
+  '/api/admin/account-types', '/api/admin/users',
   '/models', '/chat/completions'
 ]) {
   assert.match(app, new RegExp(endpoint.replace('/', '\/')), `missing frontend endpoint: ${endpoint}`);
@@ -33,4 +34,9 @@ assert.match(app, /Public\/no-auth providers have no providerConnections row/,
 assert.match(html, /id="generic-content"/);
 assert.match(html, /Issue Gateway API Key/, 'admin shortcut must describe gateway keys, not a client dashboard');
 assert.doesNotMatch(html, /:3840/, 'dashboard must not show a stale hardcoded engine port');
+assert.match(html, /data-view="account-types"/, 'sidebar must include Account Types navigation button');
+assert.match(app, /renderAccountTypes/, 'frontend must include Account Types view renderer');
+assert.match(app, /Tier-Based Model Governance Active/, 'API key form must document tier-based model governance');
+assert.match(app, /manage-tier-models/, 'account types must support managing model permissions per tier');
 console.log('frontend backend contract checks passed');
+
