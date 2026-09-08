@@ -24,6 +24,7 @@ let activeStream = null;
 let dashboardAuthenticated = false;
 const providerAccountPages = new Map();
 const providerFetchedModelsCache = new Map();
+const providerFetchedInventoryMetaCache = new Map();
 function hasDashboardAccess() {
   return dashboardAuthenticated || Boolean(getAuthToken());
 }
@@ -1914,6 +1915,7 @@ async function renderProviderDetail(provId) {
 
     // Live models fetched from upstream /models
     const cachedLiveModels = providerFetchedModelsCache.get(provId.toLowerCase()) || [];
+    const inventoryMeta = providerFetchedInventoryMetaCache.get(provId.toLowerCase()) || {};
     cachedLiveModels.forEach((m) => {
       let rawId = String(m).trim();
       if (rawId.startsWith(`${activePrefix}/`)) rawId = rawId.slice(activePrefix.length + 1);
@@ -2225,11 +2227,12 @@ async function renderProviderDetail(provId) {
               }).join('')}
             </div>
             <div style="margin-top:14px; padding:12px; border:1px dashed var(--line); border-radius:6px; background:rgba(255,255,255,0.015);">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
                 <div>
                   <strong style="font-size:10px; color:var(--text-bright);">INTERNAL UPSTREAM INVENTORY</strong>
                   <span class="table-badge" style="font-size:8px; margin-left:6px;">NOT PUBLIC</span>
                 </div>
+                ${inventoryMeta.sourceCounts ? `<span style="font-size:8.5px; color:var(--muted); font-family:var(--mono);">SOURCE: upstream ${Number(inventoryMeta.sourceCounts.upstream || 0)} · catalog ${Number(inventoryMeta.sourceCounts.catalog || 0)} · custom ${Number(inventoryMeta.sourceCounts.custom || 0)}</span>` : ''}
                 <button class="secondary-button" id="btn-import-models-upstream-refresh" style="font-size:9.5px; padding:2px 7px;" title="Refresh models from provider">↻ Refresh</button>
               </div>
               <p style="font-size:9.5px; color:var(--muted); margin:4px 0 8px;">Fetched or known upstream IDs stay private until an admin publishes a Model Alias. You can test any upstream model directly or publish it as an alias in 1-click.</p>
@@ -2421,7 +2424,9 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
       const rawList = payload.models || payload.data || [];
       const cleanList = rawList.map((m) => typeof m === 'string' ? m : (m.id || m.name || '')).filter(Boolean);
       providerFetchedModelsCache.set(provId.toLowerCase(), cleanList);
-      showToast(`Loaded ${cleanList.length} model(s) for ${provId}`, 'success');
+      providerFetchedInventoryMetaCache.set(provId.toLowerCase(), payload.inventory || {});
+      const counts = payload.inventory?.sourceCounts || {};
+      showToast(`Loaded ${cleanList.length} model(s): upstream ${counts.upstream || 0}, catalog ${counts.catalog || 0}, custom ${counts.custom || 0}`, 'success');
       await renderProviderDetail(provId);
     } catch (err) {
       showToast(`Fetch models failed: ${err.message}`, 'error');

@@ -455,20 +455,38 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 		}
 	}
 
-	seen := make(map[string]bool)
+	seen := make(map[string]int)
 	var result []map[string]any
+	sourcePriority := map[string]int{"catalog": 1, "custom": 2, "upstream": 3}
 
-	addModel := func(mID string) {
+	addModel := func(mID, source string) {
 		mID = strings.TrimSpace(mID)
-		if mID == "" || seen[mID] {
+		if mID == "" {
 			return
 		}
-		seen[mID] = true
+		priority := sourcePriority[source]
+		if existingPriority, ok := seen[mID]; ok {
+			if priority <= existingPriority {
+				return
+			}
+			for _, item := range result {
+				if item["id"] == mID {
+					item["source"] = source
+					break
+				}
+			}
+			seen[mID] = priority
+			return
+		}
+		seen[mID] = priority
 		result = append(result, map[string]any{
-			"id":   mID,
-			"name": mID,
+			"id":     mID,
+			"name":   mID,
+			"source": source,
 		})
 	}
+	liveFetchSucceeded := false
+	liveFetchStatus := 0
 
 	// 1. Try Live fetch if baseUrl is available
 	if baseUrl != "" {
@@ -483,6 +501,7 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 			resp, err := client.Do(req)
 			if err == nil {
 				defer resp.Body.Close()
+				liveFetchStatus = resp.StatusCode
 				if resp.StatusCode < 400 {
 					var respObj struct {
 						Data   []map[string]any `json:"data"`
@@ -493,12 +512,13 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 						if len(modelsList) == 0 {
 							modelsList = respObj.Models
 						}
+						liveFetchSucceeded = true
 						for _, m := range modelsList {
 							mID, _ := m["id"].(string)
 							if mID == "" {
 								mID, _ = m["name"].(string)
 							}
-							addModel(mID)
+							addModel(mID, "upstream")
 						}
 					}
 				}
@@ -508,31 +528,43 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 
 	// 2. Add catalog models for canonical and provider
 	for _, catModel := range providers.OfficialProviderModels[canonical] {
-		addModel(catModel)
+		addModel(catModel, "catalog")
 	}
 	if canonical != provider {
 		for _, catModel := range providers.OfficialProviderModels[provider] {
-			addModel(catModel)
+			addModel(catModel, "catalog")
 		}
 	}
 
 	// 3. Add custom models from database
 	if customList, err := h.repo.GetCustomModelsByProvider(provider); err == nil {
 		for _, cm := range customList {
-			addModel(cm)
+			addModel(cm, "custom")
 		}
 	}
 	if canonical != provider {
 		if customList, err := h.repo.GetCustomModelsByProvider(canonical); err == nil {
 			for _, cm := range customList {
-				addModel(cm)
+				addModel(cm, "custom")
 			}
 		}
 	}
 
+	sourceCounts := map[string]int{"upstream": 0, "catalog": 0, "custom": 0}
+	for _, item := range result {
+		if source, ok := item["source"].(string); ok {
+			sourceCounts[source]++
+		}
+	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
 		"provider": provider,
 		"models":   result,
+		"inventory": map[string]any{
+			"liveFetchAttempted": baseUrl != "",
+			"liveFetchSucceeded": liveFetchSucceeded,
+			"liveFetchStatus":    liveFetchStatus,
+			"sourceCounts":       sourceCounts,
+		},
 	})
 }
 

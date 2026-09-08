@@ -58,5 +58,6 @@ assert.match(app, /data-quick-alias/, 'internal inventory must provide an explic
 assert.match(app, /UNPUBLISHED/, 'internal provider inventory must show unpublished models before alias publication');
 assert.match(app, /data-filter-pool-status/, 'proxy pools must expose status filters');
 assert.match(app, /providerFetchedModelsCache\.set/, 'provider fetch results must stay in the private admin inventory cache');
+assert.match(app, /sourceCounts/, 'provider inventory UI must distinguish upstream, catalog, and custom model sources');
 assert.doesNotMatch(app, /Successfully imported .* models from upstream/, 'provider fetch must not auto-create public/custom model records');
 console.log('frontend backend contract checks passed');

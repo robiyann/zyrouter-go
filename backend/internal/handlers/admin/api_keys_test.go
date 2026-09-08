@@ -231,14 +231,18 @@ func TestHandleFetchProviderConnectionModels_IncludesCatalog(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	var payload struct {
-		Provider string           `json:"provider"`
-		Models   []map[string]any `json:"models"`
+		Provider  string           `json:"provider"`
+		Models    []map[string]any `json:"models"`
+		Inventory map[string]any   `json:"inventory"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
 	if len(payload.Models) == 0 {
 		t.Fatalf("expected models from catalog, got 0")
+	}
+	if payload.Inventory == nil {
+		t.Fatalf("expected model source inventory metadata: %s", rec.Body.String())
 	}
 	found := false
 	for _, m := range payload.Models {
