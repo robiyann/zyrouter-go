@@ -7,8 +7,8 @@
 
 ## Ringkasan Status
 
-- **Total Tasks**: 15
-- **Done**: 15
+- **Total Tasks**: 16
+- **Done**: 16
 - **In Progress**: 0
 - **Backlog**: 0
 
@@ -50,9 +50,13 @@
 - [x] **[DONE - Antigravity & Codex]** `TASK-014`: Pembuatan automated test suite di `zyrouter/tests/` (Unit tests, auth restriction tests, proxy routing E2E test, load test & latency benchmarks). Provider account pagination dan strategi proxy universal selesai.
 - [x] **[DONE - Antigravity]** `TASK-015`: Implementasi Dynamic & Strictly Enforced Single Active Provider Prefix (Option 3), mencegah dual-prefix bypass.
 
+### Fase 5: Client Portal & Consumer Governance
+- [x] **[DONE - Antigravity]** `TASK-016`: Implementasi **Zyrouter Client Dashboard** (`frontend/client.html`, `frontend/client.js`, `frontend/client.css`) dengan desain HeroUI modern dark cyber. Mendukung autentikasi utama Telegram Verified User (challenge start, webhook verification, HttpOnly session cookie, polling), single active API key invariant (1 user = 1 key, generate/rotate/revoke, one-time secret modal), pelindung zero data leakage, policy kuota alias-only, toggle token saver (RTK/Caveman/Ponytail), quickstart SDK generator, dan live chat playground.
+
 ---
 
 ## 📌 Log Klaim Terkini
+- `2026-09-08`: **Antigravity** menyelesaikan TASK-016: Mengimplementasikan Client Dashboard mandiri di `/client` berbasis HeroUI styling, mengintegrasikan autentikasi Telegram Verified User dengan HttpOnly cookie `user_session`, penegakan 1 User = 1 Active Gateway API Key (generate dengan 409 guard, rotate dengan invalidasi langsung, revoke), isolasi keamanan alias-only tanpa membocorkan kredensial provider/upstream, serta menambahkan automated test suite `tests/client_portal_test.mjs` (14/14 scenario PASS) dan memasukkannya ke `verify_plan.ps1`.
 - `2026-09-08`: **Antigravity** menstandarisasi status request ke format HTTP status code (`200`) secara end-to-end (Go engine backend `usage.go`, `usage_stream.go`, `usagetracker/tracker.go`, serta normalisasi frontend di `app.js` pada Usage Ledger, Console Stream, dan Overview Event box), mengeliminasi inkonsistensi label status yang sebelumnya tercampur antara `"ok"` (in-memory buffer) dan `"success"` (SQLite DB).
 - `2026-09-08`: **Antigravity** menambahkan cyber-style live stream animation & neon glow pulse pada Console Stream dan Usage Ledger (`frontend/styles.css`, `frontend/app.js`), radar pulse ring pada stream status indicator, dan ripple badge pings pada row baru.
 - `2026-09-08`: **Antigravity** memperbaiki bug real-time live streaming pada Console Stream (`zyrouter/frontend/app.js`): mengatasi `ReferenceError: timeStr is not defined` pada `bindLogStream`, membersihkan `#console-empty-row`, mencegah listener leak saat navigasi antar tab dengan mekanisme teardown `startStream`, dan menambahkan regression assertions pada contract test.

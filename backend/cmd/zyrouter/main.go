@@ -262,6 +262,14 @@ func mountFrontend(r chi.Router) {
 		return
 	}
 	log.Printf("[frontend] serving static dashboard from %s", frontendDir)
+	clientHtmlPath := filepath.Join(frontendDir, "client.html")
+	serveClient := func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		http.ServeFile(w, req, clientHtmlPath)
+	}
+	r.Get("/client", serveClient)
+	r.Get("/client/*", serveClient)
+
 	fileServer := http.FileServer(http.Dir(frontendDir))
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasSuffix(req.URL.Path, ".js") || strings.HasSuffix(req.URL.Path, ".css") {

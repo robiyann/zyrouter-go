@@ -218,8 +218,11 @@ func ExtractAuthToken(r *http.Request) string {
 		return ""
 	}
 
-	// 2. Try cookie "auth_token"
+	// 2. Try cookie "auth_token" or "user_session"
 	if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+		return strings.TrimSpace(cookie.Value)
+	}
+	if cookie, err := r.Cookie("user_session"); err == nil && cookie.Value != "" {
 		return strings.TrimSpace(cookie.Value)
 	}
 

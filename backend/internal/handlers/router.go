@@ -201,6 +201,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Post("/api/user/key", userH.GenerateKey)
 		r.Post("/api/user/key/rotate", userH.RotateKey)
 		r.Delete("/api/user/key", userH.RevokeKey)
+		r.Post("/api/user/logout", userH.Logout)
 	})
 
 	// Future client dashboard API. It is intentionally isolated from admin/API-key routes.

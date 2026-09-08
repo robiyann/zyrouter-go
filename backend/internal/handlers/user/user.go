@@ -62,6 +62,14 @@ func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
 		response["user"] = sanitizeUser(user)
 		response["sessionToken"] = session
 		response["warning"] = "Store this session token securely. It will not be shown again."
+		http.SetCookie(w, &http.Cookie{
+			Name:     "user_session",
+			Value:    session,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   86400,
+		})
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, response)
 }
@@ -225,6 +233,22 @@ func (h *Handler) RevokeKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+}
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	token := middleware.ExtractAuthToken(r)
+	if token != "" {
+		_ = h.Repo.RevokeUserSession(token)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "user_session",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
 func sanitizeUser(user *models.User) map[string]any {

@@ -137,7 +137,7 @@ func (r *Repo) GetAccountTypeModels(accountTypeID string) ([]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var aliases []string
+	aliases := make([]string, 0)
 	for rows.Next() {
 		var alias string
 		if err := rows.Scan(&alias); err != nil {
@@ -371,6 +371,11 @@ func (r *Repo) GetUserBySession(rawToken string) (*models.User, error) {
 		return nil, nil
 	}
 	return r.GetUserByID(userID)
+}
+
+func (r *Repo) RevokeUserSession(rawToken string) error {
+	_, err := r.db.Exec(`DELETE FROM userSessions WHERE hash = ?`, HashUserSecret(rawToken))
+	return err
 }
 
 func (r *Repo) CreateUserApiKey(userID, accountTypeID, id, rawKey, name string) error {
