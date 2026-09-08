@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"time"
@@ -686,3 +687,128 @@ func (h *ChatHandler) HandleOllamaChat(w http.ResponseWriter, r *http.Request) {
 	newReq.Header = r.Header
 	h.HandleChatCompletions(w, newReq)
 }
+
+// UpstreamTestResult captures the live ping test result of an upstream model.
+type UpstreamTestResult struct {
+	Status     string `json:"status"`
+	Provider   string `json:"provider"`
+	Model      string `json:"model"`
+	LatencyMs  int64  `json:"latencyMs"`
+	StatusCode int    `json:"statusCode,omitempty"`
+	Reply      string `json:"reply,omitempty"`
+	Message    string `json:"message"`
+	Error      string `json:"error,omitempty"`
+}
+
+// TestProviderModel executes a lightweight, real synthetic ping through the full gateway
+// routing engine to verify connectivity, authentication, and model availability.
+func (h *ChatHandler) TestProviderModel(ctx context.Context, provider, pinnedConnID, model, prompt string) (*UpstreamTestResult, error) {
+	if prompt == "" {
+		prompt = "ping"
+	}
+
+	// If provider is actually a connection ID, resolve it
+	if conn, _ := h.Repo.GetProviderConnectionByID(provider); conn != nil {
+		if pinnedConnID == "" {
+			pinnedConnID = conn.ID
+		}
+		provider = conn.Provider
+	}
+
+	canonical := providers.ResolveAlias(provider)
+	if canonical == "google" {
+		canonical = "gemini"
+	}
+
+	reqBody := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"max_tokens": 16,
+		"stream":     false,
+	}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return &UpstreamTestResult{
+			Status:   "error",
+			Provider: provider,
+			Model:    model,
+			Error:    err.Error(),
+			Message:  err.Error(),
+		}, nil
+	}
+
+	rec := httptest.NewRecorder()
+	start := time.Now()
+
+	// Try both canonical and original provider name for connection matching
+	targetProvider := canonical
+	if pinnedConnID == "" {
+		allConns, _ := h.Repo.GetProviderConnections(targetProvider, true)
+		if len(allConns) == 0 && targetProvider != provider {
+			if fallbackConns, _ := h.Repo.GetProviderConnections(provider, true); len(fallbackConns) > 0 {
+				targetProvider = provider
+			}
+		}
+	}
+
+	err = h.handleAccountFallback(ctx, rec, targetProvider, model, pinnedConnID, bodyBytes, false, false, "/v1/chat/completions")
+	latencyMs := time.Since(start).Milliseconds()
+
+	if err != nil {
+		var ue *upstreamError
+		if errors.As(err, &ue) {
+			errMsg := fmt.Sprintf("HTTP %d: %s", ue.StatusCode, strings.TrimSpace(string(ue.Body)))
+			return &UpstreamTestResult{
+				Status:     "error",
+				Provider:   provider,
+				Model:      model,
+				StatusCode: ue.StatusCode,
+				LatencyMs:  latencyMs,
+				Error:      errMsg,
+				Message:    errMsg,
+			}, nil
+		}
+		return &UpstreamTestResult{
+			Status:    "error",
+			Provider:  provider,
+			Model:     model,
+			LatencyMs: latencyMs,
+			Error:     err.Error(),
+			Message:   err.Error(),
+		}, nil
+	}
+
+	var respObj struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &respObj)
+	reply := ""
+	if len(respObj.Choices) > 0 {
+		reply = strings.TrimSpace(respObj.Choices[0].Message.Content)
+	} else if len(respObj.Content) > 0 {
+		reply = strings.TrimSpace(respObj.Content[0].Text)
+	}
+	if reply == "" {
+		reply = "OK"
+	}
+
+	return &UpstreamTestResult{
+		Status:     "ok",
+		Provider:   provider,
+		Model:      model,
+		StatusCode: http.StatusOK,
+		LatencyMs:  latencyMs,
+		Reply:      reply,
+		Message:    fmt.Sprintf("Model responded in %dms", latencyMs),
+	}, nil
+}
+

@@ -39,6 +39,7 @@ func SetupRoutes(r interface {
 	deploymentH := deployment.NewHandler(repo)
 	oauthH := oauth.NewOAuthHandler(repo)
 	adminH := admin.NewAdminHandler(repo)
+	adminH.SetChatTester(chatH)
 
 	// Admin CRUD & Governance Domain
 	r.Get("/api/keys", adminH.HandleGetKeys)
@@ -158,7 +159,9 @@ func SetupRoutes(r interface {
 // SetupServerRouter mounts public endpoints (/health, /api/hello) and
 // API-key protected routes (all engine + admin routes) on the chi router.
 func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
+	chatH := chat.NewChatHandler(repo, ts)
 	adminH := admin.NewAdminHandler(repo)
+	adminH.SetChatTester(chatH)
 	clientH := clienthandlers.NewHandler(repo)
 	userH := userhandlers.NewHandler(repo)
 	// Public (unauthenticated) endpoints

@@ -377,20 +377,17 @@ var OfficialProviderModels = map[string][]string{
 		"gemini-2.5-flash-lite",
 	},
 	"gemini": {
-		"gemini-3.6-flash",
-		"gemini-3.5-flash-lite",
-		"gemini-3.1-pro-preview",
-		"gemini-3.1-flash-lite-preview",
-		"gemini-3-flash-preview",
+		"gemini-2.0-flash",
+		"gemini-2.0-flash-lite",
+		"gemini-1.5-flash",
+		"gemini-1.5-pro",
+		"gemini-2.0-pro-exp-02-05",
+		"gemini-1.5-flash-8b",
 		"gemini-2.5-pro",
 		"gemini-2.5-flash",
 		"gemini-2.5-flash-lite",
 		"gemma-4-31b-it",
-		"gemini-embedding-2-preview",
-		"gemini-embedding-001",
-		"text-embedding-005",
 		"text-embedding-004",
-		"gemini-3.1-flash-image-preview",
 	},
 	"github": {
 		"gpt-5.2",
@@ -971,6 +968,9 @@ func init() {
 	}
 	if ag, ok := OfficialProviderModels["antigravity"]; ok {
 		OfficialProviderModels["ag"] = ag
+	}
+	if gm, ok := OfficialProviderModels["gemini"]; ok {
+		OfficialProviderModels["google"] = gm
 	}
 }
 

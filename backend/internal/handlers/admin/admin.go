@@ -19,17 +19,27 @@ import (
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
+	"zyrouter/backend/internal/handlers/chat"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/models"
 	"zyrouter/backend/internal/providers"
 )
 
+type ChatTester interface {
+	TestProviderModel(ctx context.Context, provider, pinnedConnID, model, prompt string) (*chat.UpstreamTestResult, error)
+}
+
 type AdminHandler struct {
-	repo *db.Repo
+	repo       *db.Repo
+	chatTester ChatTester
 }
 
 func NewAdminHandler(repo *db.Repo) *AdminHandler {
 	return &AdminHandler{repo: repo}
+}
+
+func (h *AdminHandler) SetChatTester(tester ChatTester) {
+	h.chatTester = tester
 }
 
 // GenerateRandomKey generates a secure random API key starting with "zy_".
@@ -546,9 +556,40 @@ func (h *AdminHandler) testProviderModel(ctx context.Context, id, model, prompt 
 		}
 	}
 
+	canonicalLookup := strings.ToLower(id)
+	if mapped, ok := providers.ProviderAliasMap[canonicalLookup]; ok {
+		canonicalLookup = mapped
+	}
+	if canonicalLookup == "google" {
+		canonicalLookup = "gemini"
+	}
+	if conn == nil && canonicalLookup != id {
+		if conns, err := h.repo.GetProviderConnections(canonicalLookup, true); err == nil && len(conns) > 0 {
+			conn = conns[0]
+		}
+	}
+
 	provider := id
+	var pinnedConnID string
 	if conn != nil {
 		provider = conn.Provider
+		pinnedConnID = conn.ID
+	}
+
+	if h.chatTester != nil {
+		res, err := h.chatTester.TestProviderModel(ctx, provider, pinnedConnID, model, prompt)
+		if err == nil && res != nil {
+			return &ProviderTestResult{
+				Status:     res.Status,
+				Provider:   res.Provider,
+				Model:      res.Model,
+				LatencyMs:  res.LatencyMs,
+				StatusCode: res.StatusCode,
+				Reply:      res.Reply,
+				Message:    res.Message,
+				Error:      res.Error,
+			}, nil
+		}
 	}
 
 	canonical := strings.ToLower(provider)

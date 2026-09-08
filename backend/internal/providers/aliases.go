@@ -41,6 +41,7 @@ var ProviderAliasMap = map[string]string{
 	"gh":             "github",
 	"gl":             "gitlab",
 	"glmcn":          "glm-cn",
+	"google":         "gemini",
 	"gpse":           "google-pse",
 	"gq":             "groq",
 	"grok-build":     "grok-cli",

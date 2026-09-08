@@ -23,6 +23,7 @@ if (enginePortBadge) enginePortBadge.textContent = `:${window.location.port || (
 let activeStream = null;
 let dashboardAuthenticated = false;
 const providerAccountPages = new Map();
+const providerFetchedModelsCache = new Map();
 function hasDashboardAccess() {
   return dashboardAuthenticated || Boolean(getAuthToken());
 }
@@ -1091,80 +1092,57 @@ const KNOWN_PROVIDER_CATALOG = [
   {
     "id": "openai",
     "name": "OpenAI",
-    "desc": "GPT-5.4, GPT-4o, o3-mini & embeddings",
+    "desc": "GPT-4o, GPT-4o-mini, o3-mini & embeddings",
     "icon": "⚡",
     "category": "apikey",
     "authType": "apikey",
     "keyPlaceholder": "sk-proj-...",
     "defaultModels": [
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.4-nano",
-      "gpt-5.2",
-      "gpt-5.1",
-      "gpt-5",
-      "gpt-5-mini",
-      "gpt-5-nano",
       "gpt-4o",
       "gpt-4o-mini",
-      "gpt-4-turbo",
-      "gpt-4.1",
-      "gpt-4.1-mini",
-      "gpt-4.1-nano",
-      "o3",
       "o3-mini",
-      "o3-pro",
-      "o4-mini",
       "o1",
       "o1-mini",
-      "text-embedding-3-large",
+      "gpt-4-turbo",
       "text-embedding-3-small",
-      "text-embedding-ada-002",
-      "tts-1",
-      "tts-1-hd",
-      "gpt-4o-mini-tts",
-      "whisper-1"
+      "text-embedding-3-large",
+      "text-embedding-ada-002"
     ],
     "alias": "oa"
   },
   {
     "id": "anthropic",
     "name": "Anthropic",
-    "desc": "Claude 3.7 Sonnet, Claude 3.5 Haiku, Opus",
+    "desc": "Claude 3.5 Sonnet, Claude 3.5 Haiku, Opus",
     "icon": "🧠",
     "category": "apikey",
     "authType": "apikey",
     "keyPlaceholder": "sk-ant-api03-...",
     "defaultModels": [
-      "claude-sonnet-4-20250514",
-      "claude-opus-4-20250514",
-      "claude-3-5-sonnet-20241022"
+      "claude-3-5-sonnet-20241022",
+      "claude-3-5-haiku-20241022",
+      "claude-3-opus-20240229"
     ],
     "alias": "ant"
   },
   {
     "id": "gemini",
     "name": "Google Gemini",
-    "desc": "Gemini 3.6 Flash, 2.5 Pro, 2.5 Flash",
+    "desc": "Gemini 2.0 Flash, 1.5 Pro, 1.5 Flash",
     "icon": "✨",
     "category": "apikey",
     "authType": "apikey",
     "keyPlaceholder": "AIzaSy...",
     "defaultModels": [
-      "gemini-3.6-flash",
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-pro-preview",
-      "gemini-3.1-flash-lite-preview",
-      "gemini-3-flash-preview",
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+      "gemini-2.0-pro-exp-02-05",
+      "gemini-1.5-flash-8b",
       "gemini-2.5-pro",
       "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemma-4-31b-it",
-      "gemini-embedding-2-preview",
-      "gemini-embedding-001",
-      "text-embedding-005",
-      "text-embedding-004",
-      "gemini-3.1-flash-image-preview"
+      "text-embedding-004"
     ],
     "alias": "gemini"
   },
@@ -1934,6 +1912,14 @@ async function renderProviderDetail(provId) {
       }
     });
 
+    // Live models fetched from upstream /models
+    const cachedLiveModels = providerFetchedModelsCache.get(provId.toLowerCase()) || [];
+    cachedLiveModels.forEach((m) => {
+      let rawId = String(m).trim();
+      if (rawId.startsWith(`${activePrefix}/`)) rawId = rawId.slice(activePrefix.length + 1);
+      if (rawId) modelSet.add(rawId);
+    });
+
     const provAliases = new Set([
       provId.toLowerCase(),
       (meta.alias || '').toLowerCase(),
@@ -2230,7 +2216,7 @@ async function renderProviderDetail(provId) {
                       ${isCustom ? `<span class="table-badge" style="font-size:7.5px; padding:1px 4px; background:#c8ff6315; border:1px solid #c8ff6344; color:var(--lime);">CUSTOM</span>` : ''}
                     </div>
                     <div class="model-row-actions">
-                      <button class="model-test-btn" data-test-model="${escapeHtml(fullModelId)}">Test Model</button>
+                      <button class="model-test-btn" data-test-alias="${escapeHtml(fullModelId)}">Test Live</button>
                       <button class="model-copy-btn" data-copy-text="${escapeHtml(fullModelId)}" title="Copy Full Model ID">&boxbox;</button>
                       ${isCustom ? `<button class="danger-button" data-delete-custom-model="${escapeHtml(cleanModelId)}" style="font-size:9.5px; padding:2px 6px;" title="Delete Custom Model">&times;</button>` : ''}
                     </div>
@@ -2432,8 +2418,10 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
     }
     try {
       const payload = await request(`/api/providers/${encodeURIComponent(provId)}/models`);
-      const count = Array.isArray(payload.models) ? payload.models.length : 0;
-      showToast(`Loaded ${count} model(s) for ${provId}`, 'success');
+      const rawList = payload.models || payload.data || [];
+      const cleanList = rawList.map((m) => typeof m === 'string' ? m : (m.id || m.name || '')).filter(Boolean);
+      providerFetchedModelsCache.set(provId.toLowerCase(), cleanList);
+      showToast(`Loaded ${cleanList.length} model(s) for ${provId}`, 'success');
       await renderProviderDetail(provId);
     } catch (err) {
       showToast(`Fetch models failed: ${err.message}`, 'error');
@@ -2455,6 +2443,37 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
     btn.onclick = () => {
       const model = btn.dataset.quickAlias;
       openCreateAliasModal('', `${provId}/${model}`, 1);
+    };
+  });
+
+  // Live Model Alias Testing (for published aliases in provider view)
+  document.querySelectorAll('[data-test-alias]').forEach((btn) => {
+    btn.onclick = async () => {
+      const alias = btn.dataset.testAlias;
+      btn.className = 'model-test-btn testing';
+      btn.textContent = 'Testing...';
+      const start = Date.now();
+      try {
+        const res = await fetch(`${apiBase}/api/model-aliases/${encodeURIComponent(alias)}/test?live=true`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const latency = Date.now() - start;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.status === 'ok') {
+          btn.className = 'model-test-btn ok';
+          btn.textContent = `OK (${data.latencyMs || latency}ms)`;
+          btn.title = data.reply ? `Reply: ${data.reply}` : (data.message || 'Alias tested live');
+        } else {
+          btn.className = 'model-test-btn error';
+          btn.textContent = data.statusCode ? `Err: ${data.statusCode}` : `Err: ${res.status}`;
+          btn.title = data.error || data.message || res.statusText;
+        }
+      } catch (err) {
+        btn.className = 'model-test-btn error';
+        btn.textContent = 'Net Err';
+        btn.title = err.message;
+      }
     };
   });
 
