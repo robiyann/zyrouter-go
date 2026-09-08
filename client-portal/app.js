@@ -424,7 +424,7 @@
   /* ==========================================================================
      DASHBOARD DATA LOADER (Blueprint 4, 5, 6, 7)
      ========================================================================== */
-  async function loadDashboard() {
+  async function loadDashboard(preferredView = '') {
     bootstrapAttempt++;
 
     try {
@@ -447,7 +447,7 @@
       startPrivateLogsStream();
 
       // Show Default Overview Tab
-      showView('overview');
+      showView(preferredView || 'overview');
     } catch (err) {
       if (bootstrapAttempt <= 1) {
         // Initial unauthenticated state is expected
@@ -664,7 +664,7 @@
       }
       const data = await res.json();
       if (data.key) revealOneTimeSecret(data.key);
-      await loadDashboard();
+      await loadDashboard('key');
     } catch (err) {
       showToast(err.message || 'Gagal generate key', 'error');
     }
@@ -680,7 +680,7 @@
           if (!res.ok) throw new Error('Gagal rotate key');
           const data = await res.json();
           if (data.key) revealOneTimeSecret(data.key);
-          await loadDashboard();
+          await loadDashboard('key');
         } catch (err) {
           showToast(err.message || 'Gagal rotate key', 'error');
         }
@@ -697,7 +697,7 @@
           const res = await api('/api/user/key', { method: 'DELETE' });
           if (!res.ok) throw new Error('Gagal mencabut key');
           showToast('API Key telah dicabut.', 'info');
-          await loadDashboard();
+          await loadDashboard('key');
         } catch (err) {
           showToast(err.message || 'Gagal revoke key', 'error');
         }
