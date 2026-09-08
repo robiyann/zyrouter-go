@@ -6019,14 +6019,13 @@ function getActiveProviderModels(allConnections = [], allBackendModels = [], pro
 }
 function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = [], accountTypes = []) {
   const current = parseRestrictionsObject(item.restrictions);
-  // Model restrictions are governed exclusively at the Account Type tier level.
+  // Model & provider routing restrictions are governed at the system & tier level.
   current.allowedModels = [];
   current.allowedPrefixes = [];
-  const providerState = getActiveProviderModels(availableProviders, [], providerNodes, customModels);
-  const groups = providerState.groups.map((group) => ({ ...group, models: [] }));
+  current.allowedProviders = [];
 
   return `
-    <form class="inline-form policy-builder-form" id="key-policy-form" data-key-id="${escapeHtml(item.id || '')}" data-provider-groups="${escapeHtml(JSON.stringify(groups.map((g) => ({ provider: g.provider, providerName: g.providerName }))))}">
+    <form class="inline-form policy-builder-form" id="key-policy-form" data-key-id="${escapeHtml(item.id || '')}">
       <div class="form-head">
         <div>
           <span class="kicker">ACCESS GOVERNANCE</span>
@@ -6076,48 +6075,10 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
 
       <!-- VISUAL BUILDER SURFACE -->
       <div id="visual-builder-surface">
-        <!-- SECTION 1: PROVIDER LOCKING -->
+        <!-- RATE LIMITS & QUOTAS -->
         <div class="builder-section">
           <div class="section-title">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong>1. Provider Locking (Optional)</strong>
-              <span id="prov-lock-status-badge" class="table-badge ${current.allowedProviders.length === 0 ? 'active' : 'purple'}" style="font-size:8px;">
-                ${current.allowedProviders.length === 0 ? 'ALL ALLOWED' : `LOCKED (${current.allowedProviders.length})`}
-              </span>
-            </div>
-            <small>Leave empty to allow all providers. Check specific providers to restrict routing.</small>
-          </div>
-
-          ${groups.length === 0 ? `
-            <p style="color:var(--muted); font-size:11px; margin:4px 0 0;">No active providers connected.</p>
-          ` : `
-            <div class="prov-locking-controls" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin:4px 0 6px;">
-              <span style="font-size:9px; font-family:var(--mono); color:var(--muted);">PROVIDERS (${groups.length}):</span>
-              <button type="button" class="secondary-button" id="btn-unlock-all-prov" style="font-size:9px; padding:2px 6px;">Allow All</button>
-            </div>
-
-            <div class="provider-checkbox-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:5px;">
-              ${groups.map((grp) => {
-                const isChecked = current.allowedProviders.includes(grp.provider);
-                return `
-                  <label class="provider-check-card ${isChecked ? 'checked' : ''}" style="padding:6px 8px;">
-                    <input type="checkbox" name="allowedProviders" value="${escapeHtml(grp.provider)}" ${isChecked ? 'checked' : ''} />
-                    ${renderProviderIcon(grp.provider)}
-                    <div style="min-width:0; flex:1;">
-                      <strong style="display:block; font-size:11px; color:var(--text-bright); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(grp.providerName)}</strong>
-                      <small style="display:block; font-size:8.5px; font-family:var(--mono); color:var(--muted);">${grp.accountCount} active</small>
-                    </div>
-                  </label>
-                `;
-              }).join('')}
-            </div>
-          `}
-        </div>
-
-        <!-- SECTION 2: RATE LIMITS & QUOTAS -->
-        <div class="builder-section">
-          <div class="section-title">
-            <strong>2. Key-Level Rate Limits &amp; Quotas (Optional)</strong>
+            <strong>Key-Level Rate Limits &amp; Quotas (Optional)</strong>
             <small>Throttle usage specifically for this key (0 = Unlimited).</small>
           </div>
           <div class="form-grid-2">
@@ -6132,10 +6093,10 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
           </div>
         </div>
 
-        <!-- SECTION 3: AUTHORIZATION PREVIEW -->
+        <!-- AUTHORIZATION PREVIEW -->
         <div class="builder-section">
           <div class="section-title">
-            <strong>3. Authorization Preview</strong>
+            <strong>Authorization Preview</strong>
             <small>Simulate access under the selected Account Type and key policies.</small>
           </div>
           <button type="button" class="secondary-button" id="btn-preview-key-policy">Preview access</button>
@@ -6147,7 +6108,7 @@ function keyPolicyForm(item, isNew = false, availableProviders = [], availableMo
       <div id="raw-json-surface" class="hidden">
         <label>
           Restrictions JSON Blob
-          <textarea id="policy-raw-json" rows="10" style="font-family: var(--mono); font-size: 11px;">${escapeHtml(JSON.stringify({ allowedProviders: current.allowedProviders, rateLimit: current.rateLimit }, null, 2))}</textarea>
+          <textarea id="policy-raw-json" rows="8" style="font-family: var(--mono); font-size: 11px;">${escapeHtml(JSON.stringify({ rateLimit: current.rateLimit }, null, 2))}</textarea>
         </label>
       </div>
 
@@ -6210,39 +6171,19 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
   const state = parseRestrictionsObject(item.restrictions);
   state.allowedModels = [];
   state.allowedPrefixes = [];
-
-  let groups = [];
-  try {
-    groups = JSON.parse(form.dataset.providerGroups || '[]');
-  } catch {}
-
-  function updateProvLockBadge() {
-    const checked = form.querySelectorAll('input[name="allowedProviders"]:checked');
-    const badge = form.querySelector('#prov-lock-status-badge');
-    if (badge) {
-      if (checked.length === 0) {
-        badge.className = 'table-badge active';
-        badge.textContent = 'DEFAULT: ALL PROVIDERS ALLOWED';
-      } else {
-        badge.className = 'table-badge purple';
-        badge.textContent = `LOCKED TO ${checked.length} TARGETS`;
-      }
-    }
-  }
+  state.allowedProviders = [];
 
   function syncToRawJson() {
     if (!state.rateLimit) state.rateLimit = {};
     state.rateLimit.requestsPerMinute = Number(form.querySelector('#limit-rpm')?.value) || 0;
     state.rateLimit.tokensPerDay = Number(form.querySelector('#limit-tpd')?.value) || 0;
-    const checkedProv = Array.from(form.querySelectorAll('input[name="allowedProviders"]:checked')).map((cb) => cb.value);
-    state.allowedProviders = Array.from(new Set(checkedProv));
+    state.allowedProviders = [];
     state.allowedModels = [];
     state.allowedPrefixes = [];
     const rawEl = form.querySelector('#policy-raw-json');
     if (rawEl) {
-      rawEl.value = JSON.stringify({ allowedProviders: state.allowedProviders, rateLimit: state.rateLimit }, null, 2);
+      rawEl.value = JSON.stringify({ rateLimit: state.rateLimit }, null, 2);
     }
-    updateProvLockBadge();
   }
 
   // Account Type selection change -> update dynamic tier model summary
@@ -6281,27 +6222,6 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
     };
     updateTierSummary();
   }
-
-  // Provider Locking Controls & Checkboxes
-  const unlockAllBtn = form.querySelector('#btn-unlock-all-prov');
-  if (unlockAllBtn) {
-    unlockAllBtn.onclick = () => {
-      form.querySelectorAll('input[name="allowedProviders"]').forEach((cb) => {
-        cb.checked = false;
-        cb.closest('.provider-check-card')?.classList.remove('checked');
-      });
-      syncToRawJson();
-    };
-  }
-
-  form.querySelectorAll('.provider-check-card input').forEach((cb) => {
-    cb.onchange = () => {
-      cb.closest('.provider-check-card')?.classList.toggle('checked', cb.checked);
-      syncToRawJson();
-    };
-  });
-
-  updateProvLockBadge();
 
   // Limits
   const rpmInput = form.querySelector('#limit-rpm');
@@ -6368,11 +6288,6 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
           Object.assign(state, parseRestrictionsObject(raw));
           if (rpmInput) rpmInput.value = state.rateLimit?.requestsPerMinute ?? 0;
           if (tpdInput) tpdInput.value = state.rateLimit?.tokensPerDay ?? 0;
-          form.querySelectorAll('input[name="allowedProviders"]').forEach((cb) => {
-            cb.checked = state.allowedProviders.includes(cb.value);
-            cb.closest('.provider-check-card')?.classList.toggle('checked', cb.checked);
-          });
-          updateProvLockBadge();
         } catch {}
       } else {
         syncToRawJson();
@@ -6421,6 +6336,7 @@ function setupPolicyBuilderInteractions(item, isNew = false) {
       const accountTypeId = typeSelect ? typeSelect.value : (item.accountTypeId || 'administrator');
       finalRestrictions.allowedModels = [];
       finalRestrictions.allowedPrefixes = [];
+      finalRestrictions.allowedProviders = [];
       const body = { name: keyName, isActive: isActive, accountTypeId: accountTypeId, restrictions: finalRestrictions };
       const response = await fetch(`${apiBase}${endpoint}`, {
         method,
