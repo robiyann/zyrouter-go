@@ -1,9 +1,17 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
+
+type UsageLogRow struct {
+	ID, Timestamp, Provider, Model, PublicModel, Status string
+	PromptTokens, CompletionTokens                      int
+	DurationMs                                          int
+}
 
 // GetUsageDaily returns the daily usage JSON data for a given date key.
 func (r *Repo) GetUsageDaily(dateKey string) (string, error) {
@@ -125,6 +133,47 @@ func (r *Repo) GetClientUsageLogs(clientID string, limit, offset int) (map[strin
 		return nil, err
 	}
 	return map[string]any{"items": items, "total": total, "limit": limit, "offset": offset}, nil
+}
+
+// GetRecentUsageByAliases avoids the global in-memory ring limit for client
+// telemetry. It selects only rows matching server-owned public aliases.
+func (r *Repo) GetRecentUsageByAliases(aliasTargets map[string]string, limit int) ([]UsageLogRow, error) {
+	if limit < 1 || limit > 100 {
+		limit = 100
+	}
+	if len(aliasTargets) == 0 {
+		return []UsageLogRow{}, nil
+	}
+	clauses := make([]string, 0, len(aliasTargets)*2)
+	args := make([]any, 0, len(aliasTargets)*4)
+	for alias, target := range aliasTargets {
+		clauses = append(clauses, `json_extract(meta, '$.publicModel') = ?`)
+		args = append(args, alias)
+		parts := strings.SplitN(target, "/", 2)
+		if len(parts) == 2 && !strings.HasPrefix(target, "combo:") {
+			clauses = append(clauses, `(provider = ? AND model = ?)`)
+			args = append(args, parts[0], parts[1])
+		}
+	}
+	query := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''), promptTokens, completionTokens, status, COALESCE(json_extract(meta, '$.latencyMs'), 0) FROM usageHistory WHERE ` + strings.Join(clauses, " OR ") + ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]UsageLogRow, 0, limit)
+	for rows.Next() {
+		var row UsageLogRow
+		if err := rows.Scan(&row.ID, &row.Timestamp, &row.Provider, &row.Model, &row.PublicModel, &row.PromptTokens, &row.CompletionTokens, &row.Status, &row.DurationMs); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	return result, nil
 }
 
 // UpsertUsageDaily inserts or replaces a daily usage aggregation record.

@@ -75,6 +75,46 @@ func allowedAliasesForClient(repo *db.Repo, r *http.Request) map[string]bool {
 	return allowed
 }
 
+func allowedAliasTargets(repo *db.Repo, allowed map[string]bool) map[string]string {
+	targets := make(map[string]string)
+	if repo == nil {
+		return targets
+	}
+	aliases, err := repo.GetModelAliases()
+	if err != nil {
+		return targets
+	}
+	for alias, target := range aliases {
+		if allowed[strings.ToLower(alias)] {
+			targets[alias] = target
+		}
+	}
+	return targets
+}
+
+func clientRecentFromDatabase(repo *db.Repo, allowed map[string]bool) []map[string]any {
+	rows, err := repo.GetRecentUsageByAliases(allowedAliasTargets(repo, allowed), 100)
+	if err != nil {
+		return []map[string]any{}
+	}
+	result := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		alias := row.PublicModel
+		if alias == "" {
+			alias = publicAlias(repo, row.Provider+"/"+row.Model)
+		}
+		if !allowed[strings.ToLower(alias)] {
+			continue
+		}
+		status := row.Status
+		if status == "success" || status == "ok" {
+			status = "200"
+		}
+		result = append(result, map[string]any{"id": row.ID, "timestamp": row.Timestamp, "model": alias, "publicModel": alias, "status": status, "promptTokens": row.PromptTokens, "completionTokens": row.CompletionTokens, "totalTokens": row.PromptTokens + row.CompletionTokens, "durationMs": row.DurationMs})
+	}
+	return result
+}
+
 func filterClientTelemetry(data map[string]any, allowed map[string]bool) map[string]any {
 	if allowed == nil {
 		return data
@@ -106,7 +146,11 @@ func clientTelemetry(repo *db.Repo, allowed map[string]bool) (map[string]any, er
 	if clientTelemetryCache.data != nil && time.Since(clientTelemetryCache.at) < time.Second {
 		data := clientTelemetryCache.data
 		clientTelemetryCache.Unlock()
-		return filterClientTelemetry(data, allowed), nil
+		filtered := filterClientTelemetry(data, allowed)
+		if allowed != nil {
+			filtered["recent"] = clientRecentFromDatabase(repo, allowed)
+		}
+		return filtered, nil
 	}
 	clientTelemetryCache.Unlock()
 	snapshot, err := buildPublicTelemetry(repo)
@@ -135,7 +179,11 @@ func clientTelemetry(repo *db.Repo, allowed map[string]bool) (map[string]any, er
 	clientTelemetryCache.at = time.Now()
 	clientTelemetryCache.data = data
 	clientTelemetryCache.Unlock()
-	return filterClientTelemetry(data, allowed), nil
+	filtered := filterClientTelemetry(data, allowed)
+	if allowed != nil {
+		filtered["recent"] = clientRecentFromDatabase(repo, allowed)
+	}
+	return filtered, nil
 }
 
 func HandleClientTelemetryStats(repo *db.Repo) http.HandlerFunc {
