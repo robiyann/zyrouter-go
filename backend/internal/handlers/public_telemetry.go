@@ -7,12 +7,19 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/usagetracker"
 )
+
+var clientTelemetryCache struct {
+	sync.Mutex
+	at   time.Time
+	data map[string]any
+}
 
 func publicAlias(repo *db.Repo, model string) string {
 	if repo != nil {
@@ -28,6 +35,13 @@ func publicAlias(repo *db.Repo, model string) string {
 }
 
 func clientTelemetry(repo *db.Repo) (map[string]any, error) {
+	clientTelemetryCache.Lock()
+	if clientTelemetryCache.data != nil && time.Since(clientTelemetryCache.at) < time.Second {
+		data := clientTelemetryCache.data
+		clientTelemetryCache.Unlock()
+		return data, nil
+	}
+	clientTelemetryCache.Unlock()
 	snapshot, err := buildPublicTelemetry(repo)
 	if err != nil {
 		return nil, err
@@ -41,11 +55,16 @@ func clientTelemetry(repo *db.Repo) (map[string]any, error) {
 			"durationMs": item["durationMs"],
 		})
 	}
-	return map[string]any{
+	data := map[string]any{
 		"timestamp": snapshot.Timestamp, "totalRequests": snapshot.TotalRequests,
 		"promptTokens": snapshot.PromptTokens, "completionTokens": snapshot.CompletionTokens,
 		"totalTokens": snapshot.TotalTokens, "activeRequests": snapshot.ActiveRequests, "recent": recent,
-	}, nil
+	}
+	clientTelemetryCache.Lock()
+	clientTelemetryCache.at = time.Now()
+	clientTelemetryCache.data = data
+	clientTelemetryCache.Unlock()
+	return data, nil
 }
 
 func HandleClientTelemetryStats(repo *db.Repo) http.HandlerFunc {

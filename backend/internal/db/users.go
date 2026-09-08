@@ -203,6 +203,11 @@ func (r *Repo) MarkChallengeTelegramVerified(challengeID, telegramID, username, 
 		return "", fmt.Errorf("verification challenge expired or already used")
 	}
 	now := time.Now().UTC()
+	// Keep only one post-Telegram confirmation challenge active per Telegram ID.
+	// This prevents multiple browser tabs from racing separate confirmation codes.
+	if _, err := tx.Exec(`UPDATE userVerificationChallenges SET status='superseded',confirmationHash=NULL,confirmationExpiresAt=NULL WHERE telegramUserId=? AND status='telegram_verified' AND id<>?`, telegramID, challengeID); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(`UPDATE userVerificationChallenges SET telegramUserId=?,telegramUsername=?,telegramDisplayName=?,status='telegram_verified',verifiedAt=?,confirmationHash=?,confirmationExpiresAt=? WHERE id=? AND status='pending'`, telegramID, username, displayName, now.Format(time.RFC3339), HashUserSecret(code), now.Add(5*time.Minute).Format(time.RFC3339), challengeID); err != nil {
 		return "", err
 	}
@@ -252,7 +257,12 @@ func (r *Repo) CompleteVerification(challengeID, browserKey, code, defaultType s
 			return nil, fmt.Errorf("default account type is unavailable")
 		}
 		userID = "usr_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-		if _, err := tx.Exec(`INSERT INTO users (id,telegramUserId,telegramUsername,displayName,accountTypeId,isActive,verifiedAt,createdAt,updatedAt) VALUES (?,?,?,?,?,1,?,?,?)`, userID, tgID, username, displayName, defaultType, now, now, now); err != nil {
+		// INSERT OR IGNORE lets concurrent confirmations converge on the
+		// existing UNIQUE telegramUserId row instead of returning a 500.
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO users (id,telegramUserId,telegramUsername,displayName,accountTypeId,isActive,verifiedAt,createdAt,updatedAt) VALUES (?,?,?,?,?,1,?,?,?)`, userID, tgID, username, displayName, defaultType, now, now, now); err != nil {
+			return nil, err
+		}
+		if err := tx.QueryRow(`SELECT id FROM users WHERE telegramUserId=?`, tgID).Scan(&userID); err != nil {
 			return nil, err
 		}
 	} else if err != nil {

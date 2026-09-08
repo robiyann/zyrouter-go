@@ -39,6 +39,7 @@
   let allowedModelsList = [];
   let usageOffset = 0;
   const usageLimit = 10;
+  const VERIFICATION_POLL_MS = 3000;
 
 
   // DOM Helper
@@ -196,7 +197,7 @@
 
       // Start Polling Verification Status every 2 seconds
       clearInterval(verificationPoll);
-      verificationPoll = setInterval(pollVerificationStatus, 2000);
+      verificationPoll = setInterval(pollVerificationStatus, VERIFICATION_POLL_MS);
     } catch (err) {
       showAuthError(err.message || 'Gagal memulai verifikasi');
       if (startBtn) startBtn.disabled = false;
@@ -257,10 +258,10 @@
         return;
       }
       clearInterval(verificationPoll);
-      verificationPoll = setInterval(pollVerificationStatus, 2000);
+      verificationPoll = setInterval(pollVerificationStatus, VERIFICATION_POLL_MS);
     } catch {
       clearInterval(verificationPoll);
-      verificationPoll = setInterval(pollVerificationStatus, 2000);
+      verificationPoll = setInterval(pollVerificationStatus, VERIFICATION_POLL_MS);
     }
   }
 

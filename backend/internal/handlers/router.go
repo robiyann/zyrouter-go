@@ -196,6 +196,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	r.Post("/api/telegram/webhook", userH.TelegramWebhook)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireUserSession(repo))
+		r.Use(middleware.RequireBrowserCSRF)
 		r.Get("/api/user/profile", userH.Profile)
 		r.Get("/api/user/usage", userH.Usage)
 		r.Get("/api/user/logs", userH.Logs)
