@@ -211,6 +211,12 @@
     if ($('timer')) $('timer').textContent = text;
   }
 
+  // The confirmation form is a UX affordance, not proof of Telegram ownership.
+  // The backend still requires status=telegram_verified before accepting it.
+  function showConfirmationForm() {
+    $('confirmation')?.classList.remove('hidden');
+  }
+
   function renderRestoredChallenge(expiresAt) {
     $('telegramInitialState')?.classList.add('hidden');
     $('challenge')?.classList.remove('hidden');
@@ -1045,8 +1051,13 @@
   $('complete')?.addEventListener('click', completeVerification);
   $('cancelChallengeBtn')?.addEventListener('click', cancelVerification);
   $('copyChallengeBtn')?.addEventListener('click', () => {
-    if (challenge) copyText(challenge, 'Kode verifikasi disalin!');
+    if (challenge) {
+      showConfirmationForm();
+      copyText(challenge, 'Kode verifikasi disalin!');
+    }
   });
+  $('botLink')?.addEventListener('click', showConfirmationForm);
+  $('botRetryLink')?.addEventListener('click', showConfirmationForm);
 
   $('connectMachineBtn')?.addEventListener('click', connectMachineClient);
   $('toggleMachineTokenVisibility')?.addEventListener('click', () => {
