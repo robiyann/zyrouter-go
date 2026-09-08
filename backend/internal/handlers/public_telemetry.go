@@ -6,12 +6,105 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/usagetracker"
 )
+
+func publicAlias(repo *db.Repo, model string) string {
+	if repo != nil {
+		if aliases, err := repo.GetModelAliases(); err == nil {
+			for alias, target := range aliases {
+				if target == model || strings.HasSuffix(target, "/"+model) {
+					return alias
+				}
+			}
+		}
+	}
+	return "unpublished"
+}
+
+func clientTelemetry(repo *db.Repo) (map[string]any, error) {
+	snapshot, err := buildPublicTelemetry(repo)
+	if err != nil {
+		return nil, err
+	}
+	recent := make([]map[string]any, 0, len(snapshot.RecentRequests))
+	for _, item := range snapshot.RecentRequests {
+		recent = append(recent, map[string]any{
+			"timestamp": item["timestamp"], "model": publicAlias(repo, fmt.Sprint(item["model"])),
+			"status": item["status"], "promptTokens": item["promptTokens"],
+			"completionTokens": item["completionTokens"], "totalTokens": item["totalTokens"],
+			"durationMs": item["durationMs"],
+		})
+	}
+	return map[string]any{
+		"timestamp": snapshot.Timestamp, "totalRequests": snapshot.TotalRequests,
+		"promptTokens": snapshot.PromptTokens, "completionTokens": snapshot.CompletionTokens,
+		"totalTokens": snapshot.TotalTokens, "activeRequests": snapshot.ActiveRequests, "recent": recent,
+	}, nil
+}
+
+func HandleClientTelemetryStats(repo *db.Repo) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := clientTelemetry(repo)
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load global telemetry")
+			return
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, body)
+	}
+}
+
+func HandleClientTelemetryStream(repo *db.Repo) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "streaming unsupported")
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("X-Accel-Buffering", "no")
+		send := func() bool {
+			body, err := clientTelemetry(repo)
+			if err != nil {
+				return false
+			}
+			payload, _ := json.Marshal(body)
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+				return false
+			}
+			flusher.Flush()
+			return true
+		}
+		if !send() {
+			return
+		}
+		subscriber, unsubscribe := usagetracker.GetTracker().Subscribe()
+		defer unsubscribe()
+		ping := time.NewTicker(20 * time.Second)
+		defer ping.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-subscriber:
+				if !send() {
+					return
+				}
+			case <-ping.C:
+				if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+					return
+				}
+				flusher.Flush()
+			}
+		}
+	}
+}
 
 // Public telemetry is deliberately token-gated. It exposes aggregate traffic
 // metrics without exposing account names, API keys, proxy URLs, or payloads.

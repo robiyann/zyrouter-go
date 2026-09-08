@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Zyrouter Client Portal">
+  <title>Zyrouter Client Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar"><a class="brand" href="#">ZYROUTER <span>CLIENT PORTAL</span></a><div id="owner">Support: <a href="https://t.me/robiyan32" target="_blank" rel="noopener">@robiyan32</a></div></header>
+    <section id="auth" class="card auth-card">
+      <p class="eyebrow">TELEGRAM VERIFIED ACCESS</p><h1>Gateway Client Portal</h1>
+      <p class="muted">Kelola API key, alias model, usage pribadi, dan realtime global gateway.</p>
+      <button id="start" class="primary">Mulai Verifikasi Telegram</button>
+      <div id="challenge" class="challenge hidden"><strong>Kode verifikasi</strong><code id="code"></code><small>Berlaku 10 menit. Kirim kode ini ke bot Telegram.</small><span id="timer">10:00</span></div>
+      <p id="auth-error" class="error"></p>
+    </section>
+    <section id="app" class="hidden">
+      <nav class="tabs"><button data-view="overview">Overview</button><button data-view="key">API Key</button><button data-view="models">Models</button><button data-view="logs">Global Stream</button></nav>
+      <section id="overview" class="view"><div class="grid"><article class="metric"><small>GLOBAL REQUESTS</small><b id="globalRequests">0</b></article><article class="metric"><small>GLOBAL TOKENS</small><b id="globalTokens">0</b></article><article class="metric"><small>MY REQUESTS</small><b id="myRequests">0</b></article><article class="metric"><small>MY TOKENS</small><b id="myTokens">0</b></article></div><article class="card"><h2>Telegram Owner</h2><p class="muted">Untuk pertanyaan atau problem, hubungi <a href="https://t.me/robiyan32" target="_blank" rel="noopener">@robiyan32</a>.</p><p id="profile" class="muted"></p></article></section>
+      <section id="key" class="view hidden"><article class="card"><h2>Gateway API Key</h2><p id="keyInfo" class="muted">Memuat...</p><div class="actions"><button id="generate" class="primary">Generate Key</button><button id="rotate" class="secondary">Rotate</button><button id="revoke" class="danger">Revoke</button></div><code id="secret" class="secret"></code></article></section>
+      <section id="models" class="view hidden"><article class="card"><h2>Allowed Model Aliases</h2><div id="modelsList" class="list"></div></article></section>
+      <section id="logs" class="view hidden"><article class="card"><div class="row"><div><h2>Global Realtime Stream</h2><p class="muted">Agregat gateway tanpa identitas user/provider internal.</p></div><span id="streamState" class="pill">CONNECTING</span></div><div id="logsList" class="list"></div></article></section>
+    </section>
+    <footer>Owner/support: <a href="https://t.me/robiyan32" target="_blank" rel="noopener">@robiyan32</a></footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

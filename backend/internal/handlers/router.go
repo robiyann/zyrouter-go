@@ -206,6 +206,8 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Post("/api/user/key/rotate", userH.RotateKey)
 		r.Delete("/api/user/key", userH.RevokeKey)
 		r.Post("/api/user/logout", userH.Logout)
+		r.Get("/api/user/global-usage", HandleClientTelemetryStats(repo))
+		r.Get("/api/user/global-usage/stream", HandleClientTelemetryStream(repo))
 	})
 
 	// Future client dashboard API. It is intentionally isolated from admin/API-key routes.
@@ -219,6 +221,8 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Get("/api/client/usage", clientH.HandleUsage)
 		r.Get("/api/client/logs", clientH.HandleLogs)
 		r.Get("/api/client/logs/stream", clientH.HandleLogsStream)
+		r.Get("/api/client/global-usage", HandleClientTelemetryStats(repo))
+		r.Get("/api/client/global-usage/stream", HandleClientTelemetryStream(repo))
 	})
 
 	// API-key / Dashboard session protected domain routes
