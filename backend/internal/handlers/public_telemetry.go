@@ -14,6 +14,7 @@ import (
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/middleware"
 	"zyrouter/backend/internal/models"
+	"zyrouter/backend/internal/providers"
 	"zyrouter/backend/internal/usagetracker"
 )
 
@@ -24,12 +25,28 @@ var clientTelemetryCache struct {
 }
 
 func publicAlias(repo *db.Repo, model string) string {
+	requestedProvider, requestedModel := "", strings.TrimSpace(model)
+	if slash := strings.IndexByte(requestedModel, '/'); slash >= 0 {
+		requestedProvider, requestedModel = strings.ToLower(requestedModel[:slash]), strings.TrimSpace(requestedModel[slash+1:])
+	}
 	if repo != nil {
 		if aliases, err := repo.GetModelAliases(); err == nil {
+			matches := make([]string, 0, 2)
 			for alias, target := range aliases {
-				if target == model || strings.HasSuffix(target, "/"+model) {
-					return alias
+				if strings.HasPrefix(target, "combo:") {
+					continue
 				}
+				targetProvider, targetModel := "", target
+				if slash := strings.IndexByte(target, '/'); slash >= 0 {
+					targetProvider, targetModel = strings.ToLower(target[:slash]), target[slash+1:]
+				}
+				providerMatches := requestedProvider == "" || providers.ResolveAlias(requestedProvider) == providers.ResolveAlias(targetProvider)
+				if providerMatches && strings.TrimSpace(targetModel) == requestedModel {
+					matches = append(matches, alias)
+				}
+			}
+			if len(matches) == 1 {
+				return matches[0]
 			}
 		}
 	}
@@ -72,6 +89,9 @@ func filterClientTelemetry(data map[string]any, allowed map[string]bool) map[str
 	if items, ok := data["recent"].([]map[string]any); ok {
 		for _, item := range items {
 			alias, _ := item["publicModel"].(string)
+			if alias == "" {
+				alias, _ = item["model"].(string)
+			}
 			if allowed[strings.ToLower(alias)] {
 				recent = append(recent, item)
 			}

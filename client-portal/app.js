@@ -873,6 +873,11 @@
 
     globalSource.onopen = () => {
       setStreamState('LIVE');
+      const list = $('logsList');
+      if (list && list.querySelector('.stream-empty-state')) {
+        const message = list.querySelector('.stream-empty-state p');
+        if (message) message.textContent = 'Stream terhubung (LIVE). Menunggu traffic request berikutnya...';
+      }
     };
 
     globalSource.onerror = () => {
