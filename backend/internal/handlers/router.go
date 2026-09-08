@@ -159,6 +159,8 @@ func SetupRoutes(r interface {
 // SetupServerRouter mounts public endpoints (/health, /api/hello) and
 // API-key protected routes (all engine + admin routes) on the chi router.
 func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
+	r.Use(middleware.CORS)
+
 	chatH := chat.NewChatHandler(repo, ts)
 	adminH := admin.NewAdminHandler(repo)
 	adminH.SetChatTester(chatH)
