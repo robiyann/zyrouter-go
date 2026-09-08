@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,9 +27,56 @@ type Handler struct{ Repo *db.Repo }
 
 const verificationBrowserCookie = "verification_browser"
 
+type verificationRateState struct {
+	mu   sync.Mutex
+	hits map[string][]time.Time
+}
+
+var verificationRates = verificationRateState{hits: make(map[string][]time.Time)}
+
+func verificationClientKey(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+		return value
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func allowVerificationRequest(r *http.Request, limit int, window time.Duration) bool {
+	now := time.Now()
+	key := verificationClientKey(r)
+	verificationRates.mu.Lock()
+	defer verificationRates.mu.Unlock()
+	items := verificationRates.hits[key]
+	cutoff := now.Add(-window)
+	kept := items[:0]
+	for _, item := range items {
+		if item.After(cutoff) {
+			kept = append(kept, item)
+		}
+	}
+	if len(kept) >= limit {
+		verificationRates.hits[key] = kept
+		return false
+	}
+	verificationRates.hits[key] = append(kept, now)
+	return true
+}
+
 func NewHandler(repo *db.Repo) *Handler { return &Handler{Repo: repo} }
 
 func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
+	if !middleware.BrowserOriginAllowed(r) {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "csrf_origin_forbidden")
+		return
+	}
+	if !allowVerificationRequest(r, 5, 10*time.Minute) {
+		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "verification_start_rate_limited")
+		return
+	}
 	browserKey, err := randomToken(32)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create verification browser binding")
@@ -56,6 +105,10 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
+	if !allowVerificationRequest(r, 90, time.Minute) {
+		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "verification_poll_rate_limited")
+		return
+	}
 	challengeID := chi.URLParam(r, "id")
 	browserCookie, cookieErr := r.Cookie(verificationBrowserCookie)
 	storedBrowserKey, browserErr := h.Repo.GetVerificationBrowserKey(challengeID)
@@ -94,6 +147,14 @@ func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CompleteVerification(w http.ResponseWriter, r *http.Request) {
+	if !middleware.BrowserOriginAllowed(r) {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "csrf_origin_forbidden")
+		return
+	}
+	if !allowVerificationRequest(r, 10, 5*time.Minute) {
+		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "verification_complete_rate_limited")
+		return
+	}
 	var body struct {
 		ChallengeID      string `json:"challengeId"`
 		ConfirmationCode string `json:"confirmationCode"`
@@ -127,6 +188,10 @@ func (h *Handler) TelegramWebhook(w http.ResponseWriter, r *http.Request) {
 	secret := strings.TrimSpace(os.Getenv("TELEGRAM_WEBHOOK_SECRET"))
 	if secret == "" || r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != secret {
 		handlerutil.WriteJSONError(w, http.StatusUnauthorized, "invalid telegram webhook secret")
+		return
+	}
+	if !allowVerificationRequest(r, 120, time.Minute) {
+		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "telegram_webhook_rate_limited")
 		return
 	}
 	var update struct {
