@@ -116,8 +116,8 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 		t.Fatalf("rotate status=%d body=%s", rotate.Code, rotate.Body.String())
 	}
 	oldKey, err := repo.GetApiKeyByKey(keyResponse.Key)
-	if err != nil || oldKey == nil || oldKey.IsActive != 0 {
-		t.Fatalf("old key remained active after rotation: %+v err=%v", oldKey, err)
+	if err != nil || oldKey != nil {
+		t.Fatalf("old key was not deleted after rotation: %+v err=%v", oldKey, err)
 	}
 	if active, err := repo.GetActiveUserApiKey("usr_invalid"); err != nil || active != nil {
 		t.Fatalf("unexpected invalid user key lookup: %+v %v", active, err)

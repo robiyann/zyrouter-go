@@ -177,8 +177,12 @@ func (r *Repo) CreateVerificationChallengeForBrowser(ttl time.Duration, browserK
 func (r *Repo) GetActiveVerificationChallenge(browserKey string) (string, time.Time, error) {
 	var id, expiresAt string
 	err := r.db.QueryRow(`SELECT id,expiresAt FROM userVerificationChallenges WHERE browserKey=? AND status IN ('pending','telegram_verified') AND expiresAt>? ORDER BY createdAt DESC LIMIT 1`, browserKey, time.Now().UTC().Format(time.RFC3339)).Scan(&id, &expiresAt)
-	if err == sql.ErrNoRows { return "", time.Time{}, nil }
-	if err != nil { return "", time.Time{}, err }
+	if err == sql.ErrNoRows {
+		return "", time.Time{}, nil
+	}
+	if err != nil {
+		return "", time.Time{}, err
+	}
 	expires, err := time.Parse(time.RFC3339, expiresAt)
 	return id, expires, err
 }
@@ -573,7 +577,9 @@ func (r *Repo) RotateUserApiKey(userID, accountTypeID, id, rawKey, name string) 
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE apiKeys SET isActive=0 WHERE userId=? AND isActive=1`, userID); err != nil {
+	// Rotation is replacement, not a retained inactive credential. Remove all
+	// prior user-owned rows atomically before inserting the new secret.
+	if _, err := tx.Exec(`DELETE FROM apiKeys WHERE userId=?`, userID); err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
