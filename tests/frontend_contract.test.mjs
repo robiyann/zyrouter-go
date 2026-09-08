@@ -38,5 +38,11 @@ assert.match(html, /data-view="account-types"/, 'sidebar must include Account Ty
 assert.match(app, /renderAccountTypes/, 'frontend must include Account Types view renderer');
 assert.match(app, /Tier-Based Model Governance Active/, 'API key form must document tier-based model governance');
 assert.match(app, /manage-tier-models/, 'account types must support managing model permissions per tier');
+assert.match(app, /name === 'account-types'[\s\S]*?openTierModal\(null\)/, 'Account Types header action must open the tier editor');
+assert.match(app, /Combo members must be published model aliases/, 'combo submission must fail closed for raw or unpublished members');
+assert.match(app, /data-test-model/, 'admin provider inventory must retain a dedicated upstream test action');
+assert.match(app, /\/api\/providers\/\$\{encodeURIComponent\(provId\)\}\/test-model/, 'upstream model tests must use the admin provider test endpoint');
+assert.match(app, /data-quick-alias/, 'internal inventory must provide an explicit publish-alias action');
+assert.match(app, /UNPUBLISHED/, 'internal provider inventory must show unpublished models before alias publication');
+assert.match(app, /data-filter-pool-status/, 'proxy pools must expose status filters');
 console.log('frontend backend contract checks passed');
-

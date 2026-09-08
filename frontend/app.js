@@ -5594,7 +5594,7 @@ function renderPools(payload) {
     const isErr = testStatus === 'error' || testStatus === 'failed' || Boolean(d.lastError);
     const isPass = testStatus === 'active' || testStatus === 'pass' || testStatus === 'passed';
 
-    if (q && !name.includes(q) && !url.includes(q) && !item.id.toLowerCase().includes(q)) return false;
+    if (q && !name.includes(q) && !url.includes(q) && !String(item.id || '').toLowerCase().includes(q)) return false;
     if (poolTypeFilter !== 'all' && pType !== poolTypeFilter) return false;
     if (poolStatusFilter === 'active' && !isActive) return false;
     if (poolStatusFilter === 'disabled' && isActive) return false;
@@ -6611,6 +6611,10 @@ function bindCreateForm(name) {
       openCreateComboModal();
       return;
     }
+    if (name === 'account-types') {
+      openTierModal(null);
+      return;
+    }
     const existing = document.querySelector(`[data-create="${name}"]`);
     if (existing) existing.remove();
     content.insertAdjacentHTML('afterbegin', createForm(name));
@@ -6763,7 +6767,7 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
     if (pipeline.length === 0) {
       container.innerHTML = `
         <div style="text-align:center; padding:16px; color:var(--muted); font-size:11px; border:1px dashed var(--line); border-radius:5px;">
-          Pipeline is empty. Click a model from below or type a custom model ID to add the first step.
+          Pipeline is empty. Select a published model alias below or type an existing published alias to add the first step.
         </div>
       `;
     } else {
@@ -6898,6 +6902,16 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
 
     if (!Array.isArray(finalModels) || finalModels.length === 0) {
       form.querySelector('.form-error').textContent = 'Pipeline must contain at least 1 model step.';
+      return;
+    }
+
+    const publishedAliases = new Set(availableAliases.map((alias) => String(alias).trim()));
+    const invalidMember = finalModels.find((member) => {
+      const value = String(member || '').trim();
+      return !value || value.includes('/') || !publishedAliases.has(value);
+    });
+    if (invalidMember !== undefined) {
+      form.querySelector('.form-error').textContent = `Combo members must be published model aliases. Invalid member: ${String(invalidMember || '(empty)')}`;
       return;
     }
 
