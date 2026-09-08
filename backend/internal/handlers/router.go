@@ -53,6 +53,7 @@ func SetupRoutes(r interface {
 	r.Put("/api/providers/{id}", adminH.HandleUpdateProvider)
 	r.Delete("/api/providers/{id}", adminH.HandleDeleteProvider)
 	r.Get("/api/providers/{id}/models", adminH.HandleFetchProviderConnectionModels)
+	r.Post("/api/providers/{id}/test-model", adminH.HandleTestProviderModel)
 	r.Get("/api/combos", adminH.HandleGetCombos)
 	r.Post("/api/combos", adminH.HandleCreateCombo)
 	r.Put("/api/combos/{id}", adminH.HandleUpdateCombo)

@@ -173,19 +173,28 @@ func TestAdminAPIKeySupportsAccountTypeID(t *testing.T) {
 	}
 }
 
-func TestHandleTestModelAlias(t *testing.T) {
-	file, err := os.CreateTemp("", "admin-alias-test-*.sqlite")
+func setupAdminTestDB(t *testing.T) (*db.Repo, func()) {
+	file, err := os.CreateTemp("", "admin-test-*.sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
 	file.Close()
-	defer os.Remove(file.Name())
 	database, err := db.OpenDatabase(file.Name())
 	if err != nil {
+		os.Remove(file.Name())
 		t.Fatal(err)
 	}
-	defer database.Close()
 	repo := db.NewRepo(database)
+	cleanup := func() {
+		database.Close()
+		os.Remove(file.Name())
+	}
+	return repo, cleanup
+}
+
+func TestHandleTestModelAlias(t *testing.T) {
+	repo, cleanup := setupAdminTestDB(t)
+	defer cleanup()
 	if err := repo.SetModelAliasRecord("test-alias", "google", "gemini-2.5-pro", nil, nil, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +211,63 @@ func TestHandleTestModelAlias(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"resolved":true`) || !strings.Contains(rec.Body.String(), `"google"`) {
 		t.Fatalf("unexpected alias test body: %s", rec.Body.String())
+	}
+}
+
+func TestHandleFetchProviderConnectionModels_IncludesCatalog(t *testing.T) {
+	repo, cleanup := setupAdminTestDB(t)
+	defer cleanup()
+
+	h := NewAdminHandler(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/gemini/models", nil)
+	chiCtx := chi.NewRouteContext()
+	chiCtx.URLParams.Add("id", "gemini")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, chiCtx))
+	rec := httptest.NewRecorder()
+
+	h.HandleFetchProviderConnectionModels(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Provider string           `json:"provider"`
+		Models   []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(payload.Models) == 0 {
+		t.Fatalf("expected models from catalog, got 0")
+	}
+	found := false
+	for _, m := range payload.Models {
+		if id, _ := m["id"].(string); strings.Contains(id, "gemini") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected gemini model in models list: %s", rec.Body.String())
+	}
+}
+
+func TestHandleTestProviderModel_Validation(t *testing.T) {
+	repo, cleanup := setupAdminTestDB(t)
+	defer cleanup()
+
+	h := NewAdminHandler(repo)
+
+	// Missing model should return 400
+	req := httptest.NewRequest(http.MethodPost, "/api/providers/gemini/test-model", strings.NewReader(`{"model":""}`))
+	chiCtx := chi.NewRouteContext()
+	chiCtx.URLParams.Add("id", "gemini")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, chiCtx))
+	rec := httptest.NewRecorder()
+
+	h.HandleTestProviderModel(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty model, got %d", rec.Code)
 	}
 }
 

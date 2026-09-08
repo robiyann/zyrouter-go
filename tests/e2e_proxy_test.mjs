@@ -457,8 +457,33 @@ try {
     console.log('  -> PASS: model alias test endpoint verified');
   }
 
+  // Scenario 14: Dedicated Admin Provider Model Test & Catalog Discovery
+  {
+    console.log('[TEST 14] Testing POST /api/providers/{id}/test-model & catalog discovery...');
+    // Test provider catalog endpoint returns models list
+    const modelsRes = await fetch(`${baseUrl}/api/providers/gemini/models`, {
+      headers: { Cookie: cookieHeader },
+    });
+    assert.equal(modelsRes.status, 200);
+    const modelsData = await modelsRes.json();
+    assert.ok(Array.isArray(modelsData.models), 'models must be an array');
+    assert.ok(modelsData.models.length > 0, 'models array must not be empty');
+
+    // Test live model ping through provider test-model endpoint to mock upstream
+    const provTestRes = await fetch(`${baseUrl}/api/providers/${connId}/test-model`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookieHeader },
+      body: JSON.stringify({ model: 'mock-raw-gpt', prompt: 'ping' }),
+    });
+    assert.equal(provTestRes.status, 200);
+    const provTestData = await provTestRes.json();
+    assert.equal(provTestData.status, 'ok');
+    assert.ok(typeof provTestData.latencyMs === 'number');
+    console.log('  -> PASS: provider test-model and catalog discovery verified');
+  }
+
   console.log('================================================================');
-  console.log('🎉 ALL 13 E2E PROXY & GOVERNANCE INTEGRATION SCENARIOS PASSED! 🎉');
+  console.log('🎉 ALL 14 E2E PROXY & GOVERNANCE INTEGRATION SCENARIOS PASSED! 🎉');
   console.log('================================================================');
 } finally {
   // Graceful teardown

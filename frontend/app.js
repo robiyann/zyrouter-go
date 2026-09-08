@@ -1970,6 +1970,14 @@ async function renderProviderDetail(provId) {
       .map((record) => record.alias)
       .filter(Boolean) : [];
     const modelsList = Array.from(new Set(publishedAliases));
+    const aliasByUpstream = new Map();
+    if (Array.isArray(aliasPayload.records)) {
+      aliasPayload.records.forEach((rec) => {
+        if (rec && rec.upstreamModel && provAliases.has(String(rec.provider || '').toLowerCase())) {
+          aliasByUpstream.set(rec.upstreamModel, rec.alias);
+        }
+      });
+    }
     const inventoryModels = Array.from(modelSet).sort();
     const accountPageSize = 10;
     const accountPageCount = Math.max(1, Math.ceil(conns.length / accountPageSize));
@@ -2230,14 +2238,32 @@ async function renderProviderDetail(provId) {
                 `;
               }).join('')}
             </div>
-            <div style="margin-top:12px; padding:10px; border:1px dashed var(--line); border-radius:6px; background:rgba(255,255,255,0.015);">
+            <div style="margin-top:14px; padding:12px; border:1px dashed var(--line); border-radius:6px; background:rgba(255,255,255,0.015);">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <strong style="font-size:10px; color:var(--muted);">INTERNAL UPSTREAM INVENTORY</strong>
-                <span class="table-badge" style="font-size:8px;">NOT PUBLIC</span>
+                <div>
+                  <strong style="font-size:10px; color:var(--text-bright);">INTERNAL UPSTREAM INVENTORY</strong>
+                  <span class="table-badge" style="font-size:8px; margin-left:6px;">NOT PUBLIC</span>
+                </div>
+                <button class="secondary-button" id="btn-import-models-upstream-refresh" style="font-size:9.5px; padding:2px 7px;" title="Refresh models from provider">↻ Refresh</button>
               </div>
-              <p style="font-size:9.5px; color:var(--muted); margin:4px 0 0;">Fetched or manually known upstream IDs stay private until an admin publishes a Model Alias.</p>
-              <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:7px;">
-                ${inventoryModels.length ? inventoryModels.map((model) => `<code class="model-id-code" style="font-size:9px; color:var(--dim);">${escapeHtml(model)}</code>`).join('') : '<span style="font-size:9px; color:var(--muted);">No internal inventory loaded.</span>'}
+              <p style="font-size:9.5px; color:var(--muted); margin:4px 0 8px;">Fetched or known upstream IDs stay private until an admin publishes a Model Alias. You can test any upstream model directly or publish it as an alias in 1-click.</p>
+              <div style="display:grid; gap:6px; max-height:280px; overflow-y:auto; padding-right:2px;">
+                ${inventoryModels.length ? inventoryModels.map((model) => {
+                  const existingAlias = aliasByUpstream.get(model);
+                  return `
+                    <div class="detail-model-row" style="background:#05070a; border:1px solid var(--line-subtle); padding:6px 10px; border-radius:5px; display:flex; justify-content:space-between; align-items:center;">
+                      <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                        <code class="model-id-code" style="font-size:11px; color:var(--text);">${escapeHtml(model)}</code>
+                        ${existingAlias ? `<span class="table-badge active" style="font-size:7.5px; padding:1px 5px;">ALIAS: ${escapeHtml(existingAlias)}</span>` : `<span class="table-badge" style="font-size:7.5px; padding:1px 5px; color:var(--muted);">UNPUBLISHED</span>`}
+                      </div>
+                      <div class="model-row-actions" style="display:flex; align-items:center; gap:5px;">
+                        <button class="model-test-btn" data-test-model="${escapeHtml(model)}" style="font-size:9.5px; padding:2px 7px;">Test Model</button>
+                        <button class="secondary-button" data-quick-alias="${escapeHtml(model)}" style="font-size:9.5px; padding:2px 7px; color:var(--lime);" title="Publish as public Model Alias">+ Alias</button>
+                        <button class="model-copy-btn" data-copy-text="${escapeHtml(model)}" title="Copy model ID" style="font-size:9.5px; padding:2px 5px;">&boxbox;</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('') : '<span style="font-size:10px; color:var(--muted); padding:8px 0;">No internal inventory loaded. Click "Fetch from /models" above.</span>'}
               </div>
             </div>
           </div>
@@ -2397,7 +2423,42 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
     };
   });
 
-  // Live Model Testing
+  // Import Models & Publish Alias Buttons
+  const handleFetchModels = async () => {
+    const importBtn = document.querySelector('#btn-import-models-upstream') || document.querySelector('#btn-import-models-upstream-refresh');
+    if (importBtn) {
+      importBtn.disabled = true;
+      importBtn.textContent = 'Fetching...';
+    }
+    try {
+      const payload = await request(`/api/providers/${encodeURIComponent(provId)}/models`);
+      const count = Array.isArray(payload.models) ? payload.models.length : 0;
+      showToast(`Loaded ${count} model(s) for ${provId}`, 'success');
+      await renderProviderDetail(provId);
+    } catch (err) {
+      showToast(`Fetch models failed: ${err.message}`, 'error');
+    }
+  };
+  const importBtn1 = document.querySelector('#btn-import-models-upstream');
+  if (importBtn1) importBtn1.onclick = handleFetchModels;
+  const importBtn2 = document.querySelector('#btn-import-models-upstream-refresh');
+  if (importBtn2) importBtn2.onclick = handleFetchModels;
+
+  const addProvAliasBtn = document.querySelector('#btn-add-provider-alias');
+  if (addProvAliasBtn) {
+    addProvAliasBtn.onclick = () => {
+      openCreateAliasModal('', `${provId}/`, 1);
+    };
+  }
+
+  document.querySelectorAll('[data-quick-alias]').forEach((btn) => {
+    btn.onclick = () => {
+      const model = btn.dataset.quickAlias;
+      openCreateAliasModal('', `${provId}/${model}`, 1);
+    };
+  });
+
+  // Live Model Testing via Dedicated Admin Provider Endpoint
   document.querySelectorAll('[data-test-model]').forEach((btn) => {
     btn.onclick = async () => {
       const modelId = btn.dataset.testModel;
@@ -2407,26 +2468,25 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
       try {
-        const res = await fetch(`${apiBase}/chat/completions`, {
+        const res = await fetch(`${apiBase}/api/providers/${encodeURIComponent(provId)}/test-model`, {
           method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
             model: modelId,
-            messages: [{ role: 'user', content: 'hi' }],
-            stream: false,
-            max_tokens: 16
+            prompt: 'ping'
           })
         });
         const latency = Date.now() - start;
-        if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.status === 'ok') {
           btn.className = 'model-test-btn ok';
-          btn.textContent = `OK (${latency}ms)`;
+          btn.textContent = `OK (${data.latencyMs || latency}ms)`;
+          btn.title = data.reply ? `Reply: ${data.reply}` : 'Model responded successfully';
         } else {
-          const errBody = await res.json().catch(() => ({}));
           btn.className = 'model-test-btn error';
-          btn.textContent = `Err: ${res.status}`;
-          btn.title = errBody.error || res.statusText;
+          btn.textContent = data.statusCode ? `Err: ${data.statusCode}` : `Err: ${res.status}`;
+          btn.title = data.error || data.message || res.statusText;
         }
       } catch (err) {
         btn.className = 'model-test-btn error';
@@ -2458,7 +2518,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
       try {
         await Promise.all(conns.map((c) => fetch(`${apiBase}/api/providers/${c.id}`, {
           method: 'PUT',
-          headers: { ...headers, 'Content-Type': 'application/json' },
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ proxyPoolId: poolId === '__none__' ? null : poolId })
         })));
         showToast(`Bulk proxy assigned to all ${conns.length} accounts!`, 'success');
@@ -2481,7 +2541,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
           const poolId = activePools[i % activePools.length].id;
           return fetch(`${apiBase}/api/providers/${c.id}`, {
             method: 'PUT',
-            headers: { ...headers, 'Content-Type': 'application/json' },
+            headers: { ...getHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ proxyPoolId: poolId })
           });
         }));
@@ -2500,7 +2560,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
       try {
         await Promise.all(conns.map((c) => fetch(`${apiBase}/api/providers/${c.id}`, {
           method: 'PUT',
-          headers: { ...headers, 'Content-Type': 'application/json' },
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ proxyPoolId: null })
         })));
         showToast('All accounts reset to Direct connection', 'info');
@@ -6782,72 +6842,124 @@ function bindComboEditors() {
 function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, editConnectionID = '', editCapabilities = []) {
   Promise.all([
     request('/api/providers').catch(() => ({ connections: [] })),
-    request('/api/provider-nodes').catch(() => ({ nodes: [] }))
-  ]).then(([provPayload, nodesPayload]) => {
+    request('/api/provider-nodes').catch(() => ({ nodes: [] })),
+    request('/api/model-aliases').catch(() => ({ aliases: {}, records: [] }))
+  ]).then(([provPayload, nodesPayload, aliasPayload]) => {
     const connections = provPayload.connections || [];
+    const publishedAliasRecords = Array.isArray(aliasPayload.records) ? aliasPayload.records : [];
+    const catalogProviderIds = (typeof KNOWN_PROVIDER_CATALOG !== 'undefined' && Array.isArray(KNOWN_PROVIDER_CATALOG))
+      ? KNOWN_PROVIDER_CATALOG.map((p) => p.id).filter(Boolean)
+      : [];
     const providerNames = Array.from(new Set([
       ...connections.map((conn) => conn.provider).filter(Boolean),
-      ...(nodesPayload.nodes || []).map((node) => node.id).filter(Boolean)
+      ...(nodesPayload.nodes || []).map((node) => node.id).filter(Boolean),
+      ...catalogProviderIds
     ])).sort();
+
     const targetText = String(editTarget || '');
     const targetSeparator = targetText.indexOf('/');
-    const selectedProvider = (targetSeparator >= 0 ? targetText.slice(0, targetSeparator) : targetText) || providerNames[0] || '';
-    const selectedModel = targetSeparator >= 0 ? targetText.slice(targetSeparator + 1) : '';
+    let selectedProvider = (targetSeparator >= 0 ? targetText.slice(0, targetSeparator) : targetText) || (providerNames[0] || 'google');
+    let selectedModel = targetSeparator >= 0 ? targetText.slice(targetSeparator + 1) : '';
     if (selectedProvider && !providerNames.includes(selectedProvider)) providerNames.unshift(selectedProvider);
+
+    const sanitizeAlias = (raw) => {
+      let clean = String(raw || '').trim();
+      if (clean.startsWith('models/')) clean = clean.slice(7);
+      if (clean.includes('/')) clean = clean.split('/').pop();
+      return clean.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+    };
+
     const existing = document.querySelector('[data-create="aliases"]');
     if (existing) existing.remove();
 
     const isEdit = Boolean(editAlias);
     const formHtml = `
-      <form class="inline-form" data-create="aliases" style="max-width:600px; padding:16px; background:#080b10; border:1px solid var(--line); border-radius:8px; margin-bottom:14px;">
+      <form class="inline-form" data-create="aliases" style="max-width:680px; padding:18px; background:#080b10; border:1px solid var(--line); border-radius:8px; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
         <div class="form-head" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <span class="kicker">PUBLISHED MODEL ALIAS</span>
-            <h2 style="font-size:14px; margin:2px 0 0;">${isEdit ? `Edit Alias: ${escapeHtml(editAlias)}` : 'Create New Model Alias'}</h2>
+            <span class="kicker" style="color:var(--lime);">MODEL GOVERNANCE</span>
+            <h2 style="font-size:15px; margin:2px 0 0; color:var(--text-bright);">${isEdit ? `Edit Alias: ${escapeHtml(editAlias)}` : 'Create New Model Alias'}</h2>
           </div>
           <button class="cancel-button" type="button" id="btn-close-alias-modal" style="padding:2px 6px;">&times;</button>
         </div>
-        <div style="display:grid; gap:10px;">
-          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Public Alias (client-visible, no provider prefix)
-            <input name="alias" id="alias-input" value="${escapeHtml(editAlias)}" placeholder="e.g. fast-gemini" ${isEdit ? 'readonly style="opacity:0.7;"' : 'required'} pattern="[^/\\s]+" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
-          </label>
-          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Internal Provider Target (admin only)
-            <select name="provider" id="alias-provider-input" required style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;">
+
+        <div style="display:grid; gap:12px;">
+          <!-- STEP 1: Provider Selection -->
+          <div style="background:#05070a; border:1px solid var(--line-subtle); border-radius:6px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span class="kicker" style="font-size:9px; color:var(--lime);">STEP 1: SELECT PROVIDER</span>
+              <span style="font-size:9.5px; color:var(--muted);">Private routing backend</span>
+            </div>
+            <select name="provider" id="alias-provider-input" required style="width:100%; background:#080c14; border:1px solid var(--line); padding:7px 10px; font:11.5px var(--mono); color:var(--text-bright); border-radius:5px;">
               ${providerNames.map((provider) => `<option value="${escapeHtml(provider)}" ${provider === selectedProvider ? 'selected' : ''}>${escapeHtml(provider)}</option>`).join('')}
             </select>
-          </label>
-          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Published State
-            <select name="isActive" id="alias-active-input" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;">
-              <option value="1" ${Number(editActive) !== 0 ? 'selected' : ''}>Published / active</option>
-              <option value="0" ${Number(editActive) === 0 ? 'selected' : ''}>Hidden / disabled</option>
-            </select>
-          </label>
-          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Provider Connection (optional pin)
-            <select name="connectionId" id="alias-connection-input" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;">
-              <option value="">Any active connection in provider</option>
-              ${connections.filter((conn) => String(conn.provider || '') === selectedProvider).map((conn) => `<option value="${escapeHtml(conn.id)}" ${conn.id === editConnectionID ? 'selected' : ''}>${escapeHtml(conn.name || conn.id)}</option>`).join('')}
-            </select>
-          </label>
+          </div>
+
+          <!-- STEP 2: Pick Upstream Model -->
+          <div style="background:#05070a; border:1px solid var(--line-subtle); border-radius:6px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span class="kicker" style="font-size:9px; color:var(--lime);">STEP 2: PICK UPSTREAM MODEL (ZERO TYPING)</span>
+              <button type="button" class="secondary-button" id="btn-fetch-alias-models" style="font-size:9.5px; padding:2px 8px;" title="Fetch live models from provider">↻ Fetch models</button>
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:8px;">
+              <input type="text" id="model-picker-search" placeholder="Search / filter model IDs (e.g. flash, pro, sonnet)..." style="flex:1; background:#080c14; border:1px solid var(--line); padding:6px 10px; font:11px var(--mono); color:var(--text); border-radius:4px;" />
+            </div>
+
+            <!-- Visual Model Cards Container -->
+            <div id="model-picker-container" style="max-height:160px; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px; padding:2px;">
+              <div style="padding:10px; color:var(--muted); font-size:11px;">Loading models...</div>
+            </div>
+
+            <!-- Selected Upstream Model Bar -->
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; padding:6px 10px; background:#030508; border:1px solid var(--line); border-radius:4px;">
+              <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                <span style="font-size:9px; color:var(--muted); font-family:var(--mono);">SELECTED:</span>
+                <code id="selected-model-display" style="font-size:11px; color:var(--lime); font-weight:600;">${selectedModel ? escapeHtml(selectedModel) : 'None selected (click a card above)'}</code>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <button type="button" class="model-test-btn" id="btn-test-picked-model" style="font-size:9px; padding:2px 8px; display:${selectedModel ? 'inline-block' : 'none'};">Test Model</button>
+              </div>
+            </div>
+            <input type="hidden" name="upstreamModel" id="target-model-input" value="${escapeHtml(selectedModel)}" required />
+            <datalist id="alias-models-datalist"></datalist>
+          </div>
+
+          <!-- STEP 3: Public Alias -->
+          <div style="background:#05070a; border:1px solid var(--line-subtle); border-radius:6px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span class="kicker" style="font-size:9px; color:var(--lime);">STEP 3: PUBLIC CLIENT ALIAS</span>
+              <span style="font-size:9.5px; color:var(--muted);">Exposed to clients via /v1/models (no provider prefix)</span>
+            </div>
+            <input name="alias" id="alias-input" value="${escapeHtml(editAlias)}" placeholder="e.g. fast-gemini" ${isEdit ? 'readonly style="opacity:0.7;"' : 'required'} pattern="[^/\\s]+" style="width:100%; background:#080c14; border:1px solid var(--line); padding:7px 10px; font:11.5px var(--mono); color:var(--text-bright); border-radius:5px;" />
+            <div id="alias-name-suggestions" style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;"></div>
+          </div>
+
+          <!-- Additional Governance Options -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Published State
+              <select name="isActive" id="alias-active-input" style="width:100%; background:#05070a; border:1px solid var(--line); padding:6px 8px; font:11px var(--mono); color:var(--text); border-radius:5px; margin-top:3px;">
+                <option value="1" ${Number(editActive) !== 0 ? 'selected' : ''}>Published / active</option>
+                <option value="0" ${Number(editActive) === 0 ? 'selected' : ''}>Hidden / disabled</option>
+              </select>
+            </label>
+            <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
+              Account Pin (Optional)
+              <select name="connectionId" id="alias-connection-input" style="width:100%; background:#05070a; border:1px solid var(--line); padding:6px 8px; font:11px var(--mono); color:var(--text); border-radius:5px; margin-top:3px;">
+                <option value="">Any active connection</option>
+                ${connections.filter((conn) => String(conn.provider || '') === selectedProvider).map((conn) => `<option value="${escapeHtml(conn.id)}" ${conn.id === editConnectionID ? 'selected' : ''}>${escapeHtml(conn.name || conn.id)}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+
           <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
             Capabilities (comma-separated, admin metadata)
-            <input name="capabilities" value="${escapeHtml((editCapabilities || []).join(', '))}" placeholder="chat, vision, tools" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
-          </label>
-          <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-            Upstream Model ID (never public)
-            <div style="display:flex; gap:6px;">
-              <input name="upstreamModel" id="target-model-input" value="${escapeHtml(selectedModel)}" placeholder="e.g. gemini-2.5-pro or vendor/model" list="alias-models-datalist" required style="flex:1; background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
-              <button type="button" class="secondary-button" id="btn-fetch-alias-models" style="white-space:nowrap;">Fetch models</button>
-            </div>
-            <datalist id="alias-models-datalist"></datalist>
-            <small style="display:block; margin-top:4px; color:var(--muted); text-transform:none;">Admin-only fetch. Models become public only after this alias is saved.</small>
+            <input name="capabilities" value="${escapeHtml((editCapabilities || []).join(', '))}" placeholder="chat, vision, tools" style="width:100%; background:#05070a; border:1px solid var(--line); padding:6px 8px; font:11px var(--mono); color:var(--text); border-radius:5px; margin-top:3px;" />
           </label>
         </div>
-        <div class="form-actions" style="margin-top:12px; display:flex; gap:8px;">
-          <button class="solid-button" type="submit">${isEdit ? 'Save Alias Mapping' : 'Publish Alias'}</button>
+
+        <div class="form-actions" style="margin-top:14px; display:flex; gap:8px;">
+          <button class="solid-button" type="submit" style="padding:7px 16px;">${isEdit ? 'Save Alias Mapping' : 'Publish Alias'}</button>
           <button class="cancel-button" type="button" id="btn-cancel-alias-form">Cancel</button>
         </div>
         <p class="form-error" role="alert" style="margin-top:6px; color:var(--danger); font-size:11px;"></p>
@@ -6857,40 +6969,210 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
     content.insertAdjacentHTML('afterbegin', formHtml);
     const form = document.querySelector('[data-create="aliases"]');
     if (!form) return;
+
     const closeHandler = () => form.remove();
     form.querySelector('#btn-close-alias-modal')?.addEventListener('click', closeHandler);
     form.querySelector('#btn-cancel-alias-form')?.addEventListener('click', closeHandler);
-    const fetchModelsBtn = form.querySelector('#btn-fetch-alias-models');
+
     const providerSelect = form.querySelector('#alias-provider-input');
     const connectionSelect = form.querySelector('#alias-connection-input');
-    providerSelect?.addEventListener('change', () => {
-      if (!connectionSelect) return;
-      const provider = providerSelect.value;
-      connectionSelect.innerHTML = '<option value="">Any active connection in provider</option>' +
-        connections.filter((conn) => String(conn.provider || '') === provider).map((conn) => `<option value="${escapeHtml(conn.id)}">${escapeHtml(conn.name || conn.id)}</option>`).join('');
-    });
-    fetchModelsBtn?.addEventListener('click', async () => {
-      const provider = form.querySelector('#alias-provider-input').value.trim();
-      if (!provider) return;
-      fetchModelsBtn.disabled = true;
-      fetchModelsBtn.textContent = 'Fetching...';
-      try {
-        const response = await fetch(`${apiBase}/api/providers/${encodeURIComponent(provider)}/models`, { headers: getHeaders() });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
-        const models = payload.models || payload.data || [];
-        form.querySelector('#alias-models-datalist').innerHTML = models.map((model) => {
-          const value = typeof model === 'string' ? model : (model.id || model.name || '');
-          return value ? `<option value="${escapeHtml(value)}"></option>` : '';
-        }).join('');
-        showToast(`${models.length} upstream model(s) loaded for admin selection.`, 'success');
-      } catch (error) {
-        showToast(`Model fetch failed: ${error.message}`, 'error');
-      } finally {
-        fetchModelsBtn.disabled = false;
-        fetchModelsBtn.textContent = 'Fetch models';
+    const targetModelInput = form.querySelector('#target-model-input');
+    const selectedModelDisplay = form.querySelector('#selected-model-display');
+    const testPickedModelBtn = form.querySelector('#btn-test-picked-model');
+    const aliasInput = form.querySelector('#alias-input');
+    const suggestionsBox = form.querySelector('#alias-name-suggestions');
+    const pickerContainer = form.querySelector('#model-picker-container');
+    const searchInput = form.querySelector('#model-picker-search');
+    const fetchModelsBtn = form.querySelector('#btn-fetch-alias-models');
+    const datalist = form.querySelector('#alias-models-datalist');
+
+    let loadedModels = [];
+    let autoFilledAlias = '';
+
+    const updateSuggestions = (modelId) => {
+      if (!modelId) {
+        suggestionsBox.innerHTML = '';
+        return;
       }
-    });
+      const clean = sanitizeAlias(modelId);
+      const suggestions = [
+        clean,
+        `fast-${clean}`,
+        `smart-${clean}`
+      ];
+      suggestionsBox.innerHTML = `
+        <span style="font-size:9px; color:var(--muted); margin-right:4px;">Quick suggestions:</span>
+        ${suggestions.map((s) => `
+          <button type="button" class="table-badge" data-suggest-alias="${escapeHtml(s)}" style="cursor:pointer; font-size:9px; padding:2px 6px; background:#080c14; border:1px solid var(--line-subtle); color:var(--lime);">${escapeHtml(s)}</button>
+        `).join('')}
+      `;
+      suggestionsBox.querySelectorAll('[data-suggest-alias]').forEach((btn) => {
+        btn.onclick = () => {
+          if (!isEdit) {
+            aliasInput.value = btn.dataset.suggestAlias;
+            autoFilledAlias = btn.dataset.suggestAlias;
+          }
+        };
+      });
+    };
+
+    const pickModel = (modelId) => {
+      targetModelInput.value = modelId;
+      selectedModelDisplay.textContent = modelId;
+      testPickedModelBtn.style.display = 'inline-block';
+      testPickedModelBtn.className = 'model-test-btn';
+      testPickedModelBtn.textContent = 'Test Model';
+
+      if (!isEdit && (!aliasInput.value || aliasInput.value === autoFilledAlias)) {
+        const clean = sanitizeAlias(modelId);
+        aliasInput.value = clean;
+        autoFilledAlias = clean;
+      }
+      updateSuggestions(modelId);
+
+      pickerContainer.querySelectorAll('.model-pick-card').forEach((card) => {
+        const isThis = card.dataset.modelId === modelId;
+        card.style.borderColor = isThis ? 'var(--lime)' : 'var(--line-subtle)';
+        card.style.background = isThis ? 'rgba(200, 255, 99, 0.08)' : '#05070a';
+      });
+    };
+
+    const renderPickerCards = (filter = '') => {
+      const q = filter.trim().toLowerCase();
+      const filtered = q ? loadedModels.filter((m) => m.toLowerCase().includes(q)) : loadedModels;
+      if (filtered.length === 0) {
+        pickerContainer.innerHTML = `<div style="padding:10px; color:var(--muted); font-size:11px;">No models match "${escapeHtml(filter)}".</div>`;
+        return;
+      }
+      const currentPicked = targetModelInput.value;
+      pickerContainer.innerHTML = filtered.map((modelId) => {
+        const isSelected = modelId === currentPicked;
+        const matchingRecord = publishedAliasRecords.find((r) => r && r.upstreamModel === modelId && String(r.provider || '').toLowerCase() === providerSelect.value.toLowerCase());
+        return `
+          <div class="model-pick-card" data-model-id="${escapeHtml(modelId)}" style="background:${isSelected ? 'rgba(200, 255, 99, 0.08)' : '#05070a'}; border:1px solid ${isSelected ? 'var(--lime)' : 'var(--line-subtle)'}; border-radius:5px; padding:6px 8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.15s ease;">
+            <div style="display:flex; align-items:center; gap:5px; min-width:0; overflow:hidden;">
+              <code style="font-size:10px; color:${isSelected ? 'var(--lime)' : 'var(--text-bright)'}; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(modelId)}</code>
+              ${matchingRecord ? `<span class="table-badge active" style="font-size:7px; padding:1px 3px;">ALIASED</span>` : `<span class="table-badge" style="font-size:7px; padding:1px 3px; color:var(--muted);">NEW</span>`}
+            </div>
+            <div style="display:flex; align-items:center; gap:3px;" onclick="event.stopPropagation();">
+              <button type="button" class="model-test-btn" data-test-picker-model="${escapeHtml(modelId)}" style="font-size:8px; padding:1px 5px;">Test</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      pickerContainer.querySelectorAll('.model-pick-card').forEach((card) => {
+        card.onclick = () => pickModel(card.dataset.modelId);
+      });
+
+      pickerContainer.querySelectorAll('[data-test-picker-model]').forEach((btn) => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const testM = btn.dataset.testPickerModel;
+          const currentProv = providerSelect.value;
+          btn.className = 'model-test-btn testing';
+          btn.textContent = '...';
+          const start = Date.now();
+          try {
+            const res = await fetch(`${apiBase}/api/providers/${encodeURIComponent(currentProv)}/test-model`, {
+              method: 'POST',
+              headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: testM, prompt: 'ping' })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.status === 'ok') {
+              btn.className = 'model-test-btn ok';
+              btn.textContent = `OK (${data.latencyMs || Date.now() - start}ms)`;
+            } else {
+              btn.className = 'model-test-btn error';
+              btn.textContent = data.statusCode ? `Err:${data.statusCode}` : 'Err';
+              btn.title = data.error || data.message || res.statusText;
+            }
+          } catch (err) {
+            btn.className = 'model-test-btn error';
+            btn.textContent = 'Err';
+          }
+        };
+      });
+    };
+
+    const loadProviderModels = async (prov) => {
+      pickerContainer.innerHTML = `<div style="padding:10px; color:var(--muted); font-size:11px;"><span class="spinner-icon"></span> Loading models for ${escapeHtml(prov)}...</div>`;
+      if (fetchModelsBtn) {
+        fetchModelsBtn.disabled = true;
+        fetchModelsBtn.textContent = 'Fetching...';
+      }
+      try {
+        const payload = await request(`/api/providers/${encodeURIComponent(prov)}/models`);
+        const rawList = payload.models || payload.data || [];
+        loadedModels = rawList.map((m) => typeof m === 'string' ? m : (m.id || m.name || '')).filter(Boolean);
+        datalist.innerHTML = loadedModels.map((m) => `<option value="${escapeHtml(m)}"></option>`).join('');
+        renderPickerCards(searchInput.value);
+
+        if (targetModelInput.value && loadedModels.includes(targetModelInput.value)) {
+          pickModel(targetModelInput.value);
+        } else if (!targetModelInput.value && loadedModels.length > 0 && !isEdit) {
+          pickModel(loadedModels[0]);
+        }
+      } catch (err) {
+        pickerContainer.innerHTML = `<div style="padding:10px; color:var(--danger); font-size:11px;">Failed to load models: ${escapeHtml(err.message)}</div>`;
+      } finally {
+        if (fetchModelsBtn) {
+          fetchModelsBtn.disabled = false;
+          fetchModelsBtn.textContent = '↻ Fetch models';
+        }
+      }
+    };
+
+    searchInput.oninput = () => renderPickerCards(searchInput.value);
+
+    providerSelect.onchange = () => {
+      const prov = providerSelect.value;
+      if (connectionSelect) {
+        connectionSelect.innerHTML = '<option value="">Any active connection</option>' +
+          connections.filter((conn) => String(conn.provider || '') === prov).map((conn) => `<option value="${escapeHtml(conn.id)}">${escapeHtml(conn.name || conn.id)}</option>`).join('');
+      }
+      targetModelInput.value = '';
+      selectedModelDisplay.textContent = 'None selected (click a card above)';
+      testPickedModelBtn.style.display = 'none';
+      if (!isEdit) aliasInput.value = '';
+      suggestionsBox.innerHTML = '';
+      loadProviderModels(prov);
+    };
+
+    fetchModelsBtn.onclick = () => loadProviderModels(providerSelect.value);
+
+    testPickedModelBtn.onclick = async () => {
+      const model = targetModelInput.value;
+      const prov = providerSelect.value;
+      if (!model || !prov) return;
+      testPickedModelBtn.className = 'model-test-btn testing';
+      testPickedModelBtn.textContent = 'Testing...';
+      const start = Date.now();
+      try {
+        const res = await fetch(`${apiBase}/api/providers/${encodeURIComponent(prov)}/test-model`, {
+          method: 'POST',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, prompt: 'ping' })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.status === 'ok') {
+          testPickedModelBtn.className = 'model-test-btn ok';
+          testPickedModelBtn.textContent = `OK (${data.latencyMs || Date.now() - start}ms)`;
+          testPickedModelBtn.title = data.reply ? `Reply: ${data.reply}` : 'Model responded successfully';
+        } else {
+          testPickedModelBtn.className = 'model-test-btn error';
+          testPickedModelBtn.textContent = data.statusCode ? `Err: ${data.statusCode}` : `Err: ${res.status}`;
+          testPickedModelBtn.title = data.error || data.message || res.statusText;
+        }
+      } catch (err) {
+        testPickedModelBtn.className = 'model-test-btn error';
+        testPickedModelBtn.textContent = 'Net Err';
+      }
+    };
+
+    // Initial load of models
+    loadProviderModels(selectedProvider);
 
     form.onsubmit = async (event) => {
       event.preventDefault();
@@ -6901,14 +7183,29 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
       form.querySelector('.form-error').textContent = '';
       try {
         const values = Object.fromEntries(new FormData(form).entries());
-        const endpoint = isEdit ? `/api/model-aliases/${encodeURIComponent(values.alias.trim())}` : '/api/model-aliases';
+        const alias = values.alias.trim();
+        const prov = values.provider.trim();
+        const upstream = values.upstreamModel.trim();
+        if (!upstream) throw new Error('Please select an upstream model ID');
+        if (!alias) throw new Error('Please enter or select a public alias');
+
+        const endpoint = isEdit ? `/api/model-aliases/${encodeURIComponent(alias)}` : '/api/model-aliases';
         const response = await fetch(`${apiBase}${endpoint}`, {
           method: isEdit ? 'PUT' : 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ alias: values.alias.trim(), target: `${values.provider.trim()}/${values.upstreamModel.trim()}`, provider: values.provider.trim(), upstreamModel: values.upstreamModel.trim(), connectionId: values.connectionId || null, capabilities: values.capabilities.split(',').map((item) => item.trim()).filter(Boolean), isActive: Number(values.isActive) })
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alias,
+            target: `${prov}/${upstream}`,
+            provider: prov,
+            upstreamModel: upstream,
+            connectionId: values.connectionId || null,
+            capabilities: values.capabilities.split(',').map((item) => item.trim()).filter(Boolean),
+            isActive: Number(values.isActive)
+          })
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+        showToast(`Alias "${alias}" published successfully!`, 'success');
         form.remove();
         await renderView('aliases');
       } catch (error) {
@@ -7053,27 +7350,25 @@ function bindAliasDeckActions() {
       btn.textContent = 'Testing...';
       const start = Date.now();
       try {
-        const res = await fetch(`${apiBase}/chat/completions`, {
+        const res = await fetch(`${apiBase}/api/model-aliases/${encodeURIComponent(alias)}/test?live=true`, {
           method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: alias,
-            messages: [{ role: 'user', content: 'hi' }],
-            stream: false,
-            max_tokens: 16
-          })
+          headers: getHeaders()
         });
         const latency = Date.now() - start;
-        if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.status === 'ok') {
           btn.className = 'model-test-btn ok';
-          btn.textContent = `OK (${latency}ms)`;
+          btn.textContent = `OK (${data.latencyMs || latency}ms)`;
+          btn.title = data.reply ? `Reply: ${data.reply}` : (data.message || 'Alias tested live');
         } else {
           btn.className = 'model-test-btn error';
-          btn.textContent = `Err: ${res.status}`;
+          btn.textContent = data.statusCode ? `Err: ${data.statusCode}` : `Err: ${res.status}`;
+          btn.title = data.error || data.message || res.statusText;
         }
       } catch (err) {
         btn.className = 'model-test-btn error';
         btn.textContent = 'Net Err';
+        btn.title = err.message;
       }
     };
   });

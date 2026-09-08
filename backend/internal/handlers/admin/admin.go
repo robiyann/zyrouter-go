@@ -2,10 +2,12 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/models"
+	"zyrouter/backend/internal/providers"
 )
 
 type AdminHandler struct {
@@ -368,7 +371,8 @@ func (h *AdminHandler) HandleUpdateProvider(w http.ResponseWriter, r *http.Reque
 	handlerutil.WriteJSON(w, http.StatusOK, existing)
 }
 
-// HandleFetchProviderConnectionModels fetches available models from the provider upstream endpoint.
+// HandleFetchProviderConnectionModels fetches available models from the provider upstream endpoint,
+// merging with official catalog models and custom models so admins always have a complete list.
 func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -377,10 +381,7 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 	}
 
 	var conn *models.ProviderConnection
-	// 1. Try finding connection by primary key ID
 	conn, _ = h.repo.GetProviderConnectionByID(id)
-
-	// 2. Fallback: Try finding by provider ID (e.g. "openai-compatible-...", "openai", "antigravity")
 	if conn == nil {
 		if conns, err := h.repo.GetProviderConnections(id, true); err == nil && len(conns) > 0 {
 			conn = conns[0]
@@ -388,7 +389,7 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 	}
 
 	var connData map[string]any
-	if conn != nil {
+	if conn != nil && conn.Data != "" {
 		_ = json.Unmarshal([]byte(conn.Data), &connData)
 	}
 	if connData == nil {
@@ -402,77 +403,361 @@ func (h *AdminHandler) HandleFetchProviderConnectionModels(w http.ResponseWriter
 		provider = conn.Provider
 	}
 
+	canonical := strings.ToLower(provider)
+	if mapped, ok := providers.ProviderAliasMap[canonical]; ok {
+		canonical = mapped
+	}
+	if canonical == "google" {
+		canonical = "gemini"
+	}
+
 	// If provider is a custom node, get baseUrl from node if empty
 	if baseUrl == "" {
-		if node, nodeData, err := h.repo.GetProviderNodeByID(provider); err == nil && node != nil && nodeData != nil {
+		if node, nodeData, err := h.repo.GetProviderNodeByID(provider); err == nil && node != nil && nodeData != nil && nodeData.BaseURL != "" {
 			baseUrl = nodeData.BaseURL
 		}
 	}
 	if baseUrl == "" {
-		if node, nodeData, err := h.repo.GetProviderNodeByID(id); err == nil && node != nil && nodeData != nil {
+		if node, nodeData, err := h.repo.GetProviderNodeByID(id); err == nil && node != nil && nodeData != nil && nodeData.BaseURL != "" {
 			baseUrl = nodeData.BaseURL
 		}
 	}
 	if baseUrl == "" {
-		if node, nodeData, err := h.repo.GetProviderNodeByPrefix(id); err == nil && node != nil && nodeData != nil {
+		if node, nodeData, err := h.repo.GetProviderNodeByPrefix(id); err == nil && node != nil && nodeData != nil && nodeData.BaseURL != "" {
 			baseUrl = nodeData.BaseURL
 		}
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	// 1. OpenAI / Compatible
+	// Fallback to KnownProviders endpoint if baseUrl is still empty
+	if baseUrl == "" {
+		if known, ok := providers.KnownProviders[canonical]; ok {
+			if strings.Contains(known.BaseURL, "/chat/completions") {
+				baseUrl = strings.TrimSuffix(known.BaseURL, "/chat/completions")
+			} else if strings.Contains(known.BaseURL, "/messages") {
+				baseUrl = strings.TrimSuffix(known.BaseURL, "/messages")
+			} else {
+				baseUrl = known.BaseURL
+			}
+			if apiKey == "" && (known.NoAuth || known.DefaultAPIKey != "") {
+				apiKey = known.DefaultAPIKey
+			}
+		}
+	}
+
+	seen := make(map[string]bool)
+	var result []map[string]any
+
+	addModel := func(mID string) {
+		mID = strings.TrimSpace(mID)
+		if mID == "" || seen[mID] {
+			return
+		}
+		seen[mID] = true
+		result = append(result, map[string]any{
+			"id":   mID,
+			"name": mID,
+		})
+	}
+
+	// 1. Try Live fetch if baseUrl is available
 	if baseUrl != "" {
+		client := &http.Client{Timeout: 10 * time.Second}
 		url := strings.TrimRight(baseUrl, "/") + "/models"
 		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
-		if err != nil {
-			handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if apiKey != "" {
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := client.Do(req)
-		if err != nil {
-			handlerutil.WriteJSONError(w, http.StatusBadGateway, "failed to connect to upstream: "+err.Error())
-			return
-		}
-		defer resp.Body.Close()
-
-		var respObj struct {
-			Data   []map[string]any `json:"data"`
-			Models []map[string]any `json:"models"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&respObj)
-		modelsList := respObj.Data
-		if len(modelsList) == 0 {
-			modelsList = respObj.Models
-		}
-
-		var result []map[string]any
-		for _, m := range modelsList {
-			mID, _ := m["id"].(string)
-			if mID == "" {
-				mID, _ = m["name"].(string)
+		if err == nil {
+			if apiKey != "" {
+				req.Header.Set("Authorization", "Bearer "+apiKey)
 			}
-			if mID != "" {
-				result = append(result, map[string]any{
-					"id":   mID,
-					"name": mID,
-				})
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := client.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode < 400 {
+					var respObj struct {
+						Data   []map[string]any `json:"data"`
+						Models []map[string]any `json:"models"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&respObj); err == nil {
+						modelsList := respObj.Data
+						if len(modelsList) == 0 {
+							modelsList = respObj.Models
+						}
+						for _, m := range modelsList {
+							mID, _ := m["id"].(string)
+							if mID == "" {
+								mID, _ = m["name"].(string)
+							}
+							addModel(mID)
+						}
+					}
+				}
 			}
 		}
-		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-			"provider": provider,
-			"models":   result,
-		})
-		return
+	}
+
+	// 2. Add catalog models for canonical and provider
+	for _, catModel := range providers.OfficialProviderModels[canonical] {
+		addModel(catModel)
+	}
+	if canonical != provider {
+		for _, catModel := range providers.OfficialProviderModels[provider] {
+			addModel(catModel)
+		}
+	}
+
+	// 3. Add custom models from database
+	if customList, err := h.repo.GetCustomModelsByProvider(provider); err == nil {
+		for _, cm := range customList {
+			addModel(cm)
+		}
+	}
+	if canonical != provider {
+		if customList, err := h.repo.GetCustomModelsByProvider(canonical); err == nil {
+			for _, cm := range customList {
+				addModel(cm)
+			}
+		}
 	}
 
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
 		"provider": provider,
-		"models":   []any{},
+		"models":   result,
 	})
+}
+
+// ProviderTestResult represents the outcome of an upstream model ping test.
+type ProviderTestResult struct {
+	Status     string `json:"status"`
+	Provider   string `json:"provider"`
+	Model      string `json:"model"`
+	LatencyMs  int64  `json:"latencyMs"`
+	StatusCode int    `json:"statusCode,omitempty"`
+	Reply      string `json:"reply,omitempty"`
+	Message    string `json:"message"`
+	Error      string `json:"error,omitempty"`
+}
+
+func (h *AdminHandler) testProviderModel(ctx context.Context, id, model, prompt string) (*ProviderTestResult, error) {
+	var conn *models.ProviderConnection
+	conn, _ = h.repo.GetProviderConnectionByID(id)
+	if conn == nil {
+		if conns, err := h.repo.GetProviderConnections(id, true); err == nil && len(conns) > 0 {
+			conn = conns[0]
+		}
+	}
+
+	provider := id
+	if conn != nil {
+		provider = conn.Provider
+	}
+
+	canonical := strings.ToLower(provider)
+	if mapped, ok := providers.ProviderAliasMap[canonical]; ok {
+		canonical = mapped
+	}
+	if canonical == "google" {
+		canonical = "gemini"
+	}
+
+	var connData map[string]any
+	if conn != nil && conn.Data != "" {
+		_ = json.Unmarshal([]byte(conn.Data), &connData)
+	}
+	if connData == nil {
+		connData = make(map[string]any)
+	}
+
+	apiKey, _ := connData["apiKey"].(string)
+	baseUrl, _ := connData["baseUrl"].(string)
+	proxyPoolId, _ := connData["proxyPoolId"].(string)
+
+	if baseUrl == "" {
+		if node, nodeData, err := h.repo.GetProviderNodeByID(provider); err == nil && node != nil && nodeData != nil && nodeData.BaseURL != "" {
+			baseUrl = nodeData.BaseURL
+		}
+	}
+	if baseUrl == "" {
+		if node, nodeData, err := h.repo.GetProviderNodeByID(id); err == nil && node != nil && nodeData != nil && nodeData.BaseURL != "" {
+			baseUrl = nodeData.BaseURL
+		}
+	}
+
+	var cfg providers.ProviderConfig
+	if known, ok := providers.KnownProviders[canonical]; ok {
+		cfg = known
+		if baseUrl != "" {
+			cfg.BaseURL = baseUrl
+		}
+		if apiKey == "" && (known.NoAuth || known.DefaultAPIKey != "") {
+			apiKey = known.DefaultAPIKey
+			if apiKey == "" {
+				apiKey = "public"
+			}
+		}
+	} else if baseUrl != "" {
+		cfg = providers.ProviderConfig{
+			BaseURL:    baseUrl,
+			AuthHeader: "Authorization",
+			AuthScheme: "bearer",
+		}
+	} else {
+		return &ProviderTestResult{
+			Status:   "error",
+			Provider: provider,
+			Model:    model,
+			Error:    fmt.Sprintf("no endpoint configuration found for provider '%s'", provider),
+			Message:  fmt.Sprintf("Provider '%s' has no known upstream endpoint", provider),
+		}, nil
+	}
+
+	if !strings.HasSuffix(cfg.BaseURL, "/chat/completions") && !strings.HasSuffix(cfg.BaseURL, "/messages") {
+		cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/") + "/chat/completions"
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxyPoolId != "" && proxyPoolId != "__none__" {
+		if pool, err := h.repo.GetProxyPool(proxyPoolId); err == nil && pool != nil && len(pool.URLs) > 0 {
+			if parsedProxy, err := url.Parse(pool.URLs[0]); err == nil {
+				transport.Proxy = http.ProxyURL(parsedProxy)
+			}
+		}
+	}
+
+	client := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: transport,
+	}
+
+	reqPayload := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"max_tokens": 16,
+		"stream":     false,
+	}
+	bodyBytes, _ := json.Marshal(reqPayload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return &ProviderTestResult{
+			Status:   "error",
+			Provider: provider,
+			Model:    model,
+			Error:    err.Error(),
+			Message:  "Failed to create request: " + err.Error(),
+		}, nil
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if !cfg.NoAuth && apiKey != "" {
+		switch cfg.AuthScheme {
+		case "raw":
+			req.Header.Set(cfg.AuthHeader, apiKey)
+		default:
+			header := cfg.AuthHeader
+			if header == "" {
+				header = "Authorization"
+			}
+			req.Header.Set(header, "Bearer "+apiKey)
+		}
+	}
+	if canonical == "anthropic" {
+		req.Header.Set("anthropic-version", "2023-06-01")
+	}
+	for k, v := range cfg.StaticHeaders {
+		req.Header.Set(k, v)
+	}
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	latencyMs := time.Since(start).Milliseconds()
+	if err != nil {
+		return &ProviderTestResult{
+			Status:    "error",
+			Provider:  provider,
+			Model:     model,
+			LatencyMs: latencyMs,
+			Error:     err.Error(),
+			Message:   fmt.Sprintf("Connection failed: %v", err),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode >= 400 {
+		errMsg := fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return &ProviderTestResult{
+			Status:     "error",
+			Provider:   provider,
+			Model:      model,
+			StatusCode: resp.StatusCode,
+			LatencyMs:  latencyMs,
+			Error:      errMsg,
+			Message:    errMsg,
+		}, nil
+	}
+
+	var respObj struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	_ = json.Unmarshal(respBody, &respObj)
+	reply := ""
+	if len(respObj.Choices) > 0 {
+		reply = strings.TrimSpace(respObj.Choices[0].Message.Content)
+	} else if len(respObj.Content) > 0 {
+		reply = strings.TrimSpace(respObj.Content[0].Text)
+	}
+	if reply == "" {
+		reply = "OK"
+	}
+
+	return &ProviderTestResult{
+		Status:     "ok",
+		Provider:   provider,
+		Model:      model,
+		StatusCode: resp.StatusCode,
+		LatencyMs:  latencyMs,
+		Reply:      reply,
+		Message:    fmt.Sprintf("Model responded in %dms", latencyMs),
+	}, nil
+}
+
+// HandleTestProviderModel handles POST /api/providers/{id}/test-model.
+func (h *AdminHandler) HandleTestProviderModel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if strings.TrimSpace(id) == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "provider or connection id is required")
+		return
+	}
+
+	var reqBody struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	reqBody.Model = strings.TrimSpace(reqBody.Model)
+	if reqBody.Model == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "model is required")
+		return
+	}
+	prompt := strings.TrimSpace(reqBody.Prompt)
+	if prompt == "" {
+		prompt = "hi"
+	}
+
+	res, _ := h.testProviderModel(r.Context(), id, reqBody.Model, prompt)
+	handlerutil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *AdminHandler) HandleDeleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -929,6 +1214,28 @@ func (h *AdminHandler) HandleTestModelAlias(w http.ResponseWriter, r *http.Reque
 	} else if strings.HasPrefix(strings.ToLower(target), "combo:") {
 		provider = "__combo__"
 		upstreamModel = strings.TrimPrefix(target, "combo:")
+	}
+
+	if r.URL.Query().Get("live") == "true" {
+		if provider != "" && upstreamModel != "" && provider != "__combo__" {
+			testRes, _ := h.testProviderModel(r.Context(), provider, upstreamModel, "ping")
+			if testRes != nil {
+				handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+					"status":        testRes.Status,
+					"alias":         alias,
+					"target":        target,
+					"provider":      provider,
+					"upstreamModel": upstreamModel,
+					"resolved":      true,
+					"latencyMs":     testRes.LatencyMs,
+					"statusCode":    testRes.StatusCode,
+					"reply":         testRes.Reply,
+					"error":         testRes.Error,
+					"message":       testRes.Message,
+				})
+				return
+			}
+		}
 	}
 
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
