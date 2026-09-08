@@ -4853,6 +4853,59 @@ let aliasProviderFilter = 'all';
 let aliasCurrentPage = 1;
 let aliasPageSize = 25;
 let cachedAliasesPayload = { aliases: {} };
+let cachedProviderNodes = [];
+
+function formatProviderBadge(provId) {
+  if (!provId) return { label: 'GATEWAY', title: '', icon: '' };
+  const raw = String(provId).trim();
+  const lower = raw.toLowerCase();
+  if (lower === '__combo__' || lower.startsWith('combo:')) {
+    return { label: 'COMBO', title: 'Orchestrator Combo Pipeline', icon: '🔀' };
+  }
+
+  // 1. Match against registered custom provider nodes
+  const node = (cachedProviderNodes || []).find((n) => n && (n.id === raw || String(n.id || '').toLowerCase() === lower));
+  if (node) {
+    const isAnthropic = node.type === 'anthropic-compatible';
+    const friendlyName = node.name || node.prefix || 'NODE';
+    const prefixHint = node.prefix ? ` (${node.prefix})` : '';
+    const urlHint = node.baseUrl ? ` — ${node.baseUrl}` : '';
+    return {
+      label: friendlyName.toUpperCase(),
+      title: `${node.name || 'Node'}${prefixHint}${urlHint} [${node.id}]`,
+      icon: isAnthropic ? '🎭' : '🔌'
+    };
+  }
+
+  // 2. Match against official catalog
+  const cat = (typeof KNOWN_PROVIDER_CATALOG !== 'undefined')
+    ? KNOWN_PROVIDER_CATALOG.find((p) => p && (p.id === raw || String(p.id || '').toLowerCase() === lower || String(p.alias || '').toLowerCase() === lower))
+    : null;
+  if (cat) {
+    return {
+      label: (cat.name || cat.id).toUpperCase(),
+      title: `${cat.name || cat.id} (${cat.id})`,
+      icon: cat.icon || '⚡'
+    };
+  }
+
+  // 3. Fallback for raw UUID node IDs if not found in cache
+  if (lower.startsWith('openai-compatible-chat-') || lower.startsWith('anthropic-compatible-')) {
+    const parts = raw.split('-');
+    const shortId = parts[parts.length - 1] || raw;
+    return {
+      label: `NODE-${shortId.slice(0, 6).toUpperCase()}`,
+      title: raw,
+      icon: lower.startsWith('anthropic') ? '🎭' : '🔌'
+    };
+  }
+
+  return {
+    label: raw.toUpperCase(),
+    title: raw,
+    icon: '⚡'
+  };
+}
 
 function renderAliases(payload) {
   if (payload && (payload.aliases || payload.records)) {
@@ -4863,6 +4916,9 @@ function renderAliases(payload) {
     }, {});
     cachedAliasesPayload = { ...payload, aliases: Object.keys(recordAliases).length ? recordAliases : (payload.aliases || {}) };
   }
+  if (payload && Array.isArray(payload.nodes)) {
+    cachedProviderNodes = payload.nodes;
+  }
   const allEntries = Object.entries(cachedAliasesPayload.aliases || {});
   const recordByAlias = new Map((cachedAliasesPayload.records || []).map((record) => [record.alias, record]));
   if (!allEntries.length) return emptySurface('No model aliases configured. Click "+ Create alias" to map a client model name.');
@@ -4872,7 +4928,7 @@ function renderAliases(payload) {
   allEntries.forEach(([alias, target]) => {
     let prov = 'custom';
     if (target.includes('/')) {
-      prov = target.split('/')[0].toLowerCase();
+      prov = target.split('/')[0];
     }
     providerCounts[prov] = (providerCounts[prov] || 0) + 1;
   });
@@ -4883,12 +4939,14 @@ function renderAliases(payload) {
     if (aliasProviderFilter !== 'all') {
       let prov = 'custom';
       if (target.includes('/')) {
-        prov = target.split('/')[0].toLowerCase();
+        prov = target.split('/')[0];
       }
-      if (prov !== aliasProviderFilter) return false;
+      if (prov !== aliasProviderFilter && prov.toLowerCase() !== aliasProviderFilter.toLowerCase()) return false;
     }
     if (q) {
-      return alias.toLowerCase().includes(q) || target.toLowerCase().includes(q);
+      const provNode = (cachedProviderNodes || []).find((n) => n && n.id && target.toLowerCase().includes(n.id.toLowerCase()));
+      const provName = provNode ? (provNode.name || provNode.prefix || '') : '';
+      return alias.toLowerCase().includes(q) || target.toLowerCase().includes(q) || provName.toLowerCase().includes(q);
     }
     return true;
   });
@@ -4935,11 +4993,14 @@ function renderAliases(payload) {
           <button type="button" class="alias-filter-chip ${aliasProviderFilter === 'all' ? 'active' : ''}" data-filter-prov="all">
             All (${allEntries.length})
           </button>
-          ${providerTabs.filter(p => p !== 'all').map((p) => `
-            <button type="button" class="alias-filter-chip ${aliasProviderFilter === p ? 'active' : ''}" data-filter-prov="${escapeHtml(p)}">
-              ${escapeHtml(p.toUpperCase())} (${providerCounts[p] || 0})
-            </button>
-          `).join('')}
+          ${providerTabs.filter(p => p !== 'all').map((p) => {
+            const meta = formatProviderBadge(p);
+            return `
+              <button type="button" class="alias-filter-chip ${aliasProviderFilter === p ? 'active' : ''}" data-filter-prov="${escapeHtml(p)}" title="${escapeHtml(meta.title || p)}">
+                ${meta.icon ? `${meta.icon} ` : ''}${escapeHtml(meta.label)} (${providerCounts[p] || 0})
+              </button>
+            `;
+          }).join('')}
         </div>
       </div>
 
@@ -4966,9 +5027,19 @@ function renderAliases(payload) {
               const active = !record || record.isActive !== 0;
               const isCombo = record?.provider === '__combo__' || String(target).startsWith('combo:');
               let targetProv = 'gateway';
+              let upstreamModel = target;
               if (target.includes('/')) {
-                targetProv = target.split('/')[0];
+                const slashIdx = target.indexOf('/');
+                targetProv = target.slice(0, slashIdx);
+                upstreamModel = target.slice(slashIdx + 1);
               }
+              if (record?.upstreamModel) {
+                upstreamModel = record.upstreamModel;
+              }
+              if (record?.provider && record.provider !== '__combo__') {
+                targetProv = record.provider;
+              }
+              const provMeta = formatProviderBadge(targetProv);
               return `
                 <tr id="alias-row-${escapeHtml(alias)}">
                   <td><span class="table-badge ${active ? 'active' : 'inactive'}" style="font-size:7.5px;">${active ? 'ACTIVE' : 'DISABLED'}</span></td>
@@ -4979,10 +5050,12 @@ function renderAliases(payload) {
                     </div>
                   </td>
                   <td>
-                    <div class="alias-mapping-cell">
+                    <div class="alias-mapping-cell" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                       <span class="alias-route-arrow">&rarr;</span>
-                      <span class="table-badge" style="font-size:8px; padding:2px 5px; background:rgba(255,255,255,0.05); color:var(--muted); text-transform:uppercase;">${escapeHtml(targetProv)}</span>
-                      <code class="model-id-code" style="color:var(--lime); font-size:11px;">${escapeHtml(target)}</code>
+                      <span class="table-badge" title="${escapeHtml(provMeta.title || targetProv)}" style="font-size:8px; padding:2px 5px; background:rgba(255,255,255,0.06); color:var(--lime); text-transform:uppercase; font-weight:600; cursor:help;">
+                        ${provMeta.icon ? `${provMeta.icon} ` : ''}${escapeHtml(provMeta.label)}
+                      </span>
+                      <code class="model-id-code" style="color:var(--lime); font-size:11px;">${escapeHtml(upstreamModel)}</code>
                       ${record?.capabilities?.length ? `<small style="font-size:9px; color:var(--muted);">${escapeHtml(record.capabilities.join(', '))}</small>` : ''}
                     </div>
                   </td>
@@ -5729,12 +5802,14 @@ async function renderView(name) {
         },
         pools: () => request('/api/proxy-pools'),
         aliases: async () => {
-          const [aliasRes, provRes] = await Promise.all([
+          const [aliasRes, provRes, nodesRes] = await Promise.all([
             request('/api/model-aliases'),
-            request('/api/providers').catch(() => ({ connections: [] }))
+            request('/api/providers').catch(() => ({ connections: [] })),
+            request('/api/provider-nodes').catch(() => ({ nodes: [] }))
           ]);
           cachedProviderConnections = provRes.connections || [];
-          return aliasRes;
+          cachedProviderNodes = nodesRes.nodes || [];
+          return { ...aliasRes, nodes: nodesRes.nodes || [] };
         },
         settings: () => request('/api/settings')
       }[name] || (() => Promise.resolve(null)))();
@@ -6865,21 +6940,79 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
     request('/api/model-aliases').catch(() => ({ aliases: {}, records: [] }))
   ]).then(([provPayload, nodesPayload, aliasPayload]) => {
     const connections = provPayload.connections || [];
+    const customNodes = (nodesPayload.nodes || []).slice();
+    cachedProviderNodes = customNodes;
     const publishedAliasRecords = Array.isArray(aliasPayload.records) ? aliasPayload.records : [];
-    const catalogProviderIds = (typeof KNOWN_PROVIDER_CATALOG !== 'undefined' && Array.isArray(KNOWN_PROVIDER_CATALOG))
-      ? KNOWN_PROVIDER_CATALOG.map((p) => p.id).filter(Boolean)
+    
+    // Group 1: Custom Nodes (e.g. goro, bai, genspark)
+    const customNodeIds = new Set(customNodes.map((n) => n.id));
+
+    // Group 2: Providers with active connections (that are not custom nodes)
+    const connectedProviders = Array.from(new Set(
+      connections.map((c) => c.provider).filter((p) => p && !customNodeIds.has(p))
+    )).sort();
+    const connectedSet = new Set(connectedProviders);
+
+    // Group 3: Known catalog providers (not in custom nodes and not in connectedProviders)
+    const otherCatalogProviders = (typeof KNOWN_PROVIDER_CATALOG !== 'undefined' && Array.isArray(KNOWN_PROVIDER_CATALOG))
+      ? KNOWN_PROVIDER_CATALOG.filter((p) => p && p.id && !customNodeIds.has(p.id) && !connectedSet.has(p.id))
       : [];
-    const providerNames = Array.from(new Set([
-      ...connections.map((conn) => conn.provider).filter(Boolean),
-      ...(nodesPayload.nodes || []).map((node) => node.id).filter(Boolean),
-      ...catalogProviderIds
-    ])).sort();
 
     const targetText = String(editTarget || '');
     const targetSeparator = targetText.indexOf('/');
-    let selectedProvider = (targetSeparator >= 0 ? targetText.slice(0, targetSeparator) : targetText) || (providerNames[0] || 'google');
+    let selectedProvider = targetSeparator >= 0 ? targetText.slice(0, targetSeparator) : targetText;
     let selectedModel = targetSeparator >= 0 ? targetText.slice(targetSeparator + 1) : '';
-    if (selectedProvider && !providerNames.includes(selectedProvider)) providerNames.unshift(selectedProvider);
+
+    if (!selectedProvider) {
+      if (customNodes.length > 0) {
+        selectedProvider = customNodes[0].id;
+      } else if (connectedProviders.length > 0) {
+        selectedProvider = connectedProviders[0];
+      } else if (otherCatalogProviders.length > 0) {
+        selectedProvider = otherCatalogProviders[0].id;
+      } else {
+        selectedProvider = 'google';
+      }
+    }
+
+    const allKnownIds = new Set([
+      ...customNodes.map((n) => n.id),
+      ...connectedProviders,
+      ...otherCatalogProviders.map((p) => p.id)
+    ]);
+    let extraOption = '';
+    if (selectedProvider && !allKnownIds.has(selectedProvider)) {
+      extraOption = `<optgroup label="Other / Custom Provider"><option value="${escapeHtml(selectedProvider)}" selected>${escapeHtml(selectedProvider)}</option></optgroup>`;
+    }
+
+    // Build options for Custom Nodes
+    const nodeOptions = customNodes.map((node) => {
+      const isAnthropic = node.type === 'anthropic-compatible';
+      const icon = isAnthropic ? '🎭' : '🔌';
+      const count = connections.filter((c) => c.provider === node.id).length;
+      const countStr = count > 0 ? ` [${count} acct${count > 1 ? 's' : ''}]` : '';
+      const prefixStr = node.prefix ? ` (${node.prefix})` : '';
+      const urlStr = node.baseUrl ? ` — ${node.baseUrl}` : '';
+      const label = `${icon} ${node.name || 'Custom Node'}${prefixStr}${urlStr}${countStr}`;
+      return `<option value="${escapeHtml(node.id)}" ${node.id === selectedProvider ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+
+    // Build options for Connected Providers
+    const connectedOptions = connectedProviders.map((pId) => {
+      const cat = (typeof KNOWN_PROVIDER_CATALOG !== 'undefined') ? KNOWN_PROVIDER_CATALOG.find((p) => p.id === pId) : null;
+      const icon = cat?.icon || '⚡';
+      const name = cat?.name || pId.toUpperCase();
+      const count = connections.filter((c) => c.provider === pId).length;
+      const countStr = count > 0 ? ` [${count} acct${count > 1 ? 's' : ''}]` : '';
+      const label = `${icon} ${name} (${pId})${countStr}`;
+      return `<option value="${escapeHtml(pId)}" ${pId === selectedProvider ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+
+    // Build options for Other Catalog Providers
+    const catalogOptions = otherCatalogProviders.map((cat) => {
+      const label = `${cat.icon || '⚡'} ${cat.name || cat.id} (${cat.id})`;
+      return `<option value="${escapeHtml(cat.id)}" ${cat.id === selectedProvider ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
 
     const sanitizeAlias = (raw) => {
       let clean = String(raw || '').trim();
@@ -6910,8 +7043,12 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
               <span style="font-size:9.5px; color:var(--muted);">Private routing backend</span>
             </div>
             <select name="provider" id="alias-provider-input" required style="width:100%; background:#080c14; border:1px solid var(--line); padding:7px 10px; font:11.5px var(--mono); color:var(--text-bright); border-radius:5px;">
-              ${providerNames.map((provider) => `<option value="${escapeHtml(provider)}" ${provider === selectedProvider ? 'selected' : ''}>${escapeHtml(provider)}</option>`).join('')}
+              ${nodeOptions ? `<optgroup label="Custom Provider Nodes (Runtime Endpoints)">${nodeOptions}</optgroup>` : ''}
+              ${connectedOptions ? `<optgroup label="Connected Providers (Active Accounts)">${connectedOptions}</optgroup>` : ''}
+              ${catalogOptions ? `<optgroup label="Official Catalog Providers">${catalogOptions}</optgroup>` : ''}
+              ${extraOption}
             </select>
+            <div id="alias-provider-meta-hint" style="margin-top:6px; font-size:10.5px; color:var(--muted); font-family:var(--mono); display:flex; align-items:center; gap:6px; flex-wrap:wrap;"></div>
           </div>
 
           <!-- STEP 2: Pick Upstream Model -->
@@ -7005,6 +7142,38 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
     const fetchModelsBtn = form.querySelector('#btn-fetch-alias-models');
     const datalist = form.querySelector('#alias-models-datalist');
 
+    const updateProviderHint = (provId) => {
+      const hintEl = form.querySelector('#alias-provider-meta-hint');
+      if (!hintEl) return;
+      const node = customNodes.find((n) => n.id === provId);
+      if (node) {
+        const acctCount = connections.filter((c) => c.provider === node.id).length;
+        hintEl.innerHTML = `
+          <span style="color:var(--lime); font-weight:600;">Custom Node: ${escapeHtml(node.name || 'node')}</span>
+          <span style="color:var(--line);">&bull;</span>
+          <span>Prefix: <code style="color:var(--text-bright);">${escapeHtml(node.prefix || 'none')}</code></span>
+          <span style="color:var(--line);">&bull;</span>
+          <span>Endpoint: <code style="color:var(--text);">${escapeHtml(node.baseUrl || 'internal')}</code></span>
+          ${acctCount > 0 ? `<span style="color:var(--line);">&bull;</span><span style="color:#38bdf8;">${acctCount} connected account${acctCount > 1 ? 's' : ''}</span>` : ''}
+        `;
+        return;
+      }
+      const cat = (typeof KNOWN_PROVIDER_CATALOG !== 'undefined') ? KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId) : null;
+      if (cat) {
+        const acctCount = connections.filter((c) => c.provider === provId).length;
+        hintEl.innerHTML = `
+          <span style="color:var(--text-bright); font-weight:600;">${cat.icon || '⚡'} ${escapeHtml(cat.name)}</span>
+          <span style="color:var(--line);">&bull;</span>
+          <span>${escapeHtml(cat.desc || '')}</span>
+          ${acctCount > 0 ? `<span style="color:var(--line);">&bull;</span><span style="color:#38bdf8;">${acctCount} connected account${acctCount > 1 ? 's' : ''}</span>` : ''}
+        `;
+        return;
+      }
+      hintEl.innerHTML = `<span>Provider ID: <code style="color:var(--text-bright);">${escapeHtml(provId)}</code></span>`;
+    };
+
+    updateProviderHint(selectedProvider);
+
     let loadedModels = [];
     let autoFilledAlias = '';
 
@@ -7059,12 +7228,30 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
     const renderPickerCards = (filter = '') => {
       const q = filter.trim().toLowerCase();
       const filtered = q ? loadedModels.filter((m) => m.toLowerCase().includes(q)) : loadedModels;
+      const exactMatch = loadedModels.some((m) => m.toLowerCase() === q);
+      const customCardHtml = (q && !exactMatch) ? `
+        <div class="model-pick-card custom-model-option" data-model-id="${escapeHtml(filter.trim())}" style="background:rgba(56, 189, 248, 0.08); border:1px dashed #38bdf8; border-radius:5px; padding:6px 8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:5px; min-width:0; overflow:hidden;">
+            <code style="font-size:10px; color:#38bdf8; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(filter.trim())}</code>
+            <span class="table-badge active" style="font-size:7px; padding:1px 3px; background:#38bdf8; color:#000; font-weight:600;">USE INPUT</span>
+          </div>
+          <span style="font-size:8px; color:#38bdf8;">Custom &rarr;</span>
+        </div>
+      ` : '';
+
       if (filtered.length === 0) {
+        if (customCardHtml) {
+          pickerContainer.innerHTML = customCardHtml;
+          pickerContainer.querySelectorAll('.model-pick-card').forEach((card) => {
+            card.onclick = () => pickModel(card.dataset.modelId);
+          });
+          return;
+        }
         pickerContainer.innerHTML = `<div style="padding:10px; color:var(--muted); font-size:11px;">No models match "${escapeHtml(filter)}".</div>`;
         return;
       }
       const currentPicked = targetModelInput.value;
-      pickerContainer.innerHTML = filtered.map((modelId) => {
+      pickerContainer.innerHTML = customCardHtml + filtered.map((modelId) => {
         const isSelected = modelId === currentPicked;
         const matchingRecord = publishedAliasRecords.find((r) => r && r.upstreamModel === modelId && String(r.provider || '').toLowerCase() === providerSelect.value.toLowerCase());
         return `
@@ -7116,7 +7303,9 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
     };
 
     const loadProviderModels = async (prov) => {
-      pickerContainer.innerHTML = `<div style="padding:10px; color:var(--muted); font-size:11px;"><span class="spinner-icon"></span> Loading models for ${escapeHtml(prov)}...</div>`;
+      const node = customNodes.find((n) => n.id === prov);
+      const friendlyName = node ? (node.name || node.prefix || prov) : prov;
+      pickerContainer.innerHTML = `<div style="padding:10px; color:var(--muted); font-size:11px;"><span class="spinner-icon"></span> Loading models for <strong>${escapeHtml(friendlyName)}</strong>...</div>`;
       if (fetchModelsBtn) {
         fetchModelsBtn.disabled = true;
         fetchModelsBtn.textContent = 'Fetching...';
@@ -7147,6 +7336,7 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
 
     providerSelect.onchange = () => {
       const prov = providerSelect.value;
+      updateProviderHint(prov);
       if (connectionSelect) {
         connectionSelect.innerHTML = '<option value="">Any active connection</option>' +
           connections.filter((conn) => String(conn.provider || '') === prov).map((conn) => `<option value="${escapeHtml(conn.id)}">${escapeHtml(conn.name || conn.id)}</option>`).join('');
