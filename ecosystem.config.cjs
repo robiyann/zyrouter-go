@@ -16,7 +16,8 @@ module.exports = {
       env: {
         HOST: '127.0.0.1',
         PORT: '20128',
-        FRONTEND_DIR: path.join(projectRoot, 'frontend')
+        FRONTEND_DIR: path.join(projectRoot, 'frontend'),
+        CF_EDGE_SHARED_SECRET: process.env.CF_EDGE_SHARED_SECRET || ''
       }
     }
   ]

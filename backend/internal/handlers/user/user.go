@@ -2,6 +2,7 @@ package user
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -26,6 +27,18 @@ import (
 type Handler struct{ Repo *db.Repo }
 
 const verificationBrowserCookie = "verification_browser"
+
+func edgeSecretAllowed(r *http.Request) bool {
+	expected := strings.TrimSpace(os.Getenv("CF_EDGE_SHARED_SECRET"))
+	if expected == "" {
+		return true
+	}
+	provided := strings.TrimSpace(r.Header.Get("X-Zyrouter-Edge-Secret"))
+	if provided == "" || len(provided) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+}
 
 type verificationRateState struct {
 	mu   sync.Mutex
@@ -72,6 +85,10 @@ func allowVerificationRequest(r *http.Request, limit int, window time.Duration) 
 func NewHandler(repo *db.Repo) *Handler { return &Handler{Repo: repo} }
 
 func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
+	if !edgeSecretAllowed(r) {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "edge_gateway_required")
+		return
+	}
 	if !middleware.BrowserOriginAllowed(r) {
 		handlerutil.WriteJSONError(w, http.StatusForbidden, "csrf_origin_forbidden")
 		return
@@ -80,7 +97,9 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 		if existingID, expires, lookupErr := h.Repo.GetActiveVerificationChallenge(db.HashUserSecret(cookie.Value)); lookupErr == nil && existingID != "" {
 			bot := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
 			deepLink := ""
-			if bot != "" { deepLink = "https://t.me/" + strings.TrimPrefix(bot, "@") + "?start=" + existingID }
+			if bot != "" {
+				deepLink = "https://t.me/" + strings.TrimPrefix(bot, "@") + "?start=" + existingID
+			}
 			handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"challengeId": existingID, "status": "pending", "expiresAt": expires.Format(time.RFC3339), "telegramDeepLink": deepLink, "reused": true})
 			return
 		}
@@ -117,6 +136,10 @@ func (h *Handler) StartVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
+	if !edgeSecretAllowed(r) {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "edge_gateway_required")
+		return
+	}
 	if !allowVerificationRequest(r, 90, time.Minute) {
 		handlerutil.WriteJSONError(w, http.StatusTooManyRequests, "verification_poll_rate_limited")
 		return
@@ -159,6 +182,10 @@ func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CompleteVerification(w http.ResponseWriter, r *http.Request) {
+	if !edgeSecretAllowed(r) {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "edge_gateway_required")
+		return
+	}
 	if !middleware.BrowserOriginAllowed(r) {
 		handlerutil.WriteJSONError(w, http.StatusForbidden, "csrf_origin_forbidden")
 		return
@@ -197,6 +224,10 @@ func (h *Handler) CompleteVerification(w http.ResponseWriter, r *http.Request) {
 // TelegramWebhook receives only server-to-server bot updates. Configure Telegram
 // with TELEGRAM_WEBHOOK_SECRET and reject every request without the exact secret.
 func (h *Handler) TelegramWebhook(w http.ResponseWriter, r *http.Request) {
+	if !edgeSecretAllowed(r) {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "edge_gateway_required")
+		return
+	}
 	secret := strings.TrimSpace(os.Getenv("TELEGRAM_WEBHOOK_SECRET"))
 	if secret == "" || r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != secret {
 		handlerutil.WriteJSONError(w, http.StatusUnauthorized, "invalid telegram webhook secret")
