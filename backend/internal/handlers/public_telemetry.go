@@ -120,7 +120,7 @@ func clientTelemetry(repo *db.Repo, allowed map[string]bool) (map[string]any, er
 			modelName = publicAlias(repo, fmt.Sprint(item["model"]))
 		}
 		recent = append(recent, map[string]any{
-			"timestamp": item["timestamp"], "model": modelName, "publicModel": modelName,
+			"id": item["id"], "timestamp": item["timestamp"], "model": modelName, "publicModel": modelName,
 			"status": item["status"], "promptTokens": item["promptTokens"],
 			"completionTokens": item["completionTokens"], "totalTokens": item["totalTokens"],
 			"durationMs": item["durationMs"],

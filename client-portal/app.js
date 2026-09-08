@@ -33,6 +33,7 @@
   let globalSource = null;
   let privateSource = null;
   let isStreamPaused = false;
+  const renderedGlobalEventIds = new Set();
 
   let activeProfile = null;
   let activePolicy = null;
@@ -830,6 +831,10 @@
     const list = $('logsList');
     if (!list) return;
 
+    const eventId = e.id || `${e.timestamp || ''}|${e.model || ''}|${e.status || ''}|${e.totalTokens || 0}`;
+    if (renderedGlobalEventIds.has(eventId)) return;
+    renderedGlobalEventIds.add(eventId);
+
     // Remove empty state placeholder if present
     const emptyState = list.querySelector('.stream-empty-state');
     if (emptyState) emptyState.remove();
@@ -952,6 +957,7 @@
   $('clearLogsBtn')?.addEventListener('click', () => {
     const list = $('logsList');
     if (list) {
+      renderedGlobalEventIds.clear();
       list.innerHTML = '<div class="stream-empty-state"><span class="stream-radar-icon"></span><p>Tampilan dibersihkan. Menunggu event berikutnya...</p></div>';
     }
     showToast('Tampilan stream dibersihkan.', 'info');

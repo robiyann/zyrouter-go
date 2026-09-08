@@ -221,7 +221,10 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 	recent := make([]RecentRequest, 0, ringCap)
 	seen := make(map[string]bool)
 	for _, r := range t.recentRing {
-		k := fmt.Sprintf("%s|%s|%s", r.Timestamp, r.Provider, r.Model)
+		k := r.ID
+		if k == "" {
+			k = fmt.Sprintf("%s|%s|%s|%d|%d", r.Timestamp, r.Provider, r.Model, r.PromptTokens, r.CompletionTokens)
+		}
 		if !seen[k] {
 			seen[k] = true
 			recent = append(recent, r)
@@ -233,25 +236,26 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 
 	if len(recent) < ringCap && repo != nil && repo.RawDB() != nil {
 		limit := ringCap - len(recent)
-		q := `SELECT timestamp, provider, model, 
+		q := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model,
 			CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END,
 			CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 			status FROM usageHistory ORDER BY id DESC LIMIT ?`
 		if rows, err := repo.RawDB().Query(q, limit); err == nil {
 			defer rows.Close()
 			for rows.Next() {
-				var ts, prov, mod, status string
+				var id, ts, prov, mod, status string
 				var prompt, completion int
-				if err := rows.Scan(&ts, &prov, &mod, &prompt, &completion, &status); err == nil {
+				if err := rows.Scan(&id, &ts, &prov, &mod, &prompt, &completion, &status); err == nil {
 					if status == "success" || status == "ok" {
 						status = "200"
 					}
 					displayProvider := labels.Provider(repo, prov)
 					displayModel := labels.Model(repo, prov, mod)
-					k := fmt.Sprintf("%s|%s|%s", ts, displayProvider, displayModel)
+					k := id
 					if !seen[k] {
 						seen[k] = true
 						recent = append(recent, RecentRequest{
+							ID:               id,
 							Timestamp:        ts,
 							Provider:         displayProvider,
 							Model:            displayModel,
