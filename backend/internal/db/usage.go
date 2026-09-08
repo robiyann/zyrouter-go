@@ -10,7 +10,7 @@ import (
 type UsageLogRow struct {
 	ID, Timestamp, Provider, Model, PublicModel, Status string
 	PromptTokens, CompletionTokens                      int
-	DurationMs                                          int
+	DurationMs                                          *int
 }
 
 // GetUsageDaily returns the daily usage JSON data for a given date key.
@@ -155,7 +155,7 @@ func (r *Repo) GetRecentUsageByAliases(aliasTargets map[string]string, limit int
 			args = append(args, parts[0], parts[1])
 		}
 	}
-	query := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''), promptTokens, completionTokens, status, COALESCE(json_extract(meta, '$.latencyMs'), 0) FROM usageHistory WHERE ` + strings.Join(clauses, " OR ") + ` ORDER BY id DESC LIMIT ?`
+	query := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''), promptTokens, completionTokens, status, json_extract(meta, '$.latencyMs') FROM usageHistory WHERE ` + strings.Join(clauses, " OR ") + ` ORDER BY id DESC LIMIT ?`
 	args = append(args, limit)
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -165,9 +165,11 @@ func (r *Repo) GetRecentUsageByAliases(aliasTargets map[string]string, limit int
 	result := make([]UsageLogRow, 0, limit)
 	for rows.Next() {
 		var row UsageLogRow
-		if err := rows.Scan(&row.ID, &row.Timestamp, &row.Provider, &row.Model, &row.PublicModel, &row.PromptTokens, &row.CompletionTokens, &row.Status, &row.DurationMs); err != nil {
+		var latency sql.NullInt64
+		if err := rows.Scan(&row.ID, &row.Timestamp, &row.Provider, &row.Model, &row.PublicModel, &row.PromptTokens, &row.CompletionTokens, &row.Status, &latency); err != nil {
 			return nil, err
 		}
+		if latency.Valid { value := int(latency.Int64); row.DurationMs = &value }
 		result = append(result, row)
 	}
 	if err := rows.Err(); err != nil && err != sql.ErrNoRows {
