@@ -115,8 +115,12 @@ func clientTelemetry(repo *db.Repo, allowed map[string]bool) (map[string]any, er
 	}
 	recent := make([]map[string]any, 0, len(snapshot.RecentRequests))
 	for _, item := range snapshot.RecentRequests {
+		modelName, _ := item["publicModel"].(string)
+		if strings.TrimSpace(modelName) == "" {
+			modelName = publicAlias(repo, fmt.Sprint(item["model"]))
+		}
 		recent = append(recent, map[string]any{
-			"timestamp": item["timestamp"], "model": publicAlias(repo, fmt.Sprint(item["model"])), "publicModel": item["publicModel"],
+			"timestamp": item["timestamp"], "model": modelName, "publicModel": modelName,
 			"status": item["status"], "promptTokens": item["promptTokens"],
 			"completionTokens": item["completionTokens"], "totalTokens": item["totalTokens"],
 			"durationMs": item["durationMs"],
