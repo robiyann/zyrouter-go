@@ -411,6 +411,8 @@ func (h *Handler) RotateKey(w http.ResponseWriter, r *http.Request)   { h.rotate
 
 func (h *Handler) rotateKey(w http.ResponseWriter, r *http.Request, rotate bool) {
 	user := middleware.GetAuthenticatedUser(r)
+	// Account type is always resolved from the authenticated user record. The
+	// client cannot select administrator or another tier in the request body.
 	typ, err := h.Repo.GetAccountType(user.AccountTypeID)
 	if err != nil || typ == nil || typ.IsActive != 1 {
 		handlerutil.WriteJSONError(w, http.StatusForbidden, "account type is inactive")

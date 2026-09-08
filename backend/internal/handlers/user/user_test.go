@@ -74,7 +74,9 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 		t.Fatalf("missing HttpOnly session cookie: %s", status.Body.String())
 	}
 
-	create := httptest.NewRequest(http.MethodPost, "/key", strings.NewReader(`{}`))
+	// A client-controlled accountTypeId must be ignored; key tier comes only
+	// from the authenticated user's server-side account record.
+	create := httptest.NewRequest(http.MethodPost, "/key", strings.NewReader(`{"accountTypeId":"administrator"}`))
 	create.Header.Set("Cookie", strings.Split(cookie, ";")[0])
 	created := httptest.NewRecorder()
 	r.ServeHTTP(created, create)
@@ -93,6 +95,9 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 	}
 	if stored.KeyHash == nil || strings.Contains(stored.Key, keyResponse.Key) {
 		t.Fatalf("key was not stored hashed: %+v", stored)
+	}
+	if stored.AccountTypeID == nil || *stored.AccountTypeID != "user" {
+		t.Fatalf("client key inherited an unexpected account type: %+v", stored.AccountTypeID)
 	}
 
 	second := httptest.NewRecorder()
