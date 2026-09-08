@@ -4171,12 +4171,12 @@ function renderKeys(payload) {
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">
         ${[['all','All'],['gateway','Gateway'],['user','Verified User'],['client','Client Scoped']].map(([scope, label]) => `<button type="button" class="alias-filter-chip ${keyScopeFilter === scope ? 'active' : ''}" data-key-scope="${scope}">${label} (${scopeCounts[scope]})</button>`).join('')}
       </div>
-      <div class="api-key-filters" style="display:flex; align-items:end; gap:8px; flex-wrap:wrap; margin-top:10px;">
-        <label style="font-size:10px; color:var(--muted);">Account Type<select data-key-account-type style="display:block; min-width:150px; margin-top:3px;"><option value="all" ${keyAccountTypeFilter === 'all' ? 'selected' : ''}>All account types</option><option value="administrator" ${keyAccountTypeFilter === 'administrator' ? 'selected' : ''}>Administrator</option><option value="user" ${keyAccountTypeFilter === 'user' ? 'selected' : ''}>User</option><option value="paid_user" ${keyAccountTypeFilter === 'paid_user' ? 'selected' : ''}>Paid User</option></select></label>
-        <label style="font-size:10px; color:var(--muted);">Generated from<input type="date" data-key-created-from value="${escapeHtml(keyCreatedFrom)}" style="display:block; margin-top:3px;"></label>
-        <label style="font-size:10px; color:var(--muted);">Generated to<input type="date" data-key-created-to value="${escapeHtml(keyCreatedTo)}" style="display:block; margin-top:3px;"></label>
-        <button type="button" class="secondary-button" data-key-filter-apply style="font-size:9.5px; padding:6px 9px;">Apply Filters</button>
-        <button type="button" class="secondary-button" data-key-filter-clear style="font-size:9.5px; padding:6px 9px;">Clear</button>
+      <div class="api-key-filters">
+        <label>Account Type<select data-key-account-type><option value="all" ${keyAccountTypeFilter === 'all' ? 'selected' : ''}>All account types</option><option value="administrator" ${keyAccountTypeFilter === 'administrator' ? 'selected' : ''}>Administrator</option><option value="user" ${keyAccountTypeFilter === 'user' ? 'selected' : ''}>User</option><option value="paid_user" ${keyAccountTypeFilter === 'paid_user' ? 'selected' : ''}>Paid User</option></select></label>
+        <label>Generated from<input type="date" data-key-created-from value="${escapeHtml(keyCreatedFrom)}"></label>
+        <label>Generated to<input type="date" data-key-created-to value="${escapeHtml(keyCreatedTo)}"></label>
+        <button type="button" class="secondary-button filter-apply" data-key-filter-apply>Apply Filters</button>
+        <button type="button" class="secondary-button filter-clear" data-key-filter-clear>Clear</button>
       </div>
     </div>
     <div class="data-table-container">
