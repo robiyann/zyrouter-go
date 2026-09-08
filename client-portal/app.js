@@ -497,7 +497,7 @@
     if ($('myAllowedCount')) $('myAllowedCount').textContent = fmt(allowedModelsList.length);
 
     // Render Key Status
-    renderTelegramKeyStatus(keyData.key);
+    renderTelegramKeyStatus(keyData.key || (keyData.id ? keyData : null));
   }
 
   // Machine Dashboard Loader

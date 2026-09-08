@@ -330,7 +330,10 @@ func (h *Handler) GetKey(w http.ResponseWriter, r *http.Request) {
 		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"key": nil})
 		return
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"id": key.ID, "keyPrefix": key.Key, "isActive": key.IsActive, "createdAt": key.CreatedAt})
+	metadata := map[string]any{"id": key.ID, "keyPrefix": key.Key, "isActive": key.IsActive, "createdAt": key.CreatedAt}
+	// Keep the nested contract used by the client portal while retaining the
+	// legacy top-level fields for older clients.
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"key": metadata, "id": key.ID, "keyPrefix": key.Key, "isActive": key.IsActive, "createdAt": key.CreatedAt})
 }
 
 func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
