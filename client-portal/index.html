@@ -5,15 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Zyrouter Client Portal">
   <title>Zyrouter Client Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="#">ZYROUTER <span>CLIENT PORTAL</span></a><div id="owner">Support: <a href="https://t.me/robiyan32" target="_blank" rel="noopener">@robiyan32</a></div></header>
+    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">Z</span><span class="brand-copy"><b>ZYROUTER</b><em>CLIENT PORTAL</em></span></a><div class="top-actions"><span class="status-dot"><i></i> GATEWAY ONLINE</span><div id="owner">Support: <a href="https://t.me/robiyan32" target="_blank" rel="noopener">@robiyan32</a></div></div></header>
     <section id="auth" class="card auth-card">
-      <p class="eyebrow">TELEGRAM VERIFIED ACCESS</p><h1>Gateway Client Portal</h1>
-      <p class="muted">Kelola API key, alias model, usage pribadi, dan realtime global gateway.</p>
+      <div class="auth-mark"><span>Z</span></div><p class="eyebrow">SECURE TELEGRAM ACCESS <span class="eyebrow-line"></span></p><h1>Gateway<br><strong>Client Portal</strong></h1>
+      <p class="muted lead">Kelola API key, alias model, usage pribadi, dan realtime global gateway.</p>
       <button id="start" class="primary">Mulai Verifikasi Telegram</button>
+      <div class="trust-row"><span>◈ Alias-only routing</span><span>◈ Secret sekali tampil</span><span>◈ SSE realtime</span></div>
       <div id="challenge" class="challenge hidden"><strong>Kode verifikasi</strong><code id="code"></code><small>Berlaku 10 menit. Kirim kode ini ke bot Telegram.</small><span id="timer">10:00</span><a id="botLink" class="bot-link" target="_blank" rel="noopener">Buka @Zyrouter_bot dan kirim kode</a><small class="hint">Tombol ini membuka bot resmi. Kirim kode di atas, lalu halaman akan otomatis masuk ke dashboard.</small></div>
       <p id="auth-error" class="error"></p>
     </section>
