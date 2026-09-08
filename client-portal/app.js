@@ -1,7 +1,9 @@
 (() => {
   'use strict';
   const localControl = location.hostname === '127.0.0.1' ? 'http://127.0.0.1:20128' : 'http://localhost:20128';
-  const control = window.__ZYROUTER_CONTROL_BASE__ || localStorage.getItem('zy_control_base') || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? localControl : '');
+  const storedControl = localStorage.getItem('zy_control_base') || '';
+  if (location.hostname === 'localhost' && storedControl === 'http://127.0.0.1:20128') localStorage.removeItem('zy_control_base');
+  const control = window.__ZYROUTER_CONTROL_BASE__ || (location.hostname === 'localhost' && storedControl === 'http://127.0.0.1:20128' ? localControl : storedControl) || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? localControl : '');
   const inference = window.__ZYROUTER_API_BASE__ || localStorage.getItem('zy_api_base') || 'https://api.zyvenox.tech';
   let challenge = '', timer, source;
   const $ = (id) => document.getElementById(id);
