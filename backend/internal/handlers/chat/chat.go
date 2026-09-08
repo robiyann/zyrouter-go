@@ -107,13 +107,23 @@ func publicModelFromContext(ctx context.Context) string {
 	return "unknown"
 }
 
+func clientStreamSubject(userID, clientID string) string {
+	if strings.TrimSpace(userID) != "" {
+		return "user:" + strings.TrimSpace(userID)
+	}
+	if strings.TrimSpace(clientID) != "" {
+		return "client:" + strings.TrimSpace(clientID)
+	}
+	return ""
+}
+
 func (h *ChatHandler) publishClientStarted(r *http.Request, model string) {
 	key := middleware.GetAuthenticatedApiKey(r)
 	if key == nil || key.UserID == nil || strings.TrimSpace(*key.UserID) == "" {
 		return
 	}
 	requestID := middleware.GetRequestID(r)
-	clientstream.Get().Publish(*key.UserID, clientstream.Event{
+	clientstream.Get().Publish(clientStreamSubject(valueOrEmpty(key.UserID), valueOrEmpty(key.ClientID)), clientstream.Event{
 		ID: requestID + ":started", Type: "request.started", RequestID: requestID,
 		Model: model, Status: "started", Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 	})

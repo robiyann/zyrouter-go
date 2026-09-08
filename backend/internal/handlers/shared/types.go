@@ -39,6 +39,7 @@ type UsageLogInfo struct {
 	Model          string
 	PublicModel    string
 	RequestID      string
+	ClientID       string
 	ConnectionID   string
 	ProxyPoolID    string
 	APIKey         string

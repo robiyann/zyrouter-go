@@ -241,11 +241,12 @@ func (h *Handler) LogsStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return true
 	}
-	ch, unsubscribe := clientstream.Get().Subscribe(user.ID)
+	subject := "user:" + user.ID
+	ch, unsubscribe := clientstream.Get().Subscribe(subject)
 	defer unsubscribe()
 	// Subscribe before taking the snapshot so an event cannot land in the gap
 	// between history delivery and live delivery. The browser deduplicates IDs.
-	writeEvent("snapshot", map[string]any{"items": clientstream.Get().Snapshot(user.ID)})
+	writeEvent("snapshot", map[string]any{"items": clientstream.Get().Snapshot(subject)})
 	heartbeat := time.NewTicker(20 * time.Second)
 	defer heartbeat.Stop()
 	for {

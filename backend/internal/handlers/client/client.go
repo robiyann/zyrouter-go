@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"zyrouter/backend/internal/clientstream"
 	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/middleware"
@@ -164,6 +167,67 @@ func (h *Handler) HandleUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, usage)
+}
+
+func (h *Handler) HandleLogs(w http.ResponseWriter, r *http.Request) {
+	client := middleware.GetAuthenticatedClient(r)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	logs, err := h.Repo.GetClientUsageLogs(client.ID, limit, offset)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load request logs")
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, logs)
+}
+
+func (h *Handler) HandleLogsStream(w http.ResponseWriter, r *http.Request) {
+	client := middleware.GetAuthenticatedClient(r)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "streaming is unavailable")
+		return
+	}
+	write := func(name string, value any) bool {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return false
+		}
+		if _, err := w.Write([]byte("event: " + name + "\ndata: " + string(payload) + "\n\n")); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	subject := "client:" + client.ID
+	ch, unsubscribe := clientstream.Get().Subscribe(subject)
+	defer unsubscribe()
+	write("snapshot", map[string]any{"items": clientstream.Get().Snapshot(subject)})
+	heartbeat := time.NewTicker(20 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case frame, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := w.Write([]byte("event: request\ndata: " + string(frame) + "\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-heartbeat.C:
+			if _, err := w.Write([]byte(": heartbeat\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func randomToken(bytesLen int) (string, error) {

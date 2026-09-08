@@ -413,6 +413,9 @@ func (h *ChatHandler) tryForwardWithConnection(
 				logInfo.UserID = strings.TrimSpace(*key.UserID)
 			}
 		}
+		if key := middleware.GetAuthenticatedApiKeyFromContext(ctx); key != nil && key.ClientID != nil {
+			logInfo.ClientID = strings.TrimSpace(*key.ClientID)
+		}
 		h.logUsage(logInfo, usage, latencyMs, body, metrics)
 		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok && !reservation.Settled {
 			_ = h.Repo.FinalizeUserQuota(reservation.UserID, reservation.Tokens, int64(usage.PromptTokens+usage.CompletionTokens))
@@ -473,11 +476,16 @@ func (h *ChatHandler) tryForwardWithConnection(
 			"error":      fwdErr.Error(),
 		})
 		_ = h.Repo.InsertRequestDetail(reqID, provider, model, connectionID, "error", string(reqData))
-		userID := ""
-		if key := middleware.GetAuthenticatedApiKeyFromContext(ctx); key != nil && key.UserID != nil {
-			userID = strings.TrimSpace(*key.UserID)
+		userID, clientID := "", ""
+		if key := middleware.GetAuthenticatedApiKeyFromContext(ctx); key != nil {
+			if key.UserID != nil {
+				userID = strings.TrimSpace(*key.UserID)
+			}
+			if key.ClientID != nil {
+				clientID = strings.TrimSpace(*key.ClientID)
+			}
 		}
-		clientstream.Get().Publish(userID, clientstream.Event{
+		clientstream.Get().Publish(clientStreamSubject(userID, clientID), clientstream.Event{
 			ID: reqID + ":failed", Type: "request.failed", Timestamp: now.UTC().Format(time.RFC3339Nano),
 			RequestID: reqID, Model: publicModelFromContext(ctx), Status: "failed", HTTPStatus: statusCode,
 			DurationMs: latencyMs, ErrorCode: "upstream_request_failed",

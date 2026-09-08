@@ -138,6 +138,8 @@ Telegram user session, atau upstream provider key. Flow ini terpisah dari user T
 - `POST /api/client/keys` — Generate key baru dengan policy server-side.
 - `DELETE /api/client/keys/{id}` — Revoke key milik client.
 - `GET /api/client/usage` — Usage agregat milik client.
+- `GET /api/client/logs?limit=50&offset=0` — Ledger request milik machine client.
+- `GET /api/client/logs/stream` — SSE lifecycle request milik machine client.
 
 Admin provisioning endpoints:
 

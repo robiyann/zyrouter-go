@@ -217,6 +217,8 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 		r.Post("/api/client/keys", clientH.HandleCreateKey)
 		r.Delete("/api/client/keys/{id}", clientH.HandleRevokeKey)
 		r.Get("/api/client/usage", clientH.HandleUsage)
+		r.Get("/api/client/logs", clientH.HandleLogs)
+		r.Get("/api/client/logs/stream", clientH.HandleLogsStream)
 	})
 
 	// API-key / Dashboard session protected domain routes

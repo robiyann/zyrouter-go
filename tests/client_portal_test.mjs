@@ -358,6 +358,15 @@ try {
   const cltKeysList = await cltListKeysRes.json();
   assert.equal(cltKeysList.keys.length, 1);
 
+  const cltLogsRes = await fetch(`${baseUrl}/api/client/logs?limit=10`, { headers: cltHeaders });
+  assert.equal(cltLogsRes.status, 200);
+  const cltLogs = await cltLogsRes.json();
+  assert.ok(Array.isArray(cltLogs.items));
+  const cltStream = await fetch(`${baseUrl}/api/client/logs/stream`, { headers: cltHeaders });
+  assert.equal(cltStream.status, 200);
+  const cltChunk = await cltStream.body.getReader().read();
+  assert.match(new TextDecoder().decode(cltChunk.value), /event: snapshot/);
+
   // Revoke Machine Key
   const cltRevokeRes = await fetch(`${baseUrl}/api/client/keys/${cltKeyData.id}`, {
     method: 'DELETE',

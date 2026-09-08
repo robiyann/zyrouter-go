@@ -91,6 +91,42 @@ func (r *Repo) GetUserUsageLogs(userID string, limit, offset int) (map[string]an
 	return map[string]any{"items": items, "total": total, "limit": limit, "offset": offset}, nil
 }
 
+// GetClientUsageLogs returns the same sanitized ledger scoped to a machine client.
+func (r *Repo) GetClientUsageLogs(clientID string, limit, offset int) (map[string]any, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var total int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM usageHistory WHERE json_extract(meta, '$.clientId') = ?`, clientID).Scan(&total); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(`
+		SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp,
+		       COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), 'unknown'), promptTokens, completionTokens, status,
+		       COALESCE(json_extract(meta, '$.latencyMs'), 0)
+		FROM usageHistory WHERE json_extract(meta, '$.clientId') = ? ORDER BY id DESC LIMIT ? OFFSET ?`, clientID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0, limit)
+	for rows.Next() {
+		var id, ts, model, status string
+		var prompt, completion, latency int
+		if err := rows.Scan(&id, &ts, &model, &prompt, &completion, &status, &latency); err != nil {
+			return nil, err
+		}
+		items = append(items, map[string]any{"requestId": id, "timestamp": ts, "model": model, "status": status, "promptTokens": prompt, "completionTokens": completion, "totalTokens": prompt + completion, "durationMs": latency})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"items": items, "total": total, "limit": limit, "offset": offset}, nil
+}
+
 // UpsertUsageDaily inserts or replaces a daily usage aggregation record.
 // The data parameter should be a JSON string matching the 9Router daily aggregation format.
 // NOTE: INSERT OR REPLACE is an atomic full-row replace of the pre-merged JSON

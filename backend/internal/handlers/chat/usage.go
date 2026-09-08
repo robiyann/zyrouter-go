@@ -66,7 +66,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	}
 	metaBytes, _ := json.Marshal(map[string]any{
 		"provider": info.Provider, "model": info.Model, "connectionId": info.ConnectionID,
-		"publicModel": publicModel, "requestId": clientRequestID, "latencyMs": latencyMs,
+		"publicModel": publicModel, "requestId": clientRequestID, "clientId": info.ClientID, "latencyMs": latencyMs,
 	})
 	metaJSON := string(metaBytes)
 	providerLabel := h.displayProviderLabel(info.Provider)
@@ -198,7 +198,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 		Status:           "200",
 	}, h.Repo)
-	clientstream.Get().Publish(info.UserID, clientstream.Event{
+	clientstream.Get().Publish(clientStreamSubject(info.UserID, info.ClientID), clientstream.Event{
 		ID: clientRequestID + ":completed", Type: "request.completed", Timestamp: now.Format(time.RFC3339Nano),
 		RequestID: clientRequestID, Model: publicModel, Status: "completed", HTTPStatus: 200,
 		DurationMs: latencyMs, PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens,
