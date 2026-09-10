@@ -266,6 +266,10 @@ func (h *AdminHandler) HandleCreateProvider(w http.ResponseWriter, r *http.Reque
 	if conn.AuthType == "" {
 		conn.AuthType = "apikey"
 	}
+	if err := validateProviderConnectionCredentials(conn.AuthType, conn.Data); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if conn.Name == nil || strings.TrimSpace(*conn.Name) == "" {
 		name := generatedConnectionName(conn.Provider, conn.Email, conn.Data)
 		conn.Name = &name
@@ -281,6 +285,25 @@ func (h *AdminHandler) HandleCreateProvider(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusCreated, conn)
+}
+
+// validateProviderConnectionCredentials prevents a misleading successful
+// create response when an OAuth modal is submitted before its exchange flow
+// has produced an access token.
+func validateProviderConnectionCredentials(authType, rawData string) error {
+	if !strings.EqualFold(strings.TrimSpace(authType), "oauth") {
+		return nil
+	}
+	var data map[string]any
+	if err := json.Unmarshal([]byte(rawData), &data); err != nil {
+		return fmt.Errorf("invalid OAuth connection data")
+	}
+	for _, key := range []string{"accessToken", "apiKey", "token"} {
+		if value, ok := data[key].(string); ok && strings.TrimSpace(value) != "" {
+			return nil
+		}
+	}
+	return fmt.Errorf("OAuth connection requires a non-empty accessToken")
 }
 
 func generatedConnectionName(provider string, email *string, rawData string) string {

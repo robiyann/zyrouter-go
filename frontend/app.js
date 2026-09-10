@@ -3913,6 +3913,16 @@ async function openProviderModal(provId = 'openai') {
   const submitBtn = form.querySelector('button[type="submit"]');
   let isSavingProvider = false;
 
+  // Dedicated OAuth flows persist through their exchange/device actions.
+  // Disable the generic form submit so Enter or the bottom button cannot
+  // create an empty OAuth connection before the token exchange completes.
+  const dedicatedOAuthProvider = provId === 'cline' || provId === 'clinepass' || provId === 'grok-cli';
+  if (dedicatedOAuthProvider && submitBtn) {
+    submitBtn.type = 'button';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Complete OAuth Above';
+  }
+
   cancelBtn.onclick = () => {
     if (isSavingProvider) return;
     form.remove();
@@ -3920,6 +3930,11 @@ async function openProviderModal(provId = 'openai') {
 
   form.onsubmit = async (event) => {
     event.preventDefault();
+    if (dedicatedOAuthProvider) {
+      const flowButton = form.querySelector(provId === 'grok-cli' ? '#btn-start-grok-device' : '#btn-exchange-cline-code');
+      if (flowButton && !flowButton.disabled) flowButton.click();
+      return;
+    }
     if (isSavingProvider) return; // Anti-spam lock
 
     isSavingProvider = true;
