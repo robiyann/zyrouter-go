@@ -12,10 +12,6 @@
   <link rel="stylesheet" href="styles.css?v=20260908.6">
 </head>
 <body>
-  <!-- Ambient cyber background elements -->
-  <div class="ambient-glow glow-top" aria-hidden="true"></div>
-  <div class="ambient-glow glow-bottom" aria-hidden="true"></div>
-  <div class="cyber-grid-overlay" aria-hidden="true"></div>
 
   <div class="app-container">
     <!-- Global Header -->
@@ -70,8 +66,6 @@
     <!-- SECTION: AUTHENTICATION LANDING (Blueprint 3.1, 3.2, 3.3) -->
     <section id="auth" class="auth-wrapper">
       <div class="auth-card">
-        <!-- Card glowing top rim -->
-        <div class="card-glow-line" aria-hidden="true"></div>
 
         <div class="auth-header">
           <div class="auth-icon-badge">
@@ -80,10 +74,9 @@
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
           </div>
-          <span class="auth-tag">SECURE ACCESS GATEWAY</span>
+          <span class="auth-tag">ZYROUTER AUTH</span>
           <h1 class="auth-title">Client <strong>Portal</strong></h1>
-          <p class="auth-subtitle">Akses inference gateway privat, kelola API Key, pantau usage, dan pantau realtime stream.</p>
-        </div>
+          <p class="auth-subtitle">Kelola API Key, pantau metrik kuota, dan amati realtime gateway telemetry.</p>
 
         <!-- Auth Mode Selector (Telegram vs Machine Client) -->
         <div class="auth-modes">
@@ -130,11 +123,11 @@
               </button>
             </div>
 
-            <p class="challenge-instruction">Kirim kode di atas ke bot resmi Telegram Zyrouter:</p>
+            <p class="challenge-instruction" id="challengeInstruction">Kirim kode di atas ke bot resmi Telegram:</p>
 
             <a id="botLink" class="btn-telegram-direct" target="_blank" rel="noopener">
-              <svg viewBox="0 0 24 24" class="btn-tg-svg"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>
-              <span>Buka @Zyrouter_bot dan Kirim Kode</span>
+              <svg viewBox="0 0 24 24" width="18" height="18" class="btn-tg-svg" aria-hidden="true"><path d="M21.6 4.2 18.4 19c-.24 1.05-.86 1.3-1.74.81l-4.8-3.54-2.32 2.24c-.26.26-.48.48-.98.48l.35-4.9 8.92-8.06c.39-.35-.09-.55-.6-.2L6.2 12.7l-4.67-1.46c-1.02-.32-1.04-1.02.21-1.5L20 3.6c.85-.31 1.6.2 1.6.6Z"/></svg>
+              <span id="botLinkText">Buka Bot Telegram dan Kirim Kode</span>
             </a>
 
             <!-- Polling pulse indicator -->
@@ -192,18 +185,19 @@
         <div id="auth-error" class="error-banner" role="alert" aria-live="polite"></div>
 
         <!-- Trust Badges -->
+        <!-- Trust Features -->
         <div class="trust-grid">
           <div class="trust-item">
-            <span class="trust-mark">◈</span>
+            <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
             <span>Alias-Only Routing</span>
           </div>
           <div class="trust-item">
-            <span class="trust-mark">◈</span>
-            <span>One-Time Secret Reveal</span>
+            <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span>One-Time Secret</span>
           </div>
           <div class="trust-item">
-            <span class="trust-mark">◈</span>
-            <span>Realtime Telemetry SSE</span>
+            <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span>Realtime Telemetry</span>
           </div>
         </div>
       </div>
@@ -554,26 +548,32 @@
             <h3 class="section-title">Global Realtime Gateway Stream</h3>
             <p class="section-desc">Event telemetry teranomisasi live dari seluruh gateway Zyrouter tanpa identitas user atau provider.</p>
           </div>
-          <div class="stream-control-bar">
-            <span id="streamState" class="status-pill connecting">CONNECTING</span>
-            <button id="pauseStreamBtn" class="btn-cyber-outline btn-xs">Jeda Stream</button>
-            <button id="clearLogsBtn" class="btn-cyber-outline btn-xs">Bersihkan Tampilan</button>
-            <button id="reconnectStreamBtn" class="btn-cyber-outline btn-xs">Sambung Ulang</button>
-          </div>
         </div>
 
-        <!-- Stream Cards Container -->
-        <article class="card stream-card">
-          <div class="stream-card-header">
-            <div class="stream-meta-left">
-              <span class="terminal-dot red"></span>
-              <span class="terminal-dot yellow"></span>
-              <span class="terminal-dot green"></span>
-              <span class="stream-card-title">telemetry://gateway.live</span>
+        <!-- macOS Window Container -->
+        <article class="card macos-window-card">
+          <!-- macOS Window Titlebar -->
+          <div class="macos-titlebar">
+            <div class="macos-window-controls" aria-hidden="true">
+              <span class="macos-dot macos-close" title="Close"></span>
+              <span class="macos-dot macos-minimize" title="Minimize"></span>
+              <span class="macos-dot macos-maximize" title="Maximize"></span>
             </div>
-            <div class="stream-header-status"><span id="streamNewBadge" class="stream-new-badge">LIVE</span><span class="stream-buffer-tag">Buffer: maks 100 event</span></div>
+            <div class="macos-title">
+              <span class="macos-title-text">telemetry — gateway.live</span>
+            </div>
+            <div class="macos-titlebar-right">
+              <span id="streamState" class="macos-pill-status live">LIVE</span>
+              <span class="macos-pill-buffer">100 maks</span>
+              <button id="pauseStreamBtn" class="macos-btn-icon" type="button" title="Jeda / Lanjutkan Stream">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="macos-icon"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+              </button>
+              <button id="clearLogsBtn" class="macos-btn-icon" type="button" title="Bersihkan Tampilan Lokal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="macos-icon"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
           </div>
-
+          <button id="reconnectStreamBtn" class="hidden" aria-hidden="true"></button>
           <div id="logsList" class="stream-feed-list">
             <div class="stream-empty-state">
               <span class="stream-radar-icon"></span>

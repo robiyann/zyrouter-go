@@ -174,16 +174,31 @@
       challenge = data.challengeId;
       sessionStorage.setItem('zy_active_challenge', challenge);
       sessionStorage.setItem('zy_active_challenge_expires', data.expiresAt || new Date(Date.now() + 600000).toISOString());
+      if (data.telegramDeepLink) {
+        sessionStorage.setItem('zy_active_bot_link', data.telegramDeepLink);
+      }
 
       // Update UI to Challenge Pending
       $('telegramInitialState')?.classList.add('hidden');
       $('challenge')?.classList.remove('hidden');
       if ($('code')) $('code').textContent = challenge;
 
-      const botUrl = data.telegramDeepLink || `https://t.me/Zyrouter_bot?start=${encodeURIComponent(challenge)}`;
-      if ($('botLink')) $('botLink').href = botUrl;
-      if ($('botRetryLink')) $('botRetryLink').href = botUrl;
-
+      const botUrl = data.telegramDeepLink || '';
+      let botUsername = '';
+      if (botUrl) {
+        const match = botUrl.match(/t\.me\/([^?]+)/);
+        if (match && match[1]) botUsername = match[1];
+      }
+      if ($('botLink') && botUrl) $('botLink').href = botUrl;
+      if ($('botRetryLink') && botUrl) $('botRetryLink').href = botUrl;
+      if ($('botLinkText')) {
+        $('botLinkText').textContent = botUsername ? `Buka @${botUsername} dan Kirim Kode` : 'Buka Bot Telegram dan Kirim Kode';
+      }
+      if ($('challengeInstruction')) {
+        $('challengeInstruction').textContent = botUsername
+          ? `Kirim kode di atas ke bot resmi Telegram @${botUsername}:`
+          : 'Kirim kode di atas ke bot resmi Telegram:';
+      }
       // Start 10-Minute (600s) Countdown Timer
       timeLeftSec = 600;
       updateTimerDisplay(timeLeftSec);
@@ -224,9 +239,22 @@
     $('telegramInitialState')?.classList.add('hidden');
     $('challenge')?.classList.remove('hidden');
     if ($('code')) $('code').textContent = challenge;
-    const botUrl = `https://t.me/Zyrouter_bot?start=${encodeURIComponent(challenge)}`;
-    if ($('botLink')) $('botLink').href = botUrl;
-    if ($('botRetryLink')) $('botRetryLink').href = botUrl;
+    const savedBotLink = sessionStorage.getItem('zy_active_bot_link') || '';
+    let botUsername = '';
+    if (savedBotLink) {
+      const match = savedBotLink.match(/t\.me\/([^?]+)/);
+      if (match && match[1]) botUsername = match[1];
+    }
+    if ($('botLink') && savedBotLink) $('botLink').href = savedBotLink;
+    if ($('botRetryLink') && savedBotLink) $('botRetryLink').href = savedBotLink;
+    if ($('botLinkText')) {
+      $('botLinkText').textContent = botUsername ? `Buka @${botUsername} dan Kirim Kode` : 'Buka Bot Telegram dan Kirim Kode';
+    }
+    if ($('challengeInstruction')) {
+      $('challengeInstruction').textContent = botUsername
+        ? `Kirim kode di atas ke bot resmi Telegram @${botUsername}:`
+        : 'Kirim kode di atas ke bot resmi Telegram:';
+    }
     const remaining = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000));
     timeLeftSec = remaining || 600;
     updateTimerDisplay(timeLeftSec);
@@ -331,7 +359,7 @@
       challenge = '';
       sessionStorage.removeItem('zy_active_challenge');
       sessionStorage.removeItem('zy_active_challenge_expires');
-      sessionType = 'telegram';
+      sessionStorage.removeItem('zy_active_bot_link');
 
       showToast('Verifikasi berhasil! Masuk ke dashboard...', 'success');
       history.replaceState(null, '', '#dashboard');
@@ -348,7 +376,7 @@
     challenge = '';
     sessionStorage.removeItem('zy_active_challenge');
     sessionStorage.removeItem('zy_active_challenge_expires');
-    timeLeftSec = 600;
+    sessionStorage.removeItem('zy_active_bot_link');
 
     $('challenge')?.classList.add('hidden');
     $('confirmation')?.classList.add('hidden');
@@ -946,7 +974,7 @@
     const el = $('streamState');
     if (!el) return;
     el.textContent = state;
-    el.className = `status-pill ${state.toLowerCase()}`;
+    el.className = `macos-pill-status ${state.toLowerCase()}`;
   }
 
   function stopStreams() {
@@ -963,7 +991,11 @@
   $('pauseStreamBtn')?.addEventListener('click', () => {
     isStreamPaused = !isStreamPaused;
     const btn = $('pauseStreamBtn');
-    if (btn) btn.textContent = isStreamPaused ? 'Lanjutkan Stream' : 'Jeda Stream';
+    if (btn) {
+      btn.innerHTML = isStreamPaused
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="macos-icon"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="macos-icon"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+    }
     setStreamState(isStreamPaused ? 'PAUSED' : 'LIVE');
     showToast(isStreamPaused ? 'Stream dijeda.' : 'Stream dilanjutkan.', 'info');
   });
@@ -971,9 +1003,9 @@
   $('clearLogsBtn')?.addEventListener('click', () => {
     const list = $('logsList');
     if (list) {
-      list.innerHTML = '<div class="stream-empty-state"><span class="stream-radar-icon"></span><p>Tampilan dibersihkan. Menunggu event berikutnya...</p></div>';
+      list.innerHTML = '<div class="stream-empty-state"><p>Tampilan terminal dibersihkan (lokal). Menunggu event berikutnya...</p></div>';
     }
-    showToast('Tampilan stream dibersihkan.', 'info');
+    showToast('Tampilan terminal lokal dibersihkan.', 'info');
   });
 
   $('reconnectStreamBtn')?.addEventListener('click', () => {
