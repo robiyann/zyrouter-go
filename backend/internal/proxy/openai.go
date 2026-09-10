@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"zyrouter/backend/internal/providers"
 )
@@ -13,6 +14,9 @@ import (
 func ForwardOpenAI(ctx context.Context, client *http.Client, cfg *providers.ProviderConfig, apiKey string, body []byte, isStream bool) (*http.Response, error) {
 	headers := map[string]string{}
 	if !cfg.NoAuth {
+		if cfg.AuthTokenPrefix != "" && !strings.HasPrefix(apiKey, cfg.AuthTokenPrefix) {
+			apiKey = cfg.AuthTokenPrefix + apiKey
+		}
 		switch cfg.AuthScheme {
 		case "bearer":
 			headers[cfg.AuthHeader] = "Bearer " + apiKey

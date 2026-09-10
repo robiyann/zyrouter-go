@@ -138,6 +138,8 @@ func SetupRoutes(r interface {
 	r.Post("/api/oauth/{provider}/exchange", oauthH.HandleOAuthExchange)
 	r.Post("/api/oauth/github/device-code", oauthH.HandleGitHubDeviceCode)
 	r.Post("/api/oauth/github/poll", oauthH.HandleGitHubPoll)
+	r.Get("/api/oauth/{provider}/device-code", oauthH.HandleOAuthDeviceCode)
+	r.Post("/api/oauth/{provider}/poll", oauthH.HandleOAuthDevicePoll)
 	r.Get("/api/oauth/cursor/auto-import", oauthH.HandleCursorAutoImport)
 	r.Get("/api/oauth/kiro/social-authorize", oauthH.HandleOAuthKiroSocialAuthorize)
 	r.Post("/api/oauth/kiro/social-exchange", oauthH.HandleOAuthKiroSocialExchange)

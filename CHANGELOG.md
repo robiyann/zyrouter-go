@@ -1,5 +1,15 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-10] - [Codex] - Cline & Grok CLI OAuth Account Onboarding
+- **Modul**: `Backend / Frontend / OAuth Provider Accounts`
+- **Deskripsi Perubahan**:
+  - Menambahkan Cline/ClinePass authorization-code exchange, Base64 callback parsing, OAuth refresh, dan normalisasi token `workos:`.
+  - Menambahkan Grok CLI/Grok Build device-code login, polling, best-effort profile enrichment, dan persistence metadata akun.
+  - Menambahkan provider card `grok-cli` ke dashboard serta modal OAuth khusus Cline dan Grok CLI.
+  - Memperbaiki generic OAuth import agar menyimpan `accessToken`, `refreshToken`, dan metadata expiry sebagai koneksi OAuth.
+  - Menambahkan regression tests untuk Cline exchange, Grok device flow, provider auth URL, dan frontend contract.
+- **Status Task**: Selesai
+
 ### [2026-09-10] - [Codex] - Audit Payload Archive Deletion
 - **Modul**: `Backend / Admin Dashboard / Audit Logs`
 - **Deskripsi Perubahan**:

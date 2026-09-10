@@ -533,6 +533,21 @@ const KNOWN_PROVIDER_CATALOG = [
     "alias": "cx"
   },
   {
+    "id": "grok-cli",
+    "name": "Grok CLI (Grok Build)",
+    "desc": "xAI Grok Build subscription via OAuth device login",
+    "icon": "✖️",
+    "category": "oauth",
+    "authType": "oauth",
+    "defaultModels": [
+      "grok-4.5",
+      "grok-4.5-high",
+      "grok-4.5-medium",
+      "grok-4.5-low"
+    ],
+    "alias": "gcli"
+  },
+  {
     "id": "github",
     "name": "GitHub Copilot",
     "desc": "GitHub Copilot Device Flow authorization & token",
@@ -3227,8 +3242,62 @@ function providerConnectionModal(presetProviderId = 'openai', customNodeMeta = n
         </div>
       ` : ''}
 
-      <!-- 11. OTHER OAUTH PROVIDERS (Kiro, Qoder, GitLab, Windsurf, Trae, Cline, Devin, Kimi, Zed) -->
-      ${(authType === 'oauth' && meta.id !== 'antigravity' && meta.id !== 'codex' && meta.id !== 'claude' && meta.id !== 'cursor') ? `
+      <!-- 11. CLINE OAUTH FLOW -->
+      ${(meta.id === 'cline' || meta.id === 'clinepass') ? `
+        <div class="notice-box" style="border-left: 3px solid #5b9bd5; background: #0c1420; padding: 12px 14px; border-radius: 6px; margin-bottom: 14px;">
+          <strong style="color: #8fc7ff;">🤖 ${escapeHtml(meta.name)} OAuth</strong>
+          <p style="margin: 4px 0 0; font-size: 11px; color: #a9bfd3;">Buka halaman login Cline, lalu salin callback URL atau kode yang dikembalikan.</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <button type="button" class="solid-button" id="btn-start-cline-oauth">🚀 Buka Login Cline</button>
+          <button type="button" class="secondary-button" id="btn-copy-cline-oauth">📋 Salin Link OAuth</button>
+        </div>
+        <label>
+          Authorization Code / Callback URL
+          <textarea id="cline-auth-code-input" rows="4" placeholder="Paste code atau callback URL dari Cline..." required></textarea>
+        </label>
+        <div class="form-grid-2">
+          <label>
+            Account Name
+            <input name="name" value="${escapeHtml(meta.name)} Account" />
+          </label>
+          <label>
+            Account Email (Optional)
+            <input type="email" name="email" placeholder="developer@example.com" />
+          </label>
+        </div>
+        <button type="button" class="secondary-button" id="btn-exchange-cline-code" style="margin-top: 10px;">⚡ Exchange Code & Hubungkan Akun</button>
+        <p id="cline-exchange-status" style="font-size: 11px; margin-top: 8px; color: var(--lime);"></p>
+      ` : ''}
+
+      <!-- 12. GROK CLI DEVICE FLOW -->
+      ${meta.id === 'grok-cli' ? `
+        <div class="notice-box" style="border-left: 3px solid #1da1f2; background: #07131d; padding: 12px 14px; border-radius: 6px; margin-bottom: 14px;">
+          <strong style="color: #6fc7ff;">✖️ Grok CLI / Grok Build OAuth</strong>
+          <p style="margin: 4px 0 0; font-size: 11px; color: #a9bfd3;">Login menggunakan device code xAI. Akun akan disimpan setelah otorisasi selesai.</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <button type="button" class="solid-button" id="btn-start-grok-device">🚀 Mulai Device Login</button>
+        </div>
+        <div id="grok-device-details" class="notice-box hidden" style="margin-bottom: 12px;">
+          <p id="grok-device-status" style="font-size: 11px; margin: 0 0 8px; color: var(--lime);"></p>
+          <p id="grok-device-code" style="font-family: var(--mono); font-size: 15px; letter-spacing: 2px; margin: 0 0 8px;"></p>
+          <button type="button" class="secondary-button" id="btn-open-grok-device">🌐 Buka Halaman Verifikasi</button>
+        </div>
+        <div class="form-grid-2">
+          <label>
+            Account Name (Optional)
+            <input name="name" value="Grok CLI Account" />
+          </label>
+          <label>
+            Priority (1 = Highest)
+            <input type="number" name="priority" value="10" min="1" max="100" />
+          </label>
+        </div>
+      ` : ''}
+
+      <!-- 13. OTHER OAUTH PROVIDERS (Kiro, Qoder, GitLab, Windsurf, Trae, Devin, Kimi, Zed) -->
+      ${(authType === 'oauth' && meta.id !== 'antigravity' && meta.id !== 'codex' && meta.id !== 'claude' && meta.id !== 'cursor' && meta.id !== 'cline' && meta.id !== 'clinepass' && meta.id !== 'grok-cli') ? `
         <div class="notice-box" style="border-left: 3px solid var(--lime); background: #0c151c; padding: 12px 14px; border-radius: 6px; margin-bottom: 14px;">
           <strong style="color: var(--lime);">🛡️ ${escapeHtml(meta.name)} Token / Session Import</strong>
           <p style="margin: 4px 0 0; font-size: 11px; color: #9bb0c1;">Paste the OAuth Access Token, Session Key, or JSON configuration.</p>
@@ -3251,7 +3320,7 @@ function providerConnectionModal(presetProviderId = 'openai', customNodeMeta = n
         </div>
       ` : ''}
 
-      <!-- 12. STANDARD & CUSTOM COMPATIBLE API KEY FORM (Single & Bulk Tabs) -->
+      <!-- 14. STANDARD & CUSTOM COMPATIBLE API KEY FORM (Single & Bulk Tabs) -->
       ${(authType === 'apikey' && meta.id !== 'azure' && meta.id !== 'cloudflare-ai' && meta.id !== 'iflow' && meta.id !== 'grok-web' && meta.id !== 'custom-embedding') ? `
         <div id="tab-single-key-content" class="tab-pane active">
           <div class="form-grid-2">
@@ -3689,6 +3758,153 @@ async function openProviderModal(provId = 'openai') {
         btnAutoCursor.disabled = false;
         statusEl.style.color = '#ff8787';
         statusEl.textContent = `Error: ${err.message}`;
+      }
+    };
+  }
+
+  // Cline / ClinePass OAuth authorization-code flow.
+  const btnStartCline = form.querySelector('#btn-start-cline-oauth');
+  const btnCopyCline = form.querySelector('#btn-copy-cline-oauth');
+  const btnExchangeCline = form.querySelector('#btn-exchange-cline-code');
+  let clineAuthData = null;
+  const clineRedirectUri = `${window.location.origin}/callback`;
+  const prepareClineAuth = async () => {
+    if (!clineAuthData) {
+      clineAuthData = await request(`/api/oauth/${encodeURIComponent(provId)}/authorize?redirect_uri=${encodeURIComponent(clineRedirectUri)}`);
+    }
+    if (!clineAuthData?.authUrl) throw new Error('OAuth URL Cline tidak tersedia');
+    return clineAuthData;
+  };
+  if (btnStartCline) {
+    btnStartCline.onclick = async () => {
+      btnStartCline.disabled = true;
+      try {
+        const authData = await prepareClineAuth();
+        window.open(authData.authUrl, '_blank', 'noopener,noreferrer');
+        btnStartCline.textContent = '🚀 Buka Ulang Login Cline';
+      } catch (err) {
+        btnStartCline.textContent = `Gagal: ${err.message}`;
+      } finally {
+        btnStartCline.disabled = false;
+      }
+    };
+  }
+  if (btnCopyCline) {
+    btnCopyCline.onclick = async () => {
+      try {
+        const authData = await prepareClineAuth();
+        await copyText(authData.authUrl);
+        btnCopyCline.textContent = '✅ Link Tersalin';
+        setTimeout(() => { btnCopyCline.textContent = '📋 Salin Link OAuth'; }, 1600);
+      } catch (err) {
+        btnCopyCline.textContent = `Gagal: ${err.message}`;
+      }
+    };
+  }
+  if (btnExchangeCline) {
+    btnExchangeCline.onclick = async () => {
+      const statusEl = form.querySelector('#cline-exchange-status');
+      let code = (form.querySelector('#cline-auth-code-input')?.value || '').trim();
+      if (!code) {
+        statusEl.style.color = '#ff8787';
+        statusEl.textContent = 'Harap masukkan authorization code atau callback URL.';
+        return;
+      }
+      if (code.includes('code=')) {
+        try {
+          code = new URL(code).searchParams.get('code') || code;
+        } catch {
+          const match = code.match(/[?&]code=([^&]+)/);
+          if (match) code = decodeURIComponent(match[1]);
+        }
+      }
+      btnExchangeCline.disabled = true;
+      statusEl.style.color = 'var(--lime)';
+      statusEl.textContent = 'Menghubungkan ke Cline...';
+      try {
+        const response = await fetch(`${apiBase}/api/oauth/${encodeURIComponent(provId)}/exchange`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            redirectUri: clineRedirectUri,
+            name: form.querySelector('input[name="name"]')?.value || ''
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Exchange token gagal');
+        statusEl.textContent = `Berhasil terhubung${data.email ? ` sebagai ${data.email}` : ''}!`;
+        setTimeout(async () => {
+          form.remove();
+          await renderProviderDetail(provId);
+        }, 800);
+      } catch (err) {
+        btnExchangeCline.disabled = false;
+        statusEl.style.color = '#ff8787';
+        statusEl.textContent = `Gagal: ${err.message}`;
+      }
+    };
+  }
+
+  // Grok CLI OAuth device-code flow.
+  const btnStartGrok = form.querySelector('#btn-start-grok-device');
+  if (btnStartGrok) {
+    const detailEl = form.querySelector('#grok-device-details');
+    const statusEl = form.querySelector('#grok-device-status');
+    const codeEl = form.querySelector('#grok-device-code');
+    const openBtn = form.querySelector('#btn-open-grok-device');
+    let verificationUrl = '';
+    let polling = false;
+    btnStartGrok.onclick = async () => {
+      if (polling) return;
+      polling = true;
+      btnStartGrok.disabled = true;
+      btnStartGrok.textContent = 'Meminta device code...';
+      detailEl.classList.remove('hidden');
+      try {
+        const startResponse = await fetch(`${apiBase}/api/oauth/grok-cli/device-code`, { headers });
+        const device = await startResponse.json();
+        if (!startResponse.ok || !device.device_code) throw new Error(device.error || 'Device code gagal dibuat');
+        verificationUrl = device.verification_uri_complete || device.verification_url || device.verification_uri || '';
+        codeEl.textContent = device.user_code ? `Kode: ${device.user_code}` : 'Kode device diterima';
+        statusEl.textContent = verificationUrl ? 'Silakan selesaikan login di halaman verifikasi.' : 'Silakan selesaikan login pada device Anda.';
+        if (verificationUrl) window.open(verificationUrl, '_blank', 'noopener,noreferrer');
+        if (openBtn) {
+          openBtn.classList.toggle('hidden', !verificationUrl);
+          openBtn.onclick = () => window.open(verificationUrl, '_blank', 'noopener,noreferrer');
+        }
+
+        const deadline = Date.now() + ((Number(device.expires_in) > 0 ? Number(device.expires_in) : 600) * 1000);
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, Math.max(3000, (Number(device.interval) || 5) * 1000)));
+          const pollResponse = await fetch(`${apiBase}/api/oauth/grok-cli/poll`, {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deviceCode: device.device_code,
+              name: form.querySelector('input[name="name"]')?.value || ''
+            })
+          });
+          const result = await pollResponse.json();
+          if (result.success) {
+            statusEl.textContent = `Berhasil terhubung${result.email ? ` sebagai ${result.email}` : ''}!`;
+            setTimeout(async () => {
+              form.remove();
+              await renderProviderDetail('grok-cli');
+            }, 800);
+            return;
+          }
+          if (!result.pending) throw new Error(result.error || result.errorDescription || 'Device login gagal');
+          statusEl.textContent = 'Menunggu persetujuan login Grok...';
+        }
+        throw new Error('Device login timeout');
+      } catch (err) {
+        statusEl.style.color = '#ff8787';
+        statusEl.textContent = `Gagal: ${err.message}`;
+      } finally {
+        polling = false;
+        btnStartGrok.disabled = false;
+        btnStartGrok.textContent = '🚀 Coba Device Login Lagi';
       }
     };
   }

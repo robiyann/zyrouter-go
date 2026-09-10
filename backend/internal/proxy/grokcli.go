@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"zyrouter/backend/internal/providers"
@@ -12,6 +13,9 @@ import (
 func setAuth(headers map[string]string, cfg *providers.ProviderConfig, apiKey string) {
 	if cfg.NoAuth {
 		return
+	}
+	if cfg.AuthTokenPrefix != "" && !strings.HasPrefix(apiKey, cfg.AuthTokenPrefix) {
+		apiKey = cfg.AuthTokenPrefix + apiKey
 	}
 	switch cfg.AuthScheme {
 	case "bearer":
@@ -113,11 +117,11 @@ func ForwardAzure(ctx context.Context, client *http.Client, cfg *providers.Provi
 // Body transformation (force stream=true) is done by the caller.
 func ForwardCommandcode(ctx context.Context, client *http.Client, cfg *providers.ProviderConfig, apiKey string, body []byte) (*http.Response, error) {
 	headers := map[string]string{
-		"Content-Type":          "application/json",
-		"Authorization":         "Bearer " + apiKey,
+		"Content-Type":           "application/json",
+		"Authorization":          "Bearer " + apiKey,
 		"x-command-code-version": "0.25.7",
-		"x-cli-environment":     "cli",
-		"Accept":                "text/event-stream",
+		"x-cli-environment":      "cli",
+		"Accept":                 "text/event-stream",
 	}
 	return DoRequest(ctx, client, "POST", cfg.BaseURL, headers, body)
 }

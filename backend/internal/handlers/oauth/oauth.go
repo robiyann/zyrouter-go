@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -32,23 +33,58 @@ func xorStr(b []byte) string {
 }
 
 var (
-	AntigravityClientID     = func() string { if v := os.Getenv("ANTIGRAVITY_CLIENT_ID"); v != "" { return v }; return xorStr([]byte{107,106,109,107,106,106,108,106,108,106,111,99,107,119,46,55,50,41,41,51,52,104,50,104,107,54,57,40,63,104,105,111,44,46,53,54,53,48,50,110,61,110,106,105,63,42,116,59,42,42,41,116,61,53,53,61,54,63,47,41,63,40,57,53,52,46,63,52,46,116,57,53,55}) }()
-	AntigravityClientSecret = func() string { if v := os.Getenv("ANTIGRAVITY_CLIENT_SECRET"); v != "" { return v }; return xorStr([]byte{29,21,25,9,10,2,119,17,111,98,28,13,8,110,98,108,22,62,22,16,107,55,22,24,98,41,2,25,110,32,108,43,30,27,60}) }()
-	AntigravityRedirectURI  = "http://localhost:8080/callback"
+	AntigravityClientID = func() string {
+		if v := os.Getenv("ANTIGRAVITY_CLIENT_ID"); v != "" {
+			return v
+		}
+		return xorStr([]byte{107, 106, 109, 107, 106, 106, 108, 106, 108, 106, 111, 99, 107, 119, 46, 55, 50, 41, 41, 51, 52, 104, 50, 104, 107, 54, 57, 40, 63, 104, 105, 111, 44, 46, 53, 54, 53, 48, 50, 110, 61, 110, 106, 105, 63, 42, 116, 59, 42, 42, 41, 116, 61, 53, 53, 61, 54, 63, 47, 41, 63, 40, 57, 53, 52, 46, 63, 52, 46, 116, 57, 53, 55})
+	}()
+	AntigravityClientSecret = func() string {
+		if v := os.Getenv("ANTIGRAVITY_CLIENT_SECRET"); v != "" {
+			return v
+		}
+		return xorStr([]byte{29, 21, 25, 9, 10, 2, 119, 17, 111, 98, 28, 13, 8, 110, 98, 108, 22, 62, 22, 16, 107, 55, 22, 24, 98, 41, 2, 25, 110, 32, 108, 43, 30, 27, 60})
+	}()
+	AntigravityRedirectURI = "http://localhost:8080/callback"
 
-	ClaudeClientID     = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-	ClaudeRedirectURI  = "https://claude.ai/oauth/callback"
+	ClaudeClientID    = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+	ClaudeRedirectURI = "https://claude.ai/oauth/callback"
 
-	CodexClientID      = "app_EMoamEEZ73f0CkXaXp7hrann"
-	CodexRedirectURI   = "http://localhost:1455/auth/callback"
+	CodexClientID    = "app_EMoamEEZ73f0CkXaXp7hrann"
+	CodexRedirectURI = "http://localhost:1455/auth/callback"
 
-	GoogleGeminiClientID     = func() string { if v := os.Getenv("GEMINI_CLIENT_ID"); v != "" { return v }; return xorStr([]byte{108,98,107,104,111,111,98,106,99,105,99,111,119,53,53,98,60,46,104,53,42,40,62,40,52,42,99,63,105,59,43,60,108,59,44,105,50,55,62,51,56,107,105,111,48,116,59,42,42,41,116,61,53,53,61,54,63,47,41,63,40,57,53,52,46,63,52,46,116,57,53,55}) }()
-	GoogleGeminiClientSecret = func() string { if v := os.Getenv("GEMINI_CLIENT_SECRET"); v != "" { return v }; return xorStr([]byte{29,21,25,9,10,2,119,110,47,18,61,23,10,55,119,107,53,109,9,49,119,61,63,12,108,25,47,111,57,54,2,28,41,34,54}) }()
-	GoogleGeminiRedirectURI  = "http://localhost:8085/oauth2callback"
+	GoogleGeminiClientID = func() string {
+		if v := os.Getenv("GEMINI_CLIENT_ID"); v != "" {
+			return v
+		}
+		return xorStr([]byte{108, 98, 107, 104, 111, 111, 98, 106, 99, 105, 99, 111, 119, 53, 53, 98, 60, 46, 104, 53, 42, 40, 62, 40, 52, 42, 99, 63, 105, 59, 43, 60, 108, 59, 44, 105, 50, 55, 62, 51, 56, 107, 105, 111, 48, 116, 59, 42, 42, 41, 116, 61, 53, 53, 61, 54, 63, 47, 41, 63, 40, 57, 53, 52, 46, 63, 52, 46, 116, 57, 53, 55})
+	}()
+	GoogleGeminiClientSecret = func() string {
+		if v := os.Getenv("GEMINI_CLIENT_SECRET"); v != "" {
+			return v
+		}
+		return xorStr([]byte{29, 21, 25, 9, 10, 2, 119, 110, 47, 18, 61, 23, 10, 55, 119, 107, 53, 109, 9, 49, 119, 61, 63, 12, 108, 25, 47, 111, 57, 54, 2, 28, 41, 34, 54})
+	}()
+	GoogleGeminiRedirectURI = "http://localhost:8085/oauth2callback"
 
 	GitHubCopilotClientID = "Iv1.b507a08c87ecfe98"
 	XaiClientID           = "b1a00492-073a-47ea-816f-4c329264a828"
 )
+
+const (
+	clineAuthorizeURL = "https://api.cline.bot/api/v1/auth/authorize"
+	clineTokenURL     = "https://api.cline.bot/api/v1/auth/token"
+	grokCLIClientID   = "b1a00492-073a-47ea-816f-4c329264a828"
+	grokCLIDeviceURL  = "https://auth.x.ai/oauth2/device/code"
+	grokCLITokenURL   = "https://auth.x.ai/oauth2/token"
+	grokCLIUserURL    = "https://cli-chat-proxy.grok.com/v1/user"
+	grokCLIScope      = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write"
+	grokCLIUserAgent  = "grok-pager/0.2.99 grok-shell/0.2.99 (linux; x86_64)"
+)
+
+// oauthHTTPClient is injectable in tests and keeps all provider OAuth calls
+// on the same client used by the handler.
+var oauthHTTPClient = http.DefaultClient
 
 // OAuthHandler handles OAuth token import and social auth exchange endpoints.
 type OAuthHandler struct {
@@ -77,11 +113,17 @@ func (h *OAuthHandler) HandleOAuthImport(w http.ResponseWriter, r *http.Request)
 	defer r.Body.Close()
 
 	var req struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken,omitempty"`
-		APIKey       string `json:"apiKey,omitempty"`
-		MachineID    string `json:"machineId,omitempty"`
-		Name         string `json:"name,omitempty"`
+		AccessToken          string         `json:"accessToken"`
+		RefreshToken         string         `json:"refreshToken,omitempty"`
+		ExpiresAt            string         `json:"expiresAt,omitempty"`
+		ExpiresIn            int            `json:"expiresIn,omitempty"`
+		TokenType            string         `json:"tokenType,omitempty"`
+		Scope                string         `json:"scope,omitempty"`
+		APIKey               string         `json:"apiKey,omitempty"`
+		MachineID            string         `json:"machineId,omitempty"`
+		Name                 string         `json:"name,omitempty"`
+		Email                string         `json:"email,omitempty"`
+		ProviderSpecificData map[string]any `json:"providerSpecificData,omitempty"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid JSON body")
@@ -105,15 +147,32 @@ func (h *OAuthHandler) HandleOAuthImport(w http.ResponseWriter, r *http.Request)
 	connID := provider + "-import-" + randomString(12)
 
 	dataFields := map[string]any{
-		"apiKey": credential,
+		"apiKey":      credential,
+		"accessToken": credential,
 	}
 	if req.RefreshToken != "" {
 		dataFields["refreshToken"] = req.RefreshToken
 	}
 	if req.MachineID != "" {
-		dataFields["providerSpecificData"] = map[string]any{
-			"machineId": req.MachineID,
+		if req.ProviderSpecificData == nil {
+			req.ProviderSpecificData = map[string]any{}
 		}
+		req.ProviderSpecificData["machineId"] = req.MachineID
+	}
+	if req.ExpiresAt != "" {
+		dataFields["expiresAt"] = req.ExpiresAt
+	}
+	if req.ExpiresIn > 0 {
+		dataFields["expiresIn"] = req.ExpiresIn
+	}
+	if req.TokenType != "" {
+		dataFields["tokenType"] = req.TokenType
+	}
+	if req.Scope != "" {
+		dataFields["scope"] = req.Scope
+	}
+	if req.ProviderSpecificData != nil {
+		dataFields["providerSpecificData"] = req.ProviderSpecificData
 	}
 
 	data, err := json.Marshal(dataFields)
@@ -125,7 +184,7 @@ func (h *OAuthHandler) HandleOAuthImport(w http.ResponseWriter, r *http.Request)
 
 	now := currentTimestamp()
 	_, err = h.Repo.RawDB().Exec(
-		`INSERT INTO providerConnections (id, provider, authType, name, isActive, data, createdAt, updatedAt) VALUES (?, ?, 'apikey', ?, 1, ?, ?, ?)`,
+		`INSERT INTO providerConnections (id, provider, authType, name, isActive, data, createdAt, updatedAt) VALUES (?, ?, 'oauth', ?, 1, ?, ?, ?)`,
 		connID, provider, connName, string(data), now, now,
 	)
 	if err != nil {
@@ -183,6 +242,29 @@ func (h *OAuthHandler) HandleOAuthAuthorize(w http.ResponseWriter, r *http.Reque
 		redirectURI = "http://localhost:8080/callback"
 		authURL = fmt.Sprintf("https://auth.x.ai/oauth2/authorize?client_id=%s&response_type=code&redirect_uri=%s&state=%s", clientID, redirectURI, state)
 
+	case "cline", "clinepass":
+		redirectURI = r.URL.Query().Get("redirect_uri")
+		if redirectURI == "" {
+			redirectURI = "http://localhost:20128/callback"
+		}
+		params := url.Values{
+			"client_type":  {"extension"},
+			"callback_url": {redirectURI},
+			"redirect_uri": {redirectURI},
+		}
+		authURL = clineAuthorizeURL + "?" + params.Encode()
+
+	case "grok-cli":
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+			"provider": provider,
+			"flowType": "device_code",
+			"authUrl":  nil,
+			"clientId": grokCLIClientID,
+			"tokenUrl": grokCLITokenURL,
+			"scope":    grokCLIScope,
+		})
+		return
+
 	default:
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("OAuth authorize not configured for %s", provider))
 		return
@@ -237,6 +319,25 @@ func (h *OAuthHandler) HandleOAuthExchange(w http.ResponseWriter, r *http.Reques
 	}
 	if strings.Contains(code, "#") {
 		code = strings.Split(code, "#")[0]
+	}
+
+	if provider == "cline" || provider == "clinepass" {
+		tokenData, exchangeErr := exchangeClineCode(r.Context(), code, req.RedirectURI)
+		if exchangeErr != nil {
+			handlerutil.WriteJSONError(w, http.StatusBadGateway, exchangeErr.Error())
+			return
+		}
+		if err := h.saveOAuthConnection(provider, req.Name, tokenData); err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+			"provider":   provider,
+			"name":       tokenData["name"],
+			"email":      tokenData["email"],
+			"connection": tokenData["connection"],
+		})
+		return
 	}
 
 	var tokenEndpoint string
@@ -393,6 +494,425 @@ func (h *OAuthHandler) HandleOAuthExchange(w http.ResponseWriter, r *http.Reques
 		"email":      email,
 		"connection": connID,
 	})
+}
+
+// HandleOAuthDeviceCode starts a provider-specific device authorization flow.
+// GET /api/oauth/{provider}/device-code
+func (h *OAuthHandler) HandleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
+	provider := r.PathValue("provider")
+	if provider != "grok-cli" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("device-code OAuth not configured for %s", provider))
+		return
+	}
+
+	form := url.Values{
+		"client_id": {grokCLIClientID},
+		"scope":     {grokCLIScope},
+		"referrer":  {"grok-build"},
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, grokCLIDeviceURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create device authorization request")
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", grokCLIUserAgent)
+
+	resp, err := oauthHTTPClient.Do(req)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, fmt.Sprintf("device authorization failed: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, "failed to read device authorization response")
+		return
+	}
+	var data map[string]any
+	if err := json.Unmarshal(body, &data); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, "invalid device authorization response")
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, oauthProviderError(data, "device authorization rejected"))
+		return
+	}
+	if stringValue(data, "device_code") == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, "device authorization response has no device_code")
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, data)
+}
+
+// HandleOAuthDevicePoll polls a device authorization flow and persists the
+// connection only after an access token is returned.
+// POST /api/oauth/{provider}/poll
+func (h *OAuthHandler) HandleOAuthDevicePoll(w http.ResponseWriter, r *http.Request) {
+	provider := r.PathValue("provider")
+	if provider != "grok-cli" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("device-code OAuth not configured for %s", provider))
+		return
+	}
+	var body struct {
+		DeviceCode string `json:"deviceCode"`
+		Name       string `json:"name,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.DeviceCode) == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing deviceCode")
+		return
+	}
+
+	form := url.Values{
+		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+		"device_code": {body.DeviceCode},
+		"client_id":   {grokCLIClientID},
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, grokCLITokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create device poll request")
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", grokCLIUserAgent)
+
+	resp, err := oauthHTTPClient.Do(req)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, fmt.Sprintf("device poll failed: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, "failed to read device poll response")
+		return
+	}
+	var tokenData map[string]any
+	if err := json.Unmarshal(responseBody, &tokenData); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, "invalid device poll response")
+		return
+	}
+
+	if accessToken := stringValue(tokenData, "access_token"); accessToken == "" {
+		errCode := stringValue(tokenData, "error")
+		pending := errCode == "authorization_pending" || errCode == "slow_down"
+		if pending {
+			handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+				"success":          false,
+				"pending":          true,
+				"error":            errCode,
+				"errorDescription": stringValue(tokenData, "error_description"),
+			})
+			return
+		}
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, oauthProviderError(tokenData, "device authorization failed"))
+		return
+	} else {
+		profile := fetchGrokCLIProfile(r.Context(), accessToken)
+		for key, value := range profile {
+			tokenData[key] = value
+		}
+		if body.Name != "" {
+			tokenData["name"] = body.Name
+		}
+		if err := h.saveOAuthConnection(provider, body.Name, tokenData); err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		response := map[string]any{
+			"success":    true,
+			"provider":   provider,
+			"email":      stringValue(tokenData, "email"),
+			"name":       stringValue(tokenData, "name"),
+			"connection": stringValue(tokenData, "connection"),
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, response)
+	}
+}
+
+func exchangeClineCode(ctx context.Context, code, redirectURI string) (map[string]any, error) {
+	if redirectURI == "" {
+		redirectURI = "http://localhost:20128/callback"
+	}
+	if decoded, ok := decodeClineCode(code); ok {
+		return normalizeClineTokenData(decoded), nil
+	}
+
+	requestBody, err := json.Marshal(map[string]string{
+		"grant_type":   "authorization_code",
+		"code":         code,
+		"client_type":  "extension",
+		"redirect_uri": redirectURI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cline marshal failed: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, clineTokenURL, strings.NewReader(string(requestBody)))
+	if err != nil {
+		return nil, fmt.Errorf("cline token request failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := oauthHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cline token exchange failed: %w", err)
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("cline token response read failed: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("cline token exchange returned %d: %s", resp.StatusCode, truncateOAuthBody(responseBody))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		return nil, fmt.Errorf("cline token response parse failed: %w", err)
+	}
+	data := payload
+	if nested, ok := payload["data"].(map[string]any); ok {
+		data = nested
+	}
+	result := normalizeClineTokenData(data)
+	if stringValue(result, "access_token") == "" {
+		return nil, fmt.Errorf("cline token exchange returned no access token")
+	}
+	return result, nil
+}
+
+func decodeClineCode(code string) (map[string]any, bool) {
+	if len(code) > 64*1024 {
+		return nil, false
+	}
+	for _, encoding := range []*base64.Encoding{base64.RawURLEncoding, base64.URLEncoding, base64.RawStdEncoding, base64.StdEncoding} {
+		decoded, err := encoding.DecodeString(code)
+		if err != nil {
+			continue
+		}
+		decodedText := string(decoded)
+		if end := strings.LastIndex(decodedText, "}"); end >= 0 {
+			decodedText = decodedText[:end+1]
+		}
+		var data map[string]any
+		if json.Unmarshal([]byte(decodedText), &data) == nil && stringValue(data, "accessToken") != "" {
+			return data, true
+		}
+	}
+	return nil, false
+}
+
+func normalizeClineTokenData(data map[string]any) map[string]any {
+	result := map[string]any{}
+	for source, target := range map[string]string{
+		"accessToken":  "access_token",
+		"refreshToken": "refresh_token",
+		"expiresAt":    "expires_at",
+		"email":        "email",
+		"firstName":    "firstName",
+		"lastName":     "lastName",
+	} {
+		if value := stringValue(data, source); value != "" {
+			result[target] = value
+		}
+	}
+	if result["access_token"] == nil {
+		if value := stringValue(data, "access_token"); value != "" {
+			result["access_token"] = value
+		}
+	}
+	if result["refresh_token"] == nil {
+		if value := stringValue(data, "refresh_token"); value != "" {
+			result["refresh_token"] = value
+		}
+	}
+	if nested, ok := data["userInfo"].(map[string]any); ok && stringValue(result, "email") == "" {
+		if email := stringValue(nested, "email"); email != "" {
+			result["email"] = email
+		}
+	}
+	return result
+}
+
+func (h *OAuthHandler) saveOAuthConnection(provider, requestedName string, tokenData map[string]any) error {
+	if h == nil || h.Repo == nil {
+		return fmt.Errorf("OAuth repository is not initialized")
+	}
+	accessToken := stringValue(tokenData, "access_token")
+	if accessToken == "" {
+		accessToken = stringValue(tokenData, "accessToken")
+	}
+	if accessToken == "" {
+		return fmt.Errorf("OAuth response has no access token")
+	}
+	refreshToken := stringValue(tokenData, "refresh_token")
+	if refreshToken == "" {
+		refreshToken = stringValue(tokenData, "refreshToken")
+	}
+	expiresAt := stringValue(tokenData, "expires_at")
+	if expiresAt == "" {
+		expiresAt = stringValue(tokenData, "expiresAt")
+	}
+	if expiresAt == "" {
+		expiresIn := numberValue(tokenData, "expires_in")
+		if expiresIn <= 0 {
+			expiresIn = numberValue(tokenData, "expiresIn")
+		}
+		if expiresIn > 0 {
+			expiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339)
+		}
+	}
+	email := stringValue(tokenData, "email")
+	name := strings.TrimSpace(requestedName)
+	if name == "" {
+		name = strings.TrimSpace(stringValue(tokenData, "name"))
+	}
+	if name == "" && email != "" {
+		name = fmt.Sprintf("%s (%s)", titleProvider(provider), email)
+	}
+	if name == "" {
+		name = titleProvider(provider) + " Account"
+	}
+
+	dataMap := map[string]any{
+		"apiKey":      accessToken,
+		"accessToken": accessToken,
+	}
+	if email != "" {
+		dataMap["email"] = email
+	}
+	if refreshToken != "" {
+		dataMap["refreshToken"] = refreshToken
+	}
+	if expiresAt != "" {
+		dataMap["expiresAt"] = expiresAt
+	}
+	for _, key := range []string{"id_token", "scope", "token_type"} {
+		if value := stringValue(tokenData, key); value != "" {
+			dataMap[key] = value
+			if key == "id_token" {
+				dataMap["idToken"] = value
+			}
+		}
+	}
+	providerSpecificData := map[string]any{}
+	if idToken := stringValue(tokenData, "id_token"); idToken != "" {
+		providerSpecificData["idToken"] = idToken
+	}
+	for _, key := range []string{"firstName", "lastName", "userId", "principalId", "subscriptionTier", "hasGrokCodeAccess", "authMethod"} {
+		if value, ok := tokenData[key]; ok {
+			providerSpecificData[key] = value
+		}
+	}
+	if len(providerSpecificData) > 0 {
+		dataMap["providerSpecificData"] = providerSpecificData
+	}
+	encoded, err := json.Marshal(dataMap)
+	if err != nil {
+		return fmt.Errorf("marshal OAuth connection: %w", err)
+	}
+	connID := provider + "-oauth-" + randomString(12)
+	now := currentTimestamp()
+	if _, err := h.Repo.RawDB().Exec(
+		`INSERT INTO providerConnections (id, provider, authType, name, isActive, data, createdAt, updatedAt) VALUES (?, ?, 'oauth', ?, 1, ?, ?, ?)`,
+		connID, provider, name, string(encoded), now, now,
+	); err != nil {
+		return fmt.Errorf("save OAuth connection: %w", err)
+	}
+	// Older test fixtures and installations may not expose an email column;
+	// keep the credential JSON authoritative and update the column best-effort.
+	if email != "" {
+		_, _ = h.Repo.RawDB().Exec(`UPDATE providerConnections SET email = ? WHERE id = ?`, email, connID)
+	}
+	tokenData["name"] = name
+	tokenData["email"] = email
+	tokenData["connection"] = connID
+	return nil
+}
+
+func fetchGrokCLIProfile(ctx context.Context, accessToken string) map[string]any {
+	result := map[string]any{}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, grokCLIUserURL, nil)
+	if err != nil {
+		return result
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", grokCLIUserAgent)
+	req.Header.Set("x-xai-token-auth", "xai-grok-cli")
+	req.Header.Set("x-grok-client-version", "0.2.99")
+	resp, err := oauthHTTPClient.Do(req)
+	if err != nil {
+		return result
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return result
+	}
+	var profile map[string]any
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&profile) != nil {
+		return result
+	}
+	if email := stringValue(profile, "email"); email != "" {
+		result["email"] = email
+	}
+	for _, key := range []string{"userId", "principalId", "firstName", "lastName", "subscriptionTier", "hasGrokCodeAccess"} {
+		if value, ok := profile[key]; ok {
+			result[key] = value
+		}
+	}
+	result["authMethod"] = "device_code"
+	return result
+}
+
+func stringValue(data map[string]any, key string) string {
+	if data == nil {
+		return ""
+	}
+	if value, ok := data[key].(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func numberValue(data map[string]any, key string) int {
+	if data == nil {
+		return 0
+	}
+	switch value := data[key].(type) {
+	case float64:
+		return int(value)
+	case float32:
+		return int(value)
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case json.Number:
+		parsed, _ := value.Int64()
+		return int(parsed)
+	default:
+		return 0
+	}
+}
+
+func oauthProviderError(data map[string]any, fallback string) string {
+	if value := stringValue(data, "error_description"); value != "" {
+		return value
+	}
+	if value := stringValue(data, "error"); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func truncateOAuthBody(body []byte) string {
+	const max = 200
+	if len(body) > max {
+		return string(body[:max])
+	}
+	return string(body)
 }
 
 // HandleGitHubDeviceCode requests GitHub Device Code for GitHub Copilot.

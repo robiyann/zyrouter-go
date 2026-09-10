@@ -66,6 +66,10 @@ assert.match(app, /btn-add-combo-target/, 'combo editor must provide an explicit
 assert.match(app, /nodesPayload\.nodes/, 'combo provider picker must resolve friendly custom-node metadata');
 assert.match(app, /data-test-model/, 'admin provider inventory must retain a dedicated upstream test action');
 assert.match(app, /\/api\/providers\/\$\{encodeURIComponent\(provId\)\}\/test-model/, 'upstream model tests must use the admin provider test endpoint');
+assert.match(app, /"id": "grok-cli"/, 'provider catalog must expose Grok CLI OAuth');
+assert.match(app, /api\/oauth\/grok-cli\/device-code/, 'Grok CLI device-code login must be wired');
+assert.match(app, /api\/oauth\/grok-cli\/poll/, 'Grok CLI device polling must be wired');
+assert.match(app, /btn-start-cline-oauth/, 'Cline OAuth login must be wired');
 assert.match(app, /data-quick-alias/, 'internal inventory must provide an explicit publish-alias action');
 assert.match(app, /UNPUBLISHED/, 'internal provider inventory must show unpublished models before alias publication');
 assert.match(app, /data-filter-pool-status/, 'proxy pools must expose status filters');

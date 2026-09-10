@@ -9,20 +9,21 @@ import (
 
 // ProviderConfig describes how to reach an upstream provider.
 type ProviderConfig struct {
-	BaseURL       string
-	AuthHeader    string            // "Authorization" or "x-api-key"
-	AuthScheme    string            // "bearer" or "raw"
-	NoAuth        bool              // true = no API key required
-	DefaultAPIKey string            // fallback API key when none provided
-	StaticHeaders map[string]string // extra headers to set on every request
-	Format        string            // "" (OpenAI standard), "gemini-native"
-	ImageURL      string            // override /images/generations endpoint
-	TTSURL        string            // override /audio/speech endpoint
-	STTURL        string            // override /audio/transcriptions endpoint
-	VideoURL      string            // override /videos/generations endpoint
-	VoicesURL     string            // override /audio/voices listing endpoint
-	FetchURL      string            // override /web/fetch endpoint (Jina, Firecrawl, etc.)
-	FetchMethod   string            // HTTP method for fetch: GET or POST (default POST)
+	BaseURL         string
+	AuthHeader      string            // "Authorization" or "x-api-key"
+	AuthScheme      string            // "bearer" or "raw"
+	AuthTokenPrefix string            // optional token prefix inserted before auth (e.g. Cline's "workos:")
+	NoAuth          bool              // true = no API key required
+	DefaultAPIKey   string            // fallback API key when none provided
+	StaticHeaders   map[string]string // extra headers to set on every request
+	Format          string            // "" (OpenAI standard), "gemini-native"
+	ImageURL        string            // override /images/generations endpoint
+	TTSURL          string            // override /audio/speech endpoint
+	STTURL          string            // override /audio/transcriptions endpoint
+	VideoURL        string            // override /videos/generations endpoint
+	VoicesURL       string            // override /audio/voices listing endpoint
+	FetchURL        string            // override /web/fetch endpoint (Jina, Firecrawl, etc.)
+	FetchMethod     string            // HTTP method for fetch: GET or POST (default POST)
 }
 
 // IsGeminiNative returns true if provider uses Gemini-native format.
@@ -226,12 +227,14 @@ var KnownProviders = map[string]ProviderConfig{
 		AuthScheme: "bearer",
 	},
 	"cline": {
-		BaseURL:    "https://api.cline.bot/api/v1/chat/completions",
-		AuthHeader: "Authorization",
-		AuthScheme: "bearer",
+		BaseURL:         "https://api.cline.bot/api/v1/chat/completions",
+		AuthHeader:      "Authorization",
+		AuthScheme:      "bearer",
+		AuthTokenPrefix: "workos:",
 		StaticHeaders: map[string]string{
-			"HTTP-Referer": "https://cline.bot",
-			"X-Title":      "Cline",
+			"HTTP-Referer":  "https://cline.bot",
+			"X-Title":       "Cline",
+			"X-CLIENT-TYPE": "9router",
 		},
 	},
 	"alicode": {

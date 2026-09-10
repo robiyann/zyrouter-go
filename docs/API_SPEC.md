@@ -53,6 +53,16 @@ Semua endpoint berikut memerlukan admin session atau API key non-client.
 ### 3.1. Provider Connections (`/api/providers`)
 - `GET /api/providers` — List semua koneksi provider terdaftar.
 - `POST /api/providers` — Tambah koneksi provider baru (API key / OAuth).
+
+### 3.1.1. OAuth Account Flows
+
+- `GET /api/oauth/cline/authorize` — Generate Cline/ClinePass authorization URL.
+- `POST /api/oauth/cline/exchange` — Exchange Cline callback code/token and save an OAuth connection. Use the same path with `clinepass` for the ClinePass connection.
+- `GET /api/oauth/grok-cli/device-code` — Start Grok CLI/Grok Build xAI device-code login.
+- `POST /api/oauth/grok-cli/poll` — Poll the Grok CLI device code and save the account after approval.
+- `POST /api/oauth/{provider}/import` — Import an OAuth access token and optional refresh/expiry metadata; imported credentials are stored as OAuth connections.
+
+Cline access tokens are normalized with the upstream-required `workos:` prefix at request time. Grok CLI profile metadata is fetched best-effort after successful device authorization; failure to fetch profile metadata does not invalidate the token.
 - `GET /api/providers/{id}` — Detail satu provider connection.
 - `PUT /api/providers/{id}` — Update prioritas, credential, atau status aktif.
 - `DELETE /api/providers/{id}` — Hapus koneksi provider.
