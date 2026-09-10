@@ -333,12 +333,14 @@ var KnownProviders = map[string]ProviderConfig{
 		AuthScheme: "bearer",
 	},
 	"clinepass": {
-		BaseURL:    "https://api.cline.bot/api/v1/chat/completions",
-		AuthHeader: "Authorization",
-		AuthScheme: "bearer",
+		BaseURL:         "https://api.cline.bot/api/v1/chat/completions",
+		AuthHeader:      "Authorization",
+		AuthScheme:      "bearer",
+		AuthTokenPrefix: "workos:",
 		StaticHeaders: map[string]string{
-			"HTTP-Referer": "https://cline.bot",
-			"X-Title":      "Cline",
+			"HTTP-Referer":  "https://cline.bot",
+			"X-Title":       "Cline",
+			"X-CLIENT-TYPE": "9router",
 		},
 	},
 	"perplexity-agent": {
