@@ -68,6 +68,8 @@ func SetupRoutes(r interface {
 	r.Get("/api/proxy-pools", adminH.HandleGetProxyPools)
 	r.Get("/api/audit-logs/files", adminH.HandleListAuditFiles)
 	r.Get("/api/audit-logs/files/{filename}", adminH.HandleDownloadAuditFile)
+	r.Delete("/api/audit-logs/files", adminH.HandleDeleteAllAuditFiles)
+	r.Delete("/api/audit-logs/files/{filename}", adminH.HandleDeleteAuditFile)
 	r.Get("/api/auth-logs", adminH.HandleGetAuthLogs)
 	r.Post("/api/proxy-pools", adminH.HandleCreateProxyPool)
 	r.Delete("/api/proxy-pools/{id}", adminH.HandleDeleteProxyPool)

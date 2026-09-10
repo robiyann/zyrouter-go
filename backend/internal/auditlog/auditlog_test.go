@@ -81,3 +81,84 @@ func TestAuditLogger_RotationAndZeroDeletion(t *testing.T) {
 
 	_ = filepath.Base(fullPath)
 }
+
+func TestAuditLogger_DeleteLogFiles(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "auditlog_delete_test_*")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	l := &Logger{
+		logDir:    tempDir,
+		entryChan: make(chan *AuditEntry, 10),
+		doneChan:  make(chan struct{}),
+	}
+	if err := l.rotateLocked(); err != nil {
+		t.Fatalf("rotate failed: %v", err)
+	}
+	activeName := filepath.Base(l.currentFile.Name())
+	archivedName := "audit-2020-01-01-0001.jsonl"
+	if err := os.WriteFile(filepath.Join(tempDir, archivedName), []byte("archived\n"), 0644); err != nil {
+		t.Fatalf("write archived file: %v", err)
+	}
+
+	if err := l.DeleteLogFile(archivedName); err != nil {
+		t.Fatalf("delete archived file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, archivedName)); !os.IsNotExist(err) {
+		t.Fatalf("archived file still exists, stat error: %v", err)
+	}
+
+	if err := l.DeleteLogFile(activeName); err != nil {
+		t.Fatalf("delete active file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, activeName)); !os.IsNotExist(err) {
+		t.Fatalf("active file still exists, stat error: %v", err)
+	}
+	files, err := l.ListLogFiles()
+	if err != nil {
+		t.Fatalf("list files: %v", err)
+	}
+	if len(files) != 1 || !files[0].IsActive || files[0].Filename == activeName {
+		t.Fatalf("expected one fresh active file after deletion, got %+v", files)
+	}
+}
+
+func TestAuditLogger_DeleteAllLogFiles(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "auditlog_delete_all_test_*")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	l := &Logger{
+		logDir:    tempDir,
+		entryChan: make(chan *AuditEntry, 10),
+		doneChan:  make(chan struct{}),
+	}
+	if err := l.rotateLocked(); err != nil {
+		t.Fatalf("rotate failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "audit-2020-01-01-0001.jsonl"), []byte("old\n"), 0644); err != nil {
+		t.Fatalf("write old file: %v", err)
+	}
+
+	deleted, err := l.DeleteAllLogFiles()
+	if err != nil {
+		t.Fatalf("delete all files: %v", err)
+	}
+	if deleted != 2 {
+		t.Fatalf("expected 2 deleted files, got %d", deleted)
+	}
+	files, err := l.ListLogFiles()
+	if err != nil {
+		t.Fatalf("list files after batch deletion: %v", err)
+	}
+	if len(files) != 1 || !files[0].IsActive {
+		t.Fatalf("expected one fresh active file after batch deletion, got %+v", files)
+	}
+	if info, err := os.Stat(filepath.Join(tempDir, files[0].Filename)); err != nil || info.Size() != 0 {
+		t.Fatalf("expected empty active file, info=%v err=%v", info, err)
+	}
+}

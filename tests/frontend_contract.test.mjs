@@ -19,6 +19,10 @@ for (const endpoint of [
   assert.match(app, new RegExp(endpoint.replace('/', '\/')), `missing frontend endpoint: ${endpoint}`);
 }
 
+assert.match(app, /btn-delete-audit-files/, 'audit archive must expose batch deletion');
+assert.match(app, /data-audit-delete/, 'audit archive must expose per-file deletion');
+assert.match(app, /\/api\/audit-logs\/files.*method: 'DELETE'/, 'audit archive must call the delete API');
+
 assert.match(app, /Authorization: `Bearer \$\{apiKey\}`/);
 assert.match(app, /async function copyText\(value\)/, 'clipboard compatibility helper is required');
 assert.match(app, /document\.execCommand\('copy'\)/, 'clipboard HTTP fallback is required');
@@ -46,7 +50,7 @@ assert.match(app, /const values = Object\.fromEntries\(new FormData\(form\)\.ent
 assert.match(app, /Public\/no-auth providers have no providerConnections row/,
   'policy builder must include active public providers without connection rows');
 assert.match(html, /id="generic-content"/);
-assert.match(html, /app\.js\?v=2\.8\.1/, 'frontend asset version must be bumped after dashboard changes');
+assert.match(html, /app\.js\?v=2\.8\.2/, 'frontend asset version must be bumped after dashboard changes');
 assert.match(html, /Issue Gateway API Key/, 'admin shortcut must describe gateway keys, not a client dashboard');
 assert.doesNotMatch(html, /:3840/, 'dashboard must not show a stale hardcoded engine port');
 assert.match(html, /data-view="account-types"/, 'sidebar must include Account Types navigation button');

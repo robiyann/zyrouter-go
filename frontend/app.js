@@ -5355,9 +5355,14 @@ function renderUsage(payload) {
           <h3 style="font-size:14px; margin:3px 0 0; font-weight:700;">Full Unredacted Payload Archive</h3>
           <p style="font-size:11.5px; color:var(--muted); margin:2px 0 0;">Stores 100% full unredacted client requests, upstream provider payloads, raw SSE streams, and client responses.</p>
         </div>
-        <button class="secondary-button" id="btn-refresh-audit-files" type="button" style="font-size:10.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;">
-          <span class="material-symbols-outlined" style="font-size:14px;">refresh</span> Refresh Files
-        </button>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="danger-button" id="btn-delete-audit-files" type="button" style="font-size:10.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;">
+            <span class="material-symbols-outlined" style="font-size:14px;">delete_sweep</span> Delete Batch
+          </button>
+          <button class="secondary-button" id="btn-refresh-audit-files" type="button" style="font-size:10.5px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;">
+            <span class="material-symbols-outlined" style="font-size:14px;">refresh</span> Refresh Files
+          </button>
+        </div>
       </div>
 
       <div id="audit-files-table-slot" style="min-height:80px;">
@@ -5993,6 +5998,9 @@ function bindUsageFilters(activeDays = 'all', activeProv = '', activeModel = '')
                     <a href="${apiBase}/api/audit-logs/files/${encodeURIComponent(f.filename)}" target="_blank" download="${escapeHtml(f.filename)}" class="secondary-button" style="text-decoration:none; font-size:9.5px; padding:3px 8px; display:inline-flex; align-items:center; gap:4px;">
                       <span class="material-symbols-outlined" style="font-size:12px;">download</span> Download
                     </a>
+                    <button type="button" class="danger-button" data-audit-delete data-filename="${escapeHtml(f.filename)}" style="font-size:9.5px; padding:3px 8px; display:inline-flex; align-items:center; gap:4px;">
+                      <span class="material-symbols-outlined" style="font-size:12px;">delete</span> Delete
+                    </button>
                   </td>
                 </tr>
               `).join('')}
@@ -6000,12 +6008,66 @@ function bindUsageFilters(activeDays = 'all', activeProv = '', activeModel = '')
           </table>
         </div>
       `;
+
+      slot.querySelectorAll('[data-audit-delete]').forEach((button) => {
+        button.onclick = () => deleteAuditFile(button.dataset.filename, button);
+      });
     } catch (err) {
       slot.innerHTML = `<p style="color:var(--danger); font-size:11px; padding:12px;">Failed to load audit file list: ${escapeHtml(err.message)}</p>`;
     }
   };
 
   loadAuditFiles();
+
+  const deleteAuditFile = async (filename, button) => {
+    const confirmed = await showConfirmModal({
+      title: 'DELETE AUDIT FILE',
+      kicker: 'IRREVERSIBLE DATA DELETION',
+      message: `Delete ${filename}? The raw audit payload in this file cannot be recovered.`,
+      confirmText: 'Delete File',
+      danger: true
+    });
+    if (!confirmed) return;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-icon"></span>';
+    try {
+      await request(`/api/audit-logs/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      showToast(`Deleted audit file ${filename}`, 'success');
+      await loadAuditFiles();
+    } catch (error) {
+      button.disabled = false;
+      button.innerHTML = originalText;
+      showToast(`Audit delete failed: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteAuditBatchBtn = document.querySelector('#btn-delete-audit-files');
+  if (deleteAuditBatchBtn) {
+    deleteAuditBatchBtn.onclick = async () => {
+      const confirmed = await showConfirmModal({
+        title: 'DELETE AUDIT BATCH',
+        kicker: 'IRREVERSIBLE DATA DELETION',
+        message: 'Delete every raw audit payload file? The active recording file will be reset and all archived payloads will be permanently removed.',
+        confirmText: 'Delete Batch',
+        danger: true
+      });
+      if (!confirmed) return;
+      const originalText = deleteAuditBatchBtn.innerHTML;
+      deleteAuditBatchBtn.disabled = true;
+      deleteAuditBatchBtn.innerHTML = '<span class="spinner-icon"></span>';
+      try {
+        const result = await request('/api/audit-logs/files', { method: 'DELETE' });
+        showToast(`Deleted ${Number(result.deleted) || 0} audit file(s)`, 'success');
+        await loadAuditFiles();
+      } catch (error) {
+        showToast(`Audit batch delete failed: ${error.message}`, 'error');
+      } finally {
+        deleteAuditBatchBtn.disabled = false;
+        deleteAuditBatchBtn.innerHTML = originalText;
+      }
+    };
+  }
   const refreshAuditBtn = document.querySelector('#btn-refresh-audit-files');
   if (refreshAuditBtn) {
     refreshAuditBtn.onclick = () => {

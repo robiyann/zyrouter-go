@@ -196,6 +196,12 @@ Production topology:
 
 Audit JSONL hanya menyimpan field training inti: `request`, `response`, masked `apiKey`, `provider`, `model`, status, dan timestamp. Header, URL upstream, connection ID, timing detail, token metadata, dan payload duplikat tidak dipersist. API key tidak pernah disimpan penuh; request/response masing-masing dibatasi 64 KiB dan diberi suffix `...[truncated]` jika melebihi batas.
 
+### 4.0.1. Audit File Management
+- `GET /api/audit-logs/files` lists active and archived JSONL audit files.
+- `GET /api/audit-logs/files/{filename}` downloads one audit file.
+- `DELETE /api/audit-logs/files/{filename}` permanently deletes one audit file.
+- `DELETE /api/audit-logs/files` permanently deletes the batch and creates a fresh empty active file so recording continues.
+
 ### 4.1. `GET /usage/stream` / `GET /api/usage/stream`
 - **Protocol:** Server-Sent Events (`text/event-stream`)
 - **Events:**

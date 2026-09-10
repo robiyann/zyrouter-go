@@ -1,5 +1,13 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-10] - [Codex] - Audit Payload Archive Deletion
+- **Modul**: `Backend / Admin Dashboard / Audit Logs`
+- **Deskripsi Perubahan**:
+  - Menambahkan tombol delete per file dan Delete Batch pada Full Unredacted Payload Archive.
+  - Menambahkan endpoint `DELETE /api/audit-logs/files/{filename}` dan `DELETE /api/audit-logs/files` dengan rotasi aman saat file aktif dihapus.
+  - Menambahkan unit test logger dan frontend contract assertions.
+- **Status Task**: Selesai
+
 ### [2026-09-08] - [Codex] - Dashboard Realtime Stream & WIB Timestamps
 - **Modul**: `Usage Ledger / Console Stream / Dashboard SSE`
 - **Deskripsi Perubahan**:

@@ -306,15 +306,105 @@ func (l *Logger) ListLogFiles() ([]LogFileInfo, error) {
 
 // GetLogFilePath returns the absolute path to a specific audit log file.
 func (l *Logger) GetLogFilePath(filename string) (string, error) {
-	clean := filepath.Clean(filename)
-	if filepath.Ext(clean) != ".jsonl" || filepath.Base(clean) != clean {
-		return "", fmt.Errorf("invalid log filename")
+	clean, err := validateLogFilename(filename)
+	if err != nil {
+		return "", err
 	}
 	fullPath := filepath.Join(l.logDir, clean)
 	if _, err := os.Stat(fullPath); err != nil {
 		return "", err
 	}
 	return fullPath, nil
+}
+
+// DeleteLogFile removes one audit file. If the file is currently active, the
+// logger starts a fresh file before accepting the next queued entry.
+func (l *Logger) DeleteLogFile(filename string) error {
+	clean, err := validateLogFilename(filename)
+	if err != nil {
+		return err
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	fullPath := filepath.Join(l.logDir, clean)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("audit log path is a directory")
+	}
+	active := l.currentFile != nil && filepath.Base(l.currentFile.Name()) == clean
+	if active {
+		_ = l.currentFile.Sync()
+		_ = l.currentFile.Close()
+		l.currentFile = nil
+		l.currentSize = 0
+	}
+
+	if err := os.Remove(fullPath); err != nil {
+		if active {
+			_ = l.rotateLocked()
+		}
+		return err
+	}
+	if active {
+		l.currentIndex++
+		if err := l.rotateLocked(); err != nil {
+			return fmt.Errorf("reopen audit log after deletion: %w", err)
+		}
+	}
+	return nil
+}
+
+// DeleteAllLogFiles removes every JSONL audit file and leaves a new empty
+// active file so logging can continue without restarting the gateway.
+func (l *Logger) DeleteAllLogFiles() (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	entries, err := os.ReadDir(l.logDir)
+	if err != nil {
+		return 0, err
+	}
+	if l.currentFile != nil {
+		_ = l.currentFile.Sync()
+		_ = l.currentFile.Close()
+		l.currentFile = nil
+		l.currentSize = 0
+	}
+
+	deleted := 0
+	var firstErr error
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+			continue
+		}
+		if err := os.Remove(filepath.Join(l.logDir, entry.Name())); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		deleted++
+	}
+
+	l.currentDate = ""
+	l.currentIndex = 0
+	if err := l.rotateLocked(); err != nil {
+		return deleted, err
+	}
+	return deleted, firstErr
+}
+
+func validateLogFilename(filename string) (string, error) {
+	clean := filepath.Clean(filename)
+	if filepath.Ext(clean) != ".jsonl" || filepath.Base(clean) != clean {
+		return "", fmt.Errorf("invalid log filename")
+	}
+	return clean, nil
 }
 
 // Close flushes and shuts down the audit logger.

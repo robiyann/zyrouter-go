@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -2017,6 +2018,37 @@ func (h *AdminHandler) HandleDownloadAuditFile(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	http.ServeFile(w, r, filePath)
+}
+
+// HandleDeleteAuditFile deletes one archived or active audit log file.
+// DELETE /api/audit-logs/files/{filename}
+func (h *AdminHandler) HandleDeleteAuditFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	if err := auditlog.Get().DeleteLogFile(filename); err != nil {
+		status := http.StatusBadRequest
+		if os.IsNotExist(err) {
+			status = http.StatusNotFound
+		}
+		handlerutil.WriteJSONError(w, status, err.Error())
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+		"success": true, "filename": filename,
+	})
+}
+
+// HandleDeleteAllAuditFiles clears all audit log files and starts a fresh
+// empty active file so recording can continue without restarting the gateway.
+// DELETE /api/audit-logs/files
+func (h *AdminHandler) HandleDeleteAllAuditFiles(w http.ResponseWriter, r *http.Request) {
+	deleted, err := auditlog.Get().DeleteAllLogFiles()
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+		"success": true, "deleted": deleted,
+	})
 }
 func min(a, b int) int {
 	if a < b {
