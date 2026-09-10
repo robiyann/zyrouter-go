@@ -686,6 +686,9 @@ func decodeClineCode(code string) (map[string]any, bool) {
 	if len(code) > 64*1024 {
 		return nil, false
 	}
+	// url.Parse().Query().Get() converts raw '+' characters in query values
+	// into spaces. Restore them before attempting standard Base64 decoding.
+	code = strings.ReplaceAll(strings.TrimSpace(code), " ", "+")
 	for _, encoding := range []*base64.Encoding{base64.RawURLEncoding, base64.URLEncoding, base64.RawStdEncoding, base64.StdEncoding} {
 		decoded, err := encoding.DecodeString(code)
 		if err != nil {

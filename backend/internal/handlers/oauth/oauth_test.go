@@ -150,8 +150,9 @@ func TestHandleOAuthExchange_clineBase64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := base64.RawURLEncoding.EncodeToString(payload)
-	req := httptest.NewRequest("POST", "/api/oauth/cline/exchange", strings.NewReader(`{"code":"`+code+`","name":"Cline Test"}`))
+	code := base64.RawURLEncoding.EncodeToString(append(payload, []byte("signed-tail")...))
+	callbackURL := "https://app.cline.bot/auth/callback?authentication_method=GoogleOAuth&callback_url=https%3A%2F%2Fapp.cline.bot&client_type=extension&code=" + url.QueryEscape(code) + "&created=true&terms_accepted=false"
+	req := httptest.NewRequest("POST", "/api/oauth/cline/exchange", strings.NewReader(`{"code":"`+callbackURL+`","name":"Cline Test"}`))
 	req.SetPathValue("provider", "cline")
 	rec := httptest.NewRecorder()
 	handler.HandleOAuthExchange(rec, req)
@@ -164,6 +165,37 @@ func TestHandleOAuthExchange_clineBase64(t *testing.T) {
 	}
 	if authType != "oauth" || !strings.Contains(data, `"refreshToken":"cline-refresh"`) {
 		t.Fatalf("unexpected Cline connection: authType=%q data=%s", authType, data)
+	}
+}
+
+func TestHandleOAuthExchange_clineHTTPFallback(t *testing.T) {
+	database, cleanup := setupOAuthTestDB(t)
+	defer cleanup()
+	handler := NewOAuthHandler(db.NewRepo(database))
+	previousClient := oauthHTTPClient
+	defer func() { oauthHTTPClient = previousClient }()
+	var gotRequest *http.Request
+	oauthHTTPClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		gotRequest = r
+		return jsonResponse(http.StatusOK, `{"data":{"accessToken":"fallback-access","refreshToken":"fallback-refresh","expiresAt":"2027-01-01T00:00:00Z"}}`), nil
+	})}
+
+	req := httptest.NewRequest("POST", "/api/oauth/cline/exchange", strings.NewReader(`{"code":"not-a-cline-payload","redirectUri":"http://localhost:20128/callback"}`))
+	req.SetPathValue("provider", "cline")
+	rec := httptest.NewRecorder()
+	handler.HandleOAuthExchange(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotRequest == nil || gotRequest.URL.String() != clineTokenURL || gotRequest.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("unexpected fallback request: %+v", gotRequest)
+	}
+	var authType, data string
+	if err := database.QueryRow(`SELECT authType, data FROM providerConnections WHERE provider = 'cline'`).Scan(&authType, &data); err != nil {
+		t.Fatalf("query fallback connection: %v", err)
+	}
+	if authType != "oauth" || !strings.Contains(data, `"accessToken":"fallback-access"`) || !strings.Contains(data, `"refreshToken":"fallback-refresh"`) {
+		t.Fatalf("unexpected fallback connection: authType=%q data=%s", authType, data)
 	}
 }
 

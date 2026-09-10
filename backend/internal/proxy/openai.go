@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 
 	"zyrouter/backend/internal/providers"
@@ -24,6 +25,17 @@ func ForwardOpenAI(ctx context.Context, client *http.Client, cfg *providers.Prov
 			headers[cfg.AuthHeader] = apiKey
 		default:
 			headers["Authorization"] = "Bearer " + apiKey
+		}
+		if cfg.AuthTokenPrefix == "workos:" {
+			// Mirror the Cline extension identity headers used by 9router
+			// original. Cline can reject otherwise valid OAuth credentials.
+			headers["User-Agent"] = "9Router/1.8.4"
+			headers["X-PLATFORM"] = runtime.GOOS
+			headers["X-PLATFORM-VERSION"] = runtime.Version()
+			headers["X-CLIENT-TYPE"] = "9router"
+			headers["X-CLIENT-VERSION"] = "1.8.4"
+			headers["X-CORE-VERSION"] = "1.8.4"
+			headers["X-IS-MULTIROOT"] = "false"
 		}
 	}
 	for k, v := range cfg.StaticHeaders {
