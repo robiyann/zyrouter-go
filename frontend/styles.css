@@ -3537,4 +3537,46 @@ button:disabled, .solid-button:disabled, .secondary-button:disabled {
 .cyber-toast.info .toast-icon {
   color: #38bdf8;
 }
+
+/* Usage summary cards collapse to a readable single column on phones. */
+@media (max-width: 640px) {
+  .usage-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .usage-metric-card {
+    min-width: 0;
+    padding: 14px;
+  }
+
+  .usage-metric-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .usage-metric-kicker {
+    white-space: nowrap;
+  }
+
+  .usage-metric-body {
+    gap: 16px;
+  }
+
+  .usage-metric-val {
+    font-size: clamp(24px, 8vw, 30px);
+    white-space: nowrap;
+  }
+
+  .usage-metric-spark {
+    min-width: 72px;
+    max-width: 42%;
+  }
+
+  .usage-metric-footer {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+}
 .api-key-filters{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px;padding:12px;border:1px solid rgba(139,255,42,.14);border-radius:10px;background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(8,10,15,.72));box-shadow:inset 0 1px rgba(255,255,255,.04)}.api-key-filters label{display:flex;flex-direction:column;gap:5px;color:#8290a3;font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase}.api-key-filters select,.api-key-filters input[type=date]{height:31px;min-width:150px;padding:0 9px;border:1px solid #303846;border-radius:6px;background:#080b10;color:#e7edf5;font:500 11px var(--mono);outline:none;color-scheme:dark}.api-key-filters input[type=date]{min-width:132px}.api-key-filters select:focus,.api-key-filters input[type=date]:focus{border-color:var(--lime);box-shadow:0 0 0 2px rgba(139,255,42,.1)}.api-key-filters button{height:31px;font:700 10px var(--mono);letter-spacing:.04em}.api-key-filters .filter-apply{color:#0a0d0b;background:var(--lime);border-color:var(--lime);box-shadow:0 0 14px rgba(139,255,42,.2)}.api-key-filters .filter-clear{background:#171c24;border-color:#303846}@media(max-width:640px){.api-key-filters{align-items:stretch}.api-key-filters label,.api-key-filters select,.api-key-filters input[type=date]{width:100%;min-width:0}.api-key-filters button{flex:1}}
