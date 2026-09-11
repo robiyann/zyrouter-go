@@ -30,14 +30,10 @@ func TestRenderSnapshotIncludesWeeklyAndFiveHour(t *testing.T) {
 				{ID: "gemini-5h", Label: "Gemini 5-hour", RemainingPercentage: 84},
 				{ID: "gemini-weekly", Label: "Gemini Weekly", RemainingPercentage: 67},
 			},
-			Models: []antigravityquota.ModelQuota{
-				{ID: "model-a", DisplayName: "Same Model", RemainingPercentage: 80, ResetAt: "2030-01-01T01:00:00Z"},
-				{ID: "model-b", DisplayName: "Same Model Alias", RemainingPercentage: 80, ResetAt: "2030-01-01T01:00:00Z"},
-			},
 		}},
 	}
 	full := renderSnapshot(snapshot, false, "")
-	if !containsAll(full, "Gemini Models", "Gemini 5-hour: 84%", "Gemini Weekly: 67%", "Same Model, Same Model Alias") {
+	if !containsAll(full, "Gemini Models", "Gemini 5-hour: 84%", "Gemini Weekly: 67%") || strings.Contains(full, "Per-model") {
 		t.Fatalf("full quota output missing windows: %s", full)
 	}
 	weekly := renderSnapshot(snapshot, true, "")

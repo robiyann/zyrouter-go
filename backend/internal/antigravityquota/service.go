@@ -41,24 +41,15 @@ type Window struct {
 	ResetAt             string  `json:"resetAt,omitempty"`
 }
 
-// ModelQuota is the per-model quota returned by fetchAvailableModels.
-type ModelQuota struct {
-	ID                  string  `json:"id"`
-	DisplayName         string  `json:"displayName"`
-	RemainingPercentage float64 `json:"remainingPercentage"`
-	ResetAt             string  `json:"resetAt,omitempty"`
-}
-
-// AccountQuota contains both aggregate windows and per-model details for one
+// AccountQuota contains aggregate quota windows for one
 // provider connection. Error is scoped to this account so other accounts can
 // still be displayed when one token or endpoint fails.
 type AccountQuota struct {
-	ConnectionID string       `json:"connectionId"`
-	Email        string       `json:"email,omitempty"`
-	Name         string       `json:"name,omitempty"`
-	Windows      []Window     `json:"windows,omitempty"`
-	Models       []ModelQuota `json:"models,omitempty"`
-	Error        string       `json:"error,omitempty"`
+	ConnectionID string   `json:"connectionId"`
+	Email        string   `json:"email,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	Windows      []Window `json:"windows,omitempty"`
+	Error        string   `json:"error,omitempty"`
 }
 
 // Snapshot is the bot-facing quota response.
@@ -223,15 +214,9 @@ func (s *Service) fetchAccount(ctx context.Context, connection *models.ProviderC
 	}
 
 	summary, summaryErr := s.fetchSummary(ctx, accessToken, projectID)
-	models, modelsErr := s.fetchModels(ctx, accessToken, projectID)
 	account.Windows = summary
-	account.Models = models
-	if summaryErr != nil && modelsErr != nil {
-		account.Error = fmt.Sprintf("quota summary: %v; model quota: %v", summaryErr, modelsErr)
-	} else if summaryErr != nil {
+	if summaryErr != nil {
 		account.Error = fmt.Sprintf("weekly/5-hour summary unavailable: %v", summaryErr)
-	} else if modelsErr != nil {
-		account.Error = fmt.Sprintf("per-model quota unavailable: %v", modelsErr)
 	}
 	return account
 }
@@ -246,41 +231,6 @@ func (s *Service) fetchSummary(ctx context.Context, token, projectID string) ([]
 		return nil, fmt.Errorf("summary response contained no quota windows")
 	}
 	return windows, nil
-}
-
-func (s *Service) fetchModels(ctx context.Context, token, projectID string) ([]ModelQuota, error) {
-	body, err := s.postQuota(ctx, ":fetchAvailableModels", token, projectID)
-	if err != nil {
-		return nil, err
-	}
-	var envelope struct {
-		Models map[string]struct {
-			DisplayName string `json:"displayName"`
-			IsInternal  bool   `json:"isInternal"`
-			QuotaInfo   *struct {
-				RemainingFraction *float64 `json:"remainingFraction"`
-				ResetTime         string   `json:"resetTime"`
-			} `json:"quotaInfo"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("decode model quota: %w", err)
-	}
-	result := make([]ModelQuota, 0, len(envelope.Models))
-	for id, model := range envelope.Models {
-		if model.IsInternal || model.QuotaInfo == nil || model.QuotaInfo.RemainingFraction == nil {
-			continue
-		}
-		fraction := clampFraction(*model.QuotaInfo.RemainingFraction)
-		result = append(result, ModelQuota{
-			ID: id, DisplayName: firstNonEmpty(model.DisplayName, id),
-			RemainingPercentage: fraction * 100, ResetAt: model.QuotaInfo.ResetTime,
-		})
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return strings.ToLower(result[i].DisplayName) < strings.ToLower(result[j].DisplayName)
-	})
-	return result, nil
 }
 
 func (s *Service) postQuota(ctx context.Context, action, token, projectID string) ([]byte, error) {
@@ -426,7 +376,6 @@ func cloneSnapshot(snapshot *Snapshot) *Snapshot {
 	for i, account := range snapshot.Accounts {
 		clone.Accounts[i] = account
 		clone.Accounts[i].Windows = append([]Window(nil), account.Windows...)
-		clone.Accounts[i].Models = append([]ModelQuota(nil), account.Models...)
 	}
 	return clone
 }

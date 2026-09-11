@@ -36,7 +36,7 @@ func TestParseSummaryIncludesWeeklyAndFiveHourBuckets(t *testing.T) {
 	}
 }
 
-func TestSnapshotReadsDatabaseAndMergesSummaryWithModelQuota(t *testing.T) {
+func TestSnapshotReadsDatabaseAndFormatsSummaryWindows(t *testing.T) {
 	file, err := os.CreateTemp("", "ag-quota-*.sqlite")
 	if err != nil {
 		t.Fatal(err)
@@ -76,9 +76,6 @@ func TestSnapshotReadsDatabaseAndMergesSummaryWithModelQuota(t *testing.T) {
 		case "/v1internal:retrieveUserQuotaSummary":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.72,"resetTime":"2030-01-05T00:00:00Z"},{"bucketId":"gemini-5h","window":"5h","remainingFraction":0.88}]}]}`))
-		case "/v1internal:fetchAvailableModels":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"models":{"gemini-3.8-flash-high":{"displayName":"Gemini 3.8 Flash High","quotaInfo":{"remainingFraction":0.81,"resetTime":"2030-01-01T01:00:00Z"}},"internal":{"isInternal":true,"quotaInfo":{"remainingFraction":0}}}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -99,9 +96,6 @@ func TestSnapshotReadsDatabaseAndMergesSummaryWithModelQuota(t *testing.T) {
 	}
 	if account.Windows[1].RemainingPercentage != 72 {
 		t.Fatalf("unexpected weekly percentage: %+v", account.Windows[1])
-	}
-	if len(account.Models) != 1 || account.Models[0].RemainingPercentage != 81 {
-		t.Fatalf("unexpected model quota: %+v", account.Models)
 	}
 	if strings.Contains(account.Error, "weekly") {
 		t.Fatalf("unexpected weekly error: %q", account.Error)

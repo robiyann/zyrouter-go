@@ -231,11 +231,11 @@ Run it from `backend/`:
 go run ./cmd/antigravity-quota-bot
 ```
 
-Commands: `/quota` (weekly, 5-hour, and per-model), `/weekly`, and
+Commands: `/quota` (weekly and 5-hour windows), `/weekly`, and
 `/refresh`. Quota data is cached for 60 seconds; `/refresh` bypasses the
 cache. The weekly and 5-hour aggregate windows come from
-`retrieveUserQuotaSummary`, while per-model details come from
-`fetchAvailableModels`.
+`retrieveUserQuotaSummary`. The output is grouped by Gemini and Claude/GPT
+quota pools and intentionally omits repetitive per-model rows.
 
 ## API Endpoints
 
