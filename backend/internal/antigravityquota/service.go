@@ -3,9 +3,11 @@
 package antigravityquota
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -325,7 +327,6 @@ func (s *Service) post(ctx context.Context, endpoint, token string, payload []by
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("User-Agent", DefaultUserAgent)
 	req.Header.Set("X-Client-Name", DefaultClientName)
 	req.Header.Set("X-Client-Version", DefaultClientVersion)
@@ -334,17 +335,19 @@ func (s *Service) post(ctx context.Context, endpoint, token string, payload []by
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
-	var body []byte
-	if resp.ContentLength > 0 && resp.ContentLength < 10*1024*1024 {
-		body = make([]byte, 0, resp.ContentLength)
-	}
-	buffer := make([]byte, 32*1024)
-	for len(body) < 10*1024*1024 {
-		n, readErr := resp.Body.Read(buffer)
-		body = append(body, buffer[:n]...)
-		if readErr != nil {
-			break
+	var reader io.Reader = resp.Body
+	var gzipReader *gzip.Reader
+	if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+		gzipReader, err = gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, resp.StatusCode, fmt.Errorf("decode gzip response: %w", err)
 		}
+		defer gzipReader.Close()
+		reader = gzipReader
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, 10*1024*1024))
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("read response: %w", err)
 	}
 	return body, resp.StatusCode, nil
 }

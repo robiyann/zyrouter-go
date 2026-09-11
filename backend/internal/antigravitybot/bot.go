@@ -65,6 +65,10 @@ type telegramResponse[T any] struct {
 	Result      T      `json:"result"`
 }
 
+type sentMessage struct {
+	MessageID int64 `json:"message_id"`
+}
+
 // ParseAllowedUserIDs parses a comma-separated Telegram user ID allowlist.
 func ParseAllowedUserIDs(raw string) (map[int64]struct{}, error) {
 	allowed := make(map[int64]struct{})
@@ -176,10 +180,18 @@ func (b *Bot) replyQuota(ctx context.Context, chatID, userID int64, weeklyOnly b
 		b.send(ctx, chatID, "Tunggu beberapa detik sebelum meminta quota lagi.")
 		return
 	}
+	loadingID := b.send(ctx, chatID, "⏳ Sedang mengambil quota Antigravity...")
+	typingCtx, stopTyping := context.WithCancel(ctx)
+	defer stopTyping()
+	go b.keepTyping(typingCtx, chatID)
+
 	force := strings.EqualFold(argument, "refresh")
 	snapshot, err := b.quota.Snapshot(ctx, force)
 	if err != nil {
-		b.send(ctx, chatID, "❌ Gagal mengambil quota: "+err.Error())
+		message := "❌ Gagal mengambil quota: " + err.Error()
+		if loadingID != 0 && !b.editMessage(ctx, chatID, loadingID, message) {
+			b.send(ctx, chatID, message)
+		}
 		return
 	}
 	filter := argument
@@ -187,8 +199,29 @@ func (b *Bot) replyQuota(ctx context.Context, chatID, userID int64, weeklyOnly b
 		filter = ""
 	}
 	text := renderSnapshot(snapshot, weeklyOnly, filter)
-	for _, part := range splitMessage(text) {
+	parts := splitMessage(text)
+	if loadingID != 0 && len(parts) > 0 && b.editMessage(ctx, chatID, loadingID, parts[0]) {
+		for _, part := range parts[1:] {
+			b.send(ctx, chatID, part)
+		}
+		return
+	}
+	for _, part := range parts {
 		b.send(ctx, chatID, part)
+	}
+}
+
+func (b *Bot) keepTyping(ctx context.Context, chatID int64) {
+	b.sendChatAction(ctx, chatID)
+	ticker := time.NewTicker(4 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			b.sendChatAction(ctx, chatID)
+		}
 	}
 }
 
@@ -349,18 +382,63 @@ func (b *Bot) getUpdates(ctx context.Context, offset int64) ([]update, error) {
 	return response.Result, nil
 }
 
-func (b *Bot) send(ctx context.Context, chatID int64, text string) {
+func (b *Bot) send(ctx context.Context, chatID int64, text string) int64 {
 	payload := map[string]string{"chat_id": strconv.FormatInt(chatID, 10), "text": text}
 	body, _ := json.Marshal(payload)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, telegramAPIBase+b.token+"/sendMessage", bytes.NewReader(body))
 	if err != nil {
-		return
+		return 0
 	}
 	request.Header.Set("Content-Type", "application/json")
 	response, err := b.client.Do(request)
-	if err == nil && response.Body != nil {
-		response.Body.Close()
+	if err != nil {
+		return 0
 	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return 0
+	}
+	var result telegramResponse[sentMessage]
+	if json.NewDecoder(response.Body).Decode(&result) != nil || !result.OK {
+		return 0
+	}
+	return result.Result.MessageID
+}
+
+func (b *Bot) editMessage(ctx context.Context, chatID, messageID int64, text string) bool {
+	payload := map[string]string{
+		"chat_id":    strconv.FormatInt(chatID, 10),
+		"message_id": strconv.FormatInt(messageID, 10),
+		"text":       text,
+	}
+	return b.postTelegramJSON(ctx, "editMessageText", payload)
+}
+
+func (b *Bot) sendChatAction(ctx context.Context, chatID int64) {
+	payload := map[string]string{"chat_id": strconv.FormatInt(chatID, 10), "action": "typing"}
+	_ = b.postTelegramJSON(ctx, "sendChatAction", payload)
+}
+
+func (b *Bot) postTelegramJSON(ctx context.Context, method string, payload interface{}) bool {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, telegramAPIBase+b.token+"/"+method, bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := b.client.Do(request)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return false
+	}
+	var result telegramResponse[json.RawMessage]
+	return json.NewDecoder(response.Body).Decode(&result) == nil && result.OK
 }
 
 func call[T any](b *Bot, ctx context.Context, method string, values url.Values) (*telegramResponse[T], error) {
