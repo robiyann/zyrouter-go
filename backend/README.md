@@ -194,6 +194,8 @@ via CLI flag or environment variable (CLI flag overrides env).
 | `CAVEMAN_ENABLED` | `false` | Enable Caveman terse output style |
 | `PONYTAIL_ENABLED` | `false` | Enable Ponytail minimal-code bias |
 | `ENABLED_PROVIDERS` | empty | Optional comma-separated provider allowlist; empty keeps all providers |
+| `TELEGRAM_QUOTA_BOT_TOKEN` | empty | Separate BotFather token for the quota bot |
+| `TELEGRAM_QUOTA_ALLOWED_USER_IDS` | empty | Comma-separated Telegram numeric IDs allowed to view quota |
 
 ## Database
 
@@ -209,6 +211,31 @@ See [DATABASE.md](DATABASE.md) for full schema documentation, JSON blob structur
 # Use custom SQLite path
 DB_PATH=/mnt/shared/9router/data.sqlite PORT=20128 ./zyrouter
 ```
+
+### Standalone Antigravity quota bot
+
+The quota bot runs as a separate process and reads Antigravity OAuth
+connections from the same Zyrouter SQLite database. It never accepts OAuth
+tokens from Telegram. Use a separate BotFather token from the gateway's
+verification bot, and configure a numeric Telegram user-ID allowlist:
+
+```env
+DB_PATH=/path/to/zyrouter/data.sqlite
+TELEGRAM_QUOTA_BOT_TOKEN=123456:replace-me
+TELEGRAM_QUOTA_ALLOWED_USER_IDS=123456789
+```
+
+Run it from `backend/`:
+
+```bash
+go run ./cmd/antigravity-quota-bot
+```
+
+Commands: `/quota` (weekly, 5-hour, and per-model), `/weekly`, and
+`/refresh`. Quota data is cached for 60 seconds; `/refresh` bypasses the
+cache. The weekly and 5-hour aggregate windows come from
+`retrieveUserQuotaSummary`, while per-model details come from
+`fetchAvailableModels`.
 
 ## API Endpoints
 

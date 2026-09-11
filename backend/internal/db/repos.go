@@ -424,6 +424,38 @@ func (r *Repo) UpdateProviderConnection(conn *models.ProviderConnection) error {
 	return err
 }
 
+// UpdateProviderConnectionOAuthTokens updates only OAuth token fields inside
+// providerConnections.data. Using json_set preserves concurrent router-owned
+// fields such as model locks and backoff state.
+func (r *Repo) UpdateProviderConnectionOAuthTokens(id, accessToken, refreshToken, expiresAt string) error {
+	if id == "" || accessToken == "" {
+		return fmt.Errorf("connection id and access token are required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	query := `UPDATE providerConnections
+		SET data = json_set(CASE WHEN json_valid(data) THEN data ELSE '{}' END,
+			'$.accessToken', ?, '$.expiresAt', ?), updatedAt = ?
+		WHERE id = ?`
+	args := []any{accessToken, expiresAt, now, id}
+	if refreshToken != "" {
+		query = `UPDATE providerConnections
+			SET data = json_set(CASE WHEN json_valid(data) THEN data ELSE '{}' END,
+				'$.accessToken', ?, '$.refreshToken', ?, '$.expiresAt', ?), updatedAt = ?
+			WHERE id = ?`
+		args = []any{accessToken, refreshToken, expiresAt, now, id}
+	}
+
+	result, err := r.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("update OAuth tokens for %s: %w", id, err)
+	}
+	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
+		return fmt.Errorf("provider connection %s not found", id)
+	}
+	return nil
+}
+
 // DeleteProviderConnection removes a provider connection by ID.
 func (r *Repo) DeleteProviderConnection(id string) error {
 	_, err := r.db.Exec("DELETE FROM providerConnections WHERE id = ?", id)

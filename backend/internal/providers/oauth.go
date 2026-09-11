@@ -1,12 +1,14 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"zyrouter/backend/internal/handlerutil"
@@ -29,10 +31,11 @@ type OAuthConnectionData struct {
 
 // OAuthTokenResponse is the JSON response from a token refresh endpoint.
 type OAuthTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	ExpiresIn   int    `json:"expires_in"`
-	Scope       string `json:"scope,omitempty"`
-	TokenType   string `json:"token_type,omitempty"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope,omitempty"`
+	TokenType    string `json:"token_type,omitempty"`
 }
 
 // KnownOAuthConfigs maps provider IDs to their OAuth client configuration for token refresh.
@@ -98,7 +101,7 @@ func envOr(key, fallback string) string {
 }
 
 func defaultAgClientID() string {
-	b := []byte{107,106,109,107,106,106,108,106,108,106,111,99,107,119,46,55,50,41,41,51,52,104,50,104,107,54,57,40,63,104,105,111,44,46,53,54,53,48,50,110,61,110,106,105,63,42,116,59,42,42,41,116,61,53,53,61,54,63,47,41,63,40,57,53,52,46,63,52,46,116,57,53,55}
+	b := []byte{107, 106, 109, 107, 106, 106, 108, 106, 108, 106, 111, 99, 107, 119, 46, 55, 50, 41, 41, 51, 52, 104, 50, 104, 107, 54, 57, 40, 63, 104, 105, 111, 44, 46, 53, 54, 53, 48, 50, 110, 61, 110, 106, 105, 63, 42, 116, 59, 42, 42, 41, 116, 61, 53, 53, 61, 54, 63, 47, 41, 63, 40, 57, 53, 52, 46, 63, 52, 46, 116, 57, 53, 55}
 	res := make([]byte, len(b))
 	for i := range b {
 		res[i] = b[i] ^ 0x5A
@@ -107,7 +110,7 @@ func defaultAgClientID() string {
 }
 
 func defaultAgClientSecret() string {
-	b := []byte{29,21,25,9,10,2,119,17,111,98,28,13,8,110,98,108,22,62,22,16,107,55,22,24,98,41,2,25,110,32,108,43,30,27,60}
+	b := []byte{29, 21, 25, 9, 10, 2, 119, 17, 111, 98, 28, 13, 8, 110, 98, 108, 22, 62, 22, 16, 107, 55, 22, 24, 98, 41, 2, 25, 110, 32, 108, 43, 30, 27, 60}
 	res := make([]byte, len(b))
 	for i := range b {
 		res[i] = b[i] ^ 0x5A
@@ -118,13 +121,28 @@ func defaultAgClientSecret() string {
 // RefreshToken performs an OAuth token refresh for the given provider configuration.
 // Returns the new access token and expires_in duration.
 func RefreshToken(cfg OAuthClientConfig, refreshToken string) (*OAuthTokenResponse, error) {
+	return RefreshTokenContext(context.Background(), http.DefaultClient, cfg, refreshToken)
+}
+
+// RefreshTokenContext exchanges a refresh token for a new access token using
+// the supplied context and HTTP client. Background services use this variant
+// so shutdowns and request deadlines are respected.
+func RefreshTokenContext(ctx context.Context, client *http.Client, cfg OAuthClientConfig, refreshToken string) (*OAuthTokenResponse, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	values := url.Values{
 		"client_id":     {cfg.ClientID},
 		"client_secret": {cfg.ClientSecret},
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 	}
-	resp, err := http.PostForm(cfg.TokenURL, values)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(values.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("create OAuth refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("OAuth refresh POST: %w", err)
 	}
@@ -194,8 +212,12 @@ func ParseRefreshResponse(body []byte) (*OAuthTokenResponse, error) {
 
 // BuildConnectionUpdate builds a partial ConnectionData map for DB update.
 func (r *OAuthTokenResponse) BuildConnectionUpdate() map[string]interface{} {
-	return map[string]interface{}{
+	update := map[string]interface{}{
 		"accessToken": r.AccessToken,
 		"expiresAt":   time.Now().Add(time.Duration(r.ExpiresIn) * time.Second).Format(time.RFC3339),
 	}
+	if r.RefreshToken != "" {
+		update["refreshToken"] = r.RefreshToken
+	}
+	return update
 }
