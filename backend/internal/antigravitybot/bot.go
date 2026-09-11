@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,29 +257,9 @@ func renderSnapshot(snapshot *antigravityquota.Snapshot, weeklyOnly bool, filter
 		visibleAccounts++
 		out.WriteString("\n")
 		out.WriteString(fmt.Sprintf("Account %d: %s\n", index+1, safeAccountLabel(account)))
-		if len(account.Windows) > 0 {
-			for _, window := range account.Windows {
-				if weeklyOnly && !strings.Contains(strings.ToLower(window.ID+" "+window.Label), "weekly") {
-					continue
-				}
-				out.WriteString(fmt.Sprintf("%s: %.0f%% remaining", window.Label, window.RemainingPercentage))
-				if window.ResetAt != "" {
-					out.WriteString(" | reset ")
-					out.WriteString(formatReset(window.ResetAt))
-				}
-				out.WriteString("\n")
-			}
-		}
+		renderWindows(&out, account.Windows, weeklyOnly)
 		if !weeklyOnly && len(account.Models) > 0 {
-			out.WriteString("\nPer-model:\n")
-			for _, model := range account.Models {
-				out.WriteString(fmt.Sprintf("• %s: %.0f%%", model.DisplayName, model.RemainingPercentage))
-				if model.ResetAt != "" {
-					out.WriteString(" | reset ")
-					out.WriteString(formatReset(model.ResetAt))
-				}
-				out.WriteString("\n")
-			}
+			renderModels(&out, account.Models)
 		}
 		if account.Error != "" {
 			out.WriteString("⚠️ ")
@@ -290,6 +271,132 @@ func renderSnapshot(snapshot *antigravityquota.Snapshot, weeklyOnly bool, filter
 		return "🚀 Antigravity Quota\n\nTidak ada akun yang cocok dengan filter: " + filter
 	}
 	return out.String()
+}
+
+func renderWindows(out *strings.Builder, windows []antigravityquota.Window, weeklyOnly bool) {
+	type windowGroup struct {
+		name    string
+		windows []antigravityquota.Window
+		seen    map[string]struct{}
+	}
+	groups := make(map[string]*windowGroup)
+	for _, window := range windows {
+		if weeklyOnly && !strings.Contains(strings.ToLower(window.ID+" "+window.Label), "weekly") {
+			continue
+		}
+		groupName := quotaGroupName(window)
+		group := groups[groupName]
+		if group == nil {
+			group = &windowGroup{name: groupName, seen: make(map[string]struct{})}
+			groups[groupName] = group
+		}
+		key := fmt.Sprintf("%s|%s|%.4f|%s", window.ID, window.Label, window.RemainingPercentage, window.ResetAt)
+		if _, exists := group.seen[key]; exists {
+			continue
+		}
+		group.seen[key] = struct{}{}
+		group.windows = append(group.windows, window)
+	}
+	if len(groups) == 0 {
+		return
+	}
+
+	groupList := make([]*windowGroup, 0, len(groups))
+	for _, group := range groups {
+		groupList = append(groupList, group)
+	}
+	sort.Slice(groupList, func(i, j int) bool {
+		left, right := quotaGroupOrder(groupList[i].name), quotaGroupOrder(groupList[j].name)
+		if left != right {
+			return left < right
+		}
+		return groupList[i].name < groupList[j].name
+	})
+
+	out.WriteString("\nQuota windows:\n")
+	for _, group := range groupList {
+		out.WriteString(group.name + "\n")
+		for _, window := range group.windows {
+			out.WriteString(fmt.Sprintf("• %s: %.0f%% remaining", window.Label, window.RemainingPercentage))
+			if window.ResetAt != "" {
+				out.WriteString(" | reset ")
+				out.WriteString(formatReset(window.ResetAt))
+			}
+			out.WriteString("\n")
+		}
+	}
+}
+
+func renderModels(out *strings.Builder, models []antigravityquota.ModelQuota) {
+	type modelGroup struct {
+		remaining float64
+		resetAt   string
+		names     []string
+		seen      map[string]struct{}
+	}
+	groups := make(map[string]*modelGroup)
+	for _, model := range models {
+		name := strings.TrimSpace(model.DisplayName)
+		if name == "" {
+			name = model.ID
+		}
+		key := fmt.Sprintf("%.4f|%s", model.RemainingPercentage, model.ResetAt)
+		group := groups[key]
+		if group == nil {
+			group = &modelGroup{remaining: model.RemainingPercentage, resetAt: model.ResetAt, seen: make(map[string]struct{})}
+			groups[key] = group
+		}
+		if _, exists := group.seen[name]; !exists {
+			group.seen[name] = struct{}{}
+			group.names = append(group.names, name)
+		}
+	}
+	groupList := make([]*modelGroup, 0, len(groups))
+	for _, group := range groups {
+		groupList = append(groupList, group)
+	}
+	sort.Slice(groupList, func(i, j int) bool {
+		if groupList[i].remaining != groupList[j].remaining {
+			return groupList[i].remaining > groupList[j].remaining
+		}
+		return groupList[i].resetAt < groupList[j].resetAt
+	})
+
+	out.WriteString("\nPer-model (grouped):\n")
+	for _, group := range groupList {
+		out.WriteString(fmt.Sprintf("• %.0f%% remaining", group.remaining))
+		if group.resetAt != "" {
+			out.WriteString(" | reset " + formatReset(group.resetAt))
+		}
+		out.WriteString("\n  ")
+		out.WriteString(strings.Join(group.names, ", "))
+		out.WriteString("\n")
+	}
+}
+
+func quotaGroupName(window antigravityquota.Window) string {
+	if strings.TrimSpace(window.Group) != "" {
+		return window.Group
+	}
+	switch {
+	case strings.HasPrefix(strings.ToLower(window.ID), "gemini-"):
+		return "Gemini Models"
+	case strings.HasPrefix(strings.ToLower(window.ID), "3p-"):
+		return "Claude and GPT Models"
+	default:
+		return "Quota Windows"
+	}
+}
+
+func quotaGroupOrder(name string) int {
+	lower := strings.ToLower(name)
+	if strings.Contains(lower, "gemini") {
+		return 0
+	}
+	if strings.Contains(lower, "claude") || strings.Contains(lower, "gpt") || strings.Contains(lower, "3p") {
+		return 1
+	}
+	return 2
 }
 
 func safeAccountLabel(account antigravityquota.AccountQuota) string {
