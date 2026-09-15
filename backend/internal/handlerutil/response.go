@@ -3,11 +3,33 @@ package handlerutil
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
 	"zyrouter/backend/internal/constants"
 )
+
+// DecodeJSON decodes exactly one JSON value. Rejecting trailing values avoids
+// ambiguous request parsing while preserving forward compatibility for fields
+// that individual handlers do not use.
+func DecodeJSON(r *http.Request, dst any) error {
+	if r == nil || r.Body == nil {
+		return io.EOF
+	}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("request contains multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
 
 // errorTypes maps HTTP status codes to OpenAI-compatible error types and codes.
 var errorTypes = map[int]struct {
@@ -31,6 +53,12 @@ var errorTypes = map[int]struct {
 // WriteJSONError writes a standardized JSON error response with status-code-aware
 // error types matching OpenAI API conventions.
 func WriteJSONError(w http.ResponseWriter, status int, message string) {
+	// Never expose implementation details (database paths, SQL errors, provider
+	// responses, or stack traces) through a server error. Detailed diagnostics
+	// belong in server logs with the request ID.
+	if status >= http.StatusInternalServerError {
+		message = "Internal server error."
+	}
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(status)
 

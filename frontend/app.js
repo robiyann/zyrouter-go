@@ -2307,7 +2307,7 @@ async function renderProviderDetail(provId) {
 
     bindProviderDetailActions(provId, conns, meta, activePrefix, accountOffset);
   } catch (err) {
-    content.innerHTML = emptySurface(`Error loading provider details: ${err.message}`);
+    content.innerHTML = emptySurface(`Error loading provider details: ${escapeHtml(err?.message || 'Unknown error')}`);
   }
 }
 
@@ -5069,7 +5069,7 @@ function renderSettings(payload) {
           </label>
           <label style="font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
             New Password
-            <input type="password" name="newPassword" placeholder="Minimum 4 characters" required minlength="4" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
+            <input type="password" name="newPassword" placeholder="12-128 characters" required minlength="12" maxlength="128" style="background:#05070a; border:1px solid var(--line); padding:7px 10px; font:11px var(--mono); color:var(--text); border-radius:5px;" />
           </label>
           <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
             <button class="solid-button" type="submit" id="btn-change-password-submit">Update Password</button>

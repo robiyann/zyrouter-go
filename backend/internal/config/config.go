@@ -116,14 +116,8 @@ func LoadConfig() *Config {
 	initialPassword := os.Getenv("INITIAL_PASSWORD")
 
 	apiKeySecret := os.Getenv("API_KEY_SECRET")
-	if apiKeySecret == "" {
-		apiKeySecret = "endpoint-proxy-api-key-secret"
-	}
 
 	machineIDSalt := os.Getenv("MACHINE_ID_SALT")
-	if machineIDSalt == "" {
-		machineIDSalt = "endpoint-proxy-salt"
-	}
 
 	rtkEnabled := os.Getenv("RTK_ENABLED") != "false" // default on
 	cavemanEnabled := os.Getenv("CAVEMAN_ENABLED") == "true"

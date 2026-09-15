@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -94,8 +95,13 @@ func (h *Handler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := handlerutil.DecodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	if len(body.Name) > 128 {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "name is too long")
 		return
 	}
 	if body.Name == "" {

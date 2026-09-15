@@ -103,11 +103,11 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.InitialPassword != "" {
 		t.Errorf("expected no default password (operator must set INITIAL_PASSWORD), got %s", cfg.InitialPassword)
 	}
-	if cfg.APIKeySecret != "endpoint-proxy-api-key-secret" {
-		t.Errorf("expected default api-key-secret, got %s", cfg.APIKeySecret)
+	if cfg.APIKeySecret != "" {
+		t.Errorf("expected empty api-key-secret when unset, got %s", cfg.APIKeySecret)
 	}
-	if cfg.MachineIDSalt != "endpoint-proxy-salt" {
-		t.Errorf("expected default salt, got %s", cfg.MachineIDSalt)
+	if cfg.MachineIDSalt != "" {
+		t.Errorf("expected empty machine id salt when unset, got %s", cfg.MachineIDSalt)
 	}
 
 	// Verify JWT secret is auto-generated and saved to file

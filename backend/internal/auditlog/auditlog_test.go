@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,6 +81,16 @@ func TestAuditLogger_RotationAndZeroDeletion(t *testing.T) {
 	}
 
 	_ = filepath.Base(fullPath)
+}
+
+func TestRedactPayloadRemovesCredentialFields(t *testing.T) {
+	got := redactPayload(`{"messages":[{"role":"user","content":"hello"}],"api_key":"sk-secret","nested":{"refreshToken":"rt-secret"}}`)
+	if strings.Contains(got, "sk-secret") || strings.Contains(got, "rt-secret") {
+		t.Fatalf("credential leaked in redacted payload: %s", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") || !strings.Contains(got, "hello") {
+		t.Fatalf("unexpected redacted payload: %s", got)
+	}
 }
 
 func TestAuditLogger_DeleteLogFiles(t *testing.T) {

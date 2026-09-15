@@ -3,7 +3,6 @@ package admin
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,6 +25,11 @@ func (h *AdminHandler) HandleCreateClientPolicy(w http.ResponseWriter, r *http.R
 	}
 	if err := decodeJSON(r, &body); err != nil || strings.TrimSpace(body.Name) == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	if len(body.Name) > 128 || (body.RateLimit != nil && (body.RateLimit.RequestsPerMinute < 0 || body.RateLimit.TokensPerDay < 0)) {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid policy values")
 		return
 	}
 	if body.ID == "" {
@@ -65,6 +69,11 @@ func (h *AdminHandler) HandleCreateClient(w http.ResponseWriter, r *http.Request
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	body.Name = strings.TrimSpace(body.Name)
+	if len(body.Name) > 128 || len(strings.TrimSpace(body.Email)) > 320 {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid client values")
+		return
+	}
 	if body.PolicyID != "" {
 		policy, err := h.repo.GetClientPolicy(body.PolicyID)
 		if err != nil || policy == nil || policy.IsActive != 1 {
@@ -98,7 +107,7 @@ func (h *AdminHandler) HandleCreateClient(w http.ResponseWriter, r *http.Request
 }
 
 func decodeJSON(r *http.Request, target any) error {
-	return json.NewDecoder(r.Body).Decode(target)
+	return handlerutil.DecodeJSON(r, target)
 }
 
 func randomHex(size int) (string, error) {

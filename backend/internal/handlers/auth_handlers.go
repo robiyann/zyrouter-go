@@ -20,6 +20,7 @@ const (
 	loginFailureWindow = 5 * time.Minute
 	loginFailureLimit  = 5
 	loginLockDuration  = 5 * time.Minute
+	loginLimiterMaxIPs = 10_000
 )
 
 type loginFailureState struct {
@@ -58,6 +59,13 @@ func loginLocked(ip string, now time.Time) (time.Duration, bool) {
 func recordLoginFailure(ip string, now time.Time) (time.Duration, bool, int) {
 	loginLimiter.Lock()
 	defer loginLimiter.Unlock()
+	if len(loginLimiter.entries) >= loginLimiterMaxIPs {
+		for candidate, state := range loginLimiter.entries {
+			if now.Sub(state.lastFailure) > loginFailureWindow && now.After(state.lockedUntil) {
+				delete(loginLimiter.entries, candidate)
+			}
+		}
+	}
 	state := loginLimiter.entries[ip]
 	if state.firstFailure.IsZero() || now.Sub(state.firstFailure) > loginFailureWindow {
 		state = loginFailureState{firstFailure: now}
@@ -95,7 +103,7 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			return
 		}
 		var raw map[string]json.RawMessage
-		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil || raw == nil {
+		if err := handlerutil.DecodeJSON(r, &raw); err != nil || raw == nil {
 			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
@@ -109,11 +117,19 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
+		if len(password) == 0 || len(password) > 128 {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
 
 		// Read stored password hash from settings
 		var storedHash string
-		if settings, err := repo.GetSettings(); err == nil && settings != nil && settings.Password != nil {
-			storedHash = *settings.Password
+		var settings *db.SettingsData
+		if loaded, err := repo.GetSettings(); err == nil && loaded != nil {
+			settings = loaded
+			if loaded.Password != nil {
+				storedHash = *loaded.Password
+			}
 		}
 
 		if !auth.CheckPassword(password, storedHash) {
@@ -136,9 +152,25 @@ func HandleAuthLogin(repo *db.Repo) http.HandlerFunc {
 			return
 		}
 		clearLoginFailures(ip)
+		// Transparently upgrade legacy SHA-256 hashes after a successful login.
+		// Plaintext hashes are no longer accepted by CheckPassword.
+		if settings != nil && auth.NeedsPasswordRehash(storedHash) {
+			if upgraded := auth.HashPassword(password); upgraded != "" {
+				settings.Password = &upgraded
+				if err := repo.UpdateSettingsData(settings); err != nil {
+					// Do not fail an otherwise valid login because a best-effort
+					// rehash could not be persisted; log-in remains secure.
+					recordAuthEvent(r, "password_rehash_failed", http.StatusInternalServerError, "legacy password hash upgrade failed")
+				}
+			}
+		}
 		recordAuthEvent(r, "login_success", http.StatusOK, "dashboard session created")
 
 		token := auth.CreateSession()
+		if token == "" {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create session")
+			return
+		}
 
 		// Set session cookie
 		http.SetCookie(w, &http.Cookie{
@@ -175,6 +207,8 @@ func HandleAuthLogout() http.HandlerFunc {
 			Name:     "auth_token",
 			Value:    "",
 			Path:     "/",
+			HttpOnly: true,
+			Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
 			MaxAge:   -1,
 			SameSite: http.SameSiteLaxMode,
 		})
@@ -209,13 +243,13 @@ func HandleAuthChangePassword(repo *db.Repo) http.HandlerFunc {
 			CurrentPassword string `json:"currentPassword"`
 			NewPassword     string `json:"newPassword"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := handlerutil.DecodeJSON(r, &req); err != nil {
 			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
-		if len(req.NewPassword) < 4 {
-			handlerutil.WriteJSONError(w, http.StatusBadRequest, "New password must be at least 4 characters")
+		if len(req.NewPassword) < 12 || len(req.NewPassword) > 128 {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "New password must be between 12 and 128 characters")
 			return
 		}
 
@@ -236,6 +270,10 @@ func HandleAuthChangePassword(repo *db.Repo) http.HandlerFunc {
 		}
 
 		newHash := auth.HashPassword(req.NewPassword)
+		if newHash == "" {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to hash password")
+			return
+		}
 		settings.Password = &newHash
 		if err := repo.UpdateSettingsData(settings); err != nil {
 			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to update password: "+err.Error())

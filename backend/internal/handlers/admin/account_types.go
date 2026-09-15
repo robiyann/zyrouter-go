@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -24,7 +23,7 @@ func (h *AdminHandler) HandleUpsertAccountType(w http.ResponseWriter, r *http.Re
 		models.AccountType
 		IsActive *int `json:"isActive"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -82,7 +81,7 @@ func (h *AdminHandler) HandleSetAccountTypeModels(w http.ResponseWriter, r *http
 	var body struct {
 		Aliases []string `json:"aliases"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -135,7 +134,7 @@ func (h *AdminHandler) HandleUpdateUserAccountType(w http.ResponseWriter, r *htt
 	var body struct {
 		AccountTypeID string `json:"accountTypeId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.AccountTypeID) == "" {
+	if err := decodeJSON(r, &body); err != nil || strings.TrimSpace(body.AccountTypeID) == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "accountTypeId is required")
 		return
 	}

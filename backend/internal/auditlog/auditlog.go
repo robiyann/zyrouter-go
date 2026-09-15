@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -191,8 +192,57 @@ func compactRecord(entry *AuditEntry) compactAuditRecord {
 		Model:      entry.Model,
 		Status:     entry.Status,
 		StatusCode: entry.StatusCode,
-		Request:    truncatePayload(request),
-		Response:   truncatePayload(response),
+		Request:    truncatePayload(redactPayload(request)),
+		Response:   truncatePayload(redactPayload(response)),
+	}
+}
+
+// redactPayload removes common credential fields before request/response
+// bodies are persisted in the audit trail. Prompt text and normal application
+// fields are preserved; only fields whose names clearly identify credentials
+// are replaced.
+func redactPayload(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return value
+	}
+	var payload any
+	if err := json.Unmarshal([]byte(value), &payload); err != nil {
+		return value
+	}
+	redactValue(payload)
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return value
+	}
+	return string(encoded)
+}
+
+func redactValue(value any) {
+	switch current := value.(type) {
+	case map[string]any:
+		for key, child := range current {
+			if isSensitiveField(key) {
+				current[key] = "[REDACTED]"
+				continue
+			}
+			redactValue(child)
+		}
+	case []any:
+		for _, child := range current {
+			redactValue(child)
+		}
+	}
+}
+
+func isSensitiveField(key string) bool {
+	clean := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(key), "-", "_"), " ", "_"))
+	switch clean {
+	case "api_key", "apikey", "authorization", "access_token", "accesstoken",
+		"refresh_token", "refreshtoken", "client_secret", "clientsecret", "password",
+		"secret", "token", "private_key", "privatekey":
+		return true
+	default:
+		return false
 	}
 }
 

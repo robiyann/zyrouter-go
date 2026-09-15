@@ -153,6 +153,10 @@ func (h *ChatHandler) handleSingleModel(ctx context.Context, w http.ResponseWrit
 		}
 		var ue *upstreamError
 		if errors.As(result, &ue) {
+			if ue.StatusCode >= http.StatusInternalServerError {
+				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
+				return
+			}
 			cw.Header().Set("Content-Type", "application/json")
 			cw.WriteHeader(ue.StatusCode)
 			cw.Write(ue.Body)
@@ -364,6 +368,10 @@ func (h *ChatHandler) handleMessagesSingleModel(ctx context.Context, w http.Resp
 		}
 		var ue *upstreamError
 		if errors.As(result, &ue) {
+			if ue.StatusCode >= http.StatusInternalServerError {
+				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
+				return
+			}
 			cw.Header().Set("Content-Type", "application/json")
 			cw.WriteHeader(ue.StatusCode)
 			cw.Write(ue.Body)

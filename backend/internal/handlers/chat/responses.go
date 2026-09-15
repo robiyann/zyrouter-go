@@ -57,7 +57,11 @@ func (h *ChatHandler) HandleResponses(w http.ResponseWriter, r *http.Request) {
 	recorder := httptest.NewRecorder()
 	forwardErr := h.handleAccountFallback(r.Context(), recorder, modelInfo.Provider, modelInfo.Model, modelInfo.ConnectionID, chatBody, false, false, "/v1/responses")
 	if forwardErr != nil {
-		if recorder.Code > 0 {
+		if recorder.Code >= http.StatusBadRequest {
+			if recorder.Code >= http.StatusInternalServerError {
+				handlerutil.WriteJSONError(w, recorder.Code, "upstream service unavailable")
+				return
+			}
 			w.WriteHeader(recorder.Code)
 			_, _ = w.Write(recorder.Body.Bytes())
 			return
@@ -81,7 +85,7 @@ func (h *ChatHandler) HandleResponses(w http.ResponseWriter, r *http.Request) {
 
 func readResponsesBody(r *http.Request) ([]byte, error) {
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := handlerutil.DecodeJSON(r, &body); err != nil || body == nil {
 		return nil, fmt.Errorf("invalid JSON body")
 	}
 	encoded, err := json.Marshal(body)

@@ -96,6 +96,20 @@ func TestClientApiBoundaryRequiresClientToken(t *testing.T) {
 	}
 }
 
+func TestAuthLogoutRejectsCrossOriginBrowserRequest(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	r := chi.NewRouter()
+	SetupServerRouter(r, db.NewRepo(database), nil)
+	req := httptest.NewRequest(http.MethodPost, "http://panel.example.invalid/api/auth/logout", nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected cross-origin logout to be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestClientApiKeyCannotAccessAdminRoutes(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -140,6 +154,30 @@ func TestClientApiKeyCannotAccessAdminRoutes(t *testing.T) {
 	var profile map[string]any
 	if err := json.Unmarshal(clientRec.Body.Bytes(), &profile); err != nil || profile["id"] != "client-boundary" {
 		t.Fatalf("unexpected client profile: %s", clientRec.Body.String())
+	}
+}
+
+func TestUserApiKeyCannotAccessAdminRoutes(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	userID := "user-admin-boundary"
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := database.Exec(`INSERT INTO users (id,telegramUserId,telegramUsername,displayName,accountTypeId,isActive,verifiedAt,createdAt,updatedAt) VALUES (?,?,?,?,?,1,?,?,?)`, userID, "tg-admin-boundary", "boundary", "Boundary User", "user", now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CreateUserApiKey(userID, "user", "uk-boundary", "sk-user-boundary", "User Key"); err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	SetupServerRouter(r, repo, nil)
+	req := httptest.NewRequest(http.MethodGet, "http://example.invalid/api/keys", nil)
+	req.Header.Set("Authorization", "Bearer sk-user-boundary")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected user key to be denied admin route, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

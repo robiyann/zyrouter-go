@@ -32,6 +32,11 @@ func ValidateKeyPolicy(key *models.APIKey, targetModel string, targetProvider st
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidKeyPolicy, err)
 	}
+	if restrictions != nil && restrictions.RateLimit != nil {
+		if restrictions.RateLimit.RequestsPerMinute < 0 || restrictions.RateLimit.TokensPerDay < 0 {
+			return fmt.Errorf("%w: rate limits cannot be negative", ErrInvalidKeyPolicy)
+		}
+	}
 	if restrictions != nil && restrictions.ExpiresAt != nil && strings.TrimSpace(*restrictions.ExpiresAt) != "" {
 		expiresAt, err := time.Parse(time.RFC3339, strings.TrimSpace(*restrictions.ExpiresAt))
 		if err != nil {

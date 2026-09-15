@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -45,21 +44,14 @@ func InitSessionStore(store SessionStore) {
 	}
 }
 
-// HashPassword uses bcrypt so passwords remain compatible with the original
-// 9router dashboard. CheckPassword still accepts the legacy SHA-256 format.
+// HashPassword uses bcrypt. An empty string indicates that bcrypt failed; the
+// caller must treat that as a fatal configuration/operation error rather than
+// falling back to a fast or plaintext password hash.
 func HashPassword(password string) string {
 	if hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost); err == nil {
 		return string(hash)
 	}
-
-	// Keep a fallback for an unlikely bcrypt failure, preserving local login.
-	salt := make([]byte, 16)
-	rand.Read(salt)
-	saltHex := hex.EncodeToString(salt)
-	h := sha256.New()
-	h.Write([]byte(saltHex + ":" + password))
-	hashHex := hex.EncodeToString(h.Sum(nil))
-	return fmt.Sprintf("sha256$%s$%s", saltHex, hashHex)
+	return ""
 }
 
 func CheckPassword(password, storedHash string) bool {
@@ -88,18 +80,27 @@ func CheckPassword(password, storedHash string) bool {
 		}
 	}
 
-	// 3. Plain text comparison for old development databases.
-	if subtle.ConstantTimeCompare([]byte(password), []byte(storedHash)) == 1 {
-		return true
-	}
-
 	return false
+}
+
+// NeedsPasswordRehash reports whether a stored password uses a legacy format
+// or a bcrypt cost below the current default. Callers should transparently
+// upgrade it after a successful login.
+func NeedsPasswordRehash(storedHash string) bool {
+	storedHash = strings.TrimSpace(storedHash)
+	if storedHash == "" {
+		return false
+	}
+	cost, err := bcrypt.Cost([]byte(storedHash))
+	return err != nil || cost < bcrypt.DefaultCost
 }
 
 // CreateSession generates a new 32-byte secure session token.
 func CreateSession() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	token := hex.EncodeToString(b)
 	expiry := time.Now().Add(SessionDuration)
 

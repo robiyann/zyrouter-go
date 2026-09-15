@@ -76,6 +76,19 @@ func TestAPIKeyRestrictions(t *testing.T) {
 	}
 }
 
+func TestAPIKeyRestrictions_ZeroRateLimitIsUnlimitedAndNegativeFails(t *testing.T) {
+	zero := `{"rateLimit":{"requestsPerMinute":0,"tokensPerDay":0}}`
+	key := &models.APIKey{ID: "zero", IsActive: 1, Restrictions: &zero}
+	if err := auth.ValidateKeyPolicy(key, "", ""); err != nil {
+		t.Fatalf("zero limits should be accepted as unlimited: %v", err)
+	}
+	negative := `{"rateLimit":{"requestsPerMinute":-1}}`
+	key.Restrictions = &negative
+	if err := auth.ValidateKeyPolicy(key, "", ""); !errors.Is(err, auth.ErrInvalidKeyPolicy) {
+		t.Fatalf("negative limits must fail closed, got %v", err)
+	}
+}
+
 func TestAPIKeyNoRestrictions(t *testing.T) {
 	key := &models.APIKey{
 		ID:           "key-unrestricted",

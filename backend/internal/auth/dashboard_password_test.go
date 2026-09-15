@@ -30,3 +30,21 @@ func TestDashboardPassword_CheckPasswordAcceptsLegacySHA256(t *testing.T) {
 		t.Fatal("legacy SHA-256 password should remain readable")
 	}
 }
+
+func TestDashboardPassword_RejectsPlaintextStorage(t *testing.T) {
+	if CheckPassword("legacy-password", "legacy-password") {
+		t.Fatal("plaintext password storage must never be accepted")
+	}
+}
+
+func TestDashboardPassword_NeedsRehashForLegacyHash(t *testing.T) {
+	salt := "00112233445566778899aabbccddeeff"
+	digest := sha256.Sum256([]byte(salt + ":legacy-password"))
+	legacyHash := fmt.Sprintf("sha256$%s$%s", salt, hex.EncodeToString(digest[:]))
+	if !NeedsPasswordRehash(legacyHash) {
+		t.Fatal("legacy SHA-256 hash should require bcrypt upgrade")
+	}
+	if NeedsPasswordRehash(HashPassword("modern-password")) {
+		t.Fatal("current bcrypt hash should not require rehash")
+	}
+}

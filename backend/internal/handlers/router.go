@@ -189,7 +189,8 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	r.Options("/api/public/telemetry/stream", HandlePublicTelemetryStream(repo))
 
 	r.Post("/api/auth/login", HandleAuthLogin(repo))
-	r.Post("/api/auth/logout", HandleAuthLogout())
+	logoutHandler := middleware.RequireBrowserCSRF(HandleAuthLogout())
+	r.Post("/api/auth/logout", logoutHandler.ServeHTTP)
 	r.Get("/api/auth/status", HandleAuthStatus(repo))
 
 	// Telegram verification is public only for challenge creation/status and the
@@ -219,6 +220,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	// Future client dashboard API. It is intentionally isolated from admin/API-key routes.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireClientAccess(repo))
+		r.Use(middleware.RequireBrowserCSRF)
 		r.Get("/api/client/profile", clientH.HandleProfile)
 		r.Get("/api/client/policy", clientH.HandlePolicy)
 		r.Get("/api/client/keys", clientH.HandleKeys)
@@ -234,6 +236,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	// API-key / Dashboard session protected domain routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAdminAccess(repo))
+		r.Use(middleware.RequireBrowserCSRF)
 		r.Post("/api/auth/change-password", HandleAuthChangePassword(repo))
 		r.Post("/api/admin/client-policies", adminH.HandleCreateClientPolicy)
 		r.Post("/api/admin/clients", adminH.HandleCreateClient)

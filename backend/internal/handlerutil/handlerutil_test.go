@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -18,10 +19,10 @@ func TestWriteJSONError(t *testing.T) {
 		{"bad request", http.StatusBadRequest, "invalid model", "invalid_request_error", "bad_request"},
 		{"unauthorized", http.StatusUnauthorized, "bad key", "authentication_error", "invalid_api_key"},
 		{"not found", http.StatusNotFound, "resource not found", "invalid_request_error", "model_not_found"},
-		{"internal error", http.StatusInternalServerError, "server error", "server_error", "internal_server_error"},
+		{"internal error", http.StatusInternalServerError, "Internal server error.", "server_error", "internal_server_error"},
 		{"rate limit", http.StatusTooManyRequests, "slow down", "rate_limit_error", "rate_limit_exceeded"},
 		{"empty message", http.StatusBadRequest, "", "invalid_request_error", "bad_request"},
-		{"unknown status", 999, "weird", "invalid_request_error", "999"},
+		{"unknown status", 999, "Internal server error.", "invalid_request_error", "999"},
 	}
 
 	for _, tt := range tests {
@@ -57,6 +58,14 @@ func TestWriteJSONError(t *testing.T) {
 				t.Errorf("error.code = %v, want %v", errObj["code"], tt.wantCode)
 			}
 		})
+	}
+}
+
+func TestDecodeJSONRejectsTrailingValues(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"ok":true}{"extra":true}`))
+	var payload map[string]any
+	if err := DecodeJSON(req, &payload); err == nil {
+		t.Fatal("expected trailing JSON values to be rejected")
 	}
 }
 

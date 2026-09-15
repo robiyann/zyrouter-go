@@ -47,6 +47,8 @@ type verificationRateState struct {
 
 var verificationRates = verificationRateState{hits: make(map[string][]time.Time)}
 
+const verificationRateMaxClients = 10_000
+
 func verificationClientKey(r *http.Request) string {
 	if cookie, err := r.Cookie(verificationBrowserCookie); err == nil && strings.TrimSpace(cookie.Value) != "" {
 		return "browser:" + db.HashUserSecret(cookie.Value)
@@ -66,6 +68,13 @@ func allowVerificationRequest(r *http.Request, limit int, window time.Duration) 
 	key := verificationClientKey(r)
 	verificationRates.mu.Lock()
 	defer verificationRates.mu.Unlock()
+	if len(verificationRates.hits) >= verificationRateMaxClients {
+		for candidate, timestamps := range verificationRates.hits {
+			if len(timestamps) == 0 || now.Sub(timestamps[len(timestamps)-1]) > window {
+				delete(verificationRates.hits, candidate)
+			}
+		}
+	}
 	items := verificationRates.hits[key]
 	cutoff := now.Add(-window)
 	kept := items[:0]
@@ -162,21 +171,31 @@ func (h *Handler) VerificationStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	response := map[string]any{"status": status}
 	if user != nil {
-		session, err := randomToken(32)
-		if err != nil || h.Repo.CreateUserSession(user.ID, session, 24*time.Hour) != nil {
-			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create user session")
-			return
+		// Verification status may be polled repeatedly. Reuse an already-valid
+		// session for this user instead of minting a new token on every poll.
+		reuseSession := false
+		if existing, existingErr := r.Cookie("user_session"); existingErr == nil {
+			if existingUser, lookupErr := h.Repo.GetUserBySession(existing.Value); lookupErr == nil && existingUser != nil && existingUser.ID == user.ID {
+				reuseSession = true
+			}
+		}
+		if !reuseSession {
+			session, err := randomToken(32)
+			if err != nil || h.Repo.CreateUserSession(user.ID, session, 24*time.Hour) != nil {
+				handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to create user session")
+				return
+			}
+			http.SetCookie(w, &http.Cookie{
+				Name:     "user_session",
+				Value:    session,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
+				SameSite: http.SameSiteLaxMode,
+				MaxAge:   86400,
+			})
 		}
 		response["user"] = sanitizeUser(user)
-		http.SetCookie(w, &http.Cookie{
-			Name:     "user_session",
-			Value:    session,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   86400,
-		})
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, response)
 }
@@ -198,7 +217,7 @@ func (h *Handler) CompleteVerification(w http.ResponseWriter, r *http.Request) {
 		ChallengeID      string `json:"challengeId"`
 		ConfirmationCode string `json:"confirmationCode"`
 	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil || strings.TrimSpace(body.ChallengeID) == "" || strings.TrimSpace(body.ConfirmationCode) == "" {
+	if handlerutil.DecodeJSON(r, &body) != nil || strings.TrimSpace(body.ChallengeID) == "" || strings.TrimSpace(body.ConfirmationCode) == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "challengeId and confirmationCode are required")
 		return
 	}
@@ -246,7 +265,7 @@ func (h *Handler) TelegramWebhook(w http.ResponseWriter, r *http.Request) {
 			Text string `json:"text"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil || update.Message == nil || update.Message.From == nil {
+	if err := handlerutil.DecodeJSON(r, &update); err != nil || update.Message == nil || update.Message.From == nil {
 		handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
 		return
 	}
@@ -296,7 +315,7 @@ func (h *Handler) UpdateFeatures(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var settings models.UserFeatureSettings
-	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+	if err := handlerutil.DecodeJSON(r, &settings); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -469,6 +488,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})

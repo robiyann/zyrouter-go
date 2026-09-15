@@ -106,6 +106,19 @@ func TestCheckAPIKeyRateLimit(t *testing.T) {
 	}
 }
 
+func TestCheckAPIKeyRateLimit_ZeroIsUnlimited(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := NewRepo(database)
+	now := time.Now().UTC()
+	for _, limit := range []*models.KeyRateLimit{nil, {}, {RequestsPerMinute: 0, TokensPerDay: 0}} {
+		allowed, err := repo.CheckAPIKeyRateLimit("missing-key", limit, now)
+		if err != nil || !allowed {
+			t.Fatalf("zero/nil rate limits must remain unlimited: allowed=%v err=%v", allowed, err)
+		}
+	}
+}
+
 func TestGetProviderConnections(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

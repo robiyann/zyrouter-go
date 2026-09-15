@@ -148,8 +148,8 @@ func RequireAdminAccess(repo *db.Repo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		protected := base(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := GetAuthenticatedApiKey(r)
-			if key != nil && key.ClientID != nil && strings.TrimSpace(*key.ClientID) != "" && isAdminRoute(r.URL.Path) {
-				handlerutil.WriteJSONError(w, http.StatusForbidden, "client API keys cannot access admin routes")
+			if key != nil && isAdminRoute(r.URL.Path) && !isAdministratorCredential(key) {
+				handlerutil.WriteJSONError(w, http.StatusForbidden, "administrator access required")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -162,6 +162,30 @@ func RequireAdminAccess(repo *db.Repo) func(http.Handler) http.Handler {
 			}
 		})
 	}
+}
+
+// isAdministratorCredential enforces the control-plane trust boundary. A
+// dashboard session and the local loopback grant are administrator credentials;
+// client- and user-owned API keys are never allowed to reach admin routes.
+func isAdministratorCredential(key *models.APIKey) bool {
+	if key == nil {
+		return false
+	}
+	if key.ID == "session-admin" || key.ID == "local-loopback" {
+		return true
+	}
+	if key.ClientID != nil && strings.TrimSpace(*key.ClientID) != "" {
+		return false
+	}
+	if key.UserID != nil && strings.TrimSpace(*key.UserID) != "" {
+		return false
+	}
+	if key.AccountTypeID != nil {
+		typeID := strings.TrimSpace(*key.AccountTypeID)
+		return typeID == "" || strings.EqualFold(typeID, "administrator")
+	}
+	// Legacy operator keys have no owner/account type and remain valid.
+	return true
 }
 
 func requestClientIP(r *http.Request) string {

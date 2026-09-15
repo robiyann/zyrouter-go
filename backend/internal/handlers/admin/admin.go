@@ -129,7 +129,7 @@ func (h *AdminHandler) HandleCreateKey(w http.ResponseWriter, r *http.Request) {
 		AccountTypeID string                  `json:"accountTypeId,omitempty"`
 		Restrictions  *models.KeyRestrictions `json:"restrictions,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -190,7 +190,7 @@ func (h *AdminHandler) HandleUpdateKey(w http.ResponseWriter, r *http.Request) {
 		AccountTypeID *string                 `json:"accountTypeId,omitempty"`
 		Restrictions  *models.KeyRestrictions `json:"restrictions,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -254,7 +254,7 @@ func (h *AdminHandler) HandleGetProviders(w http.ResponseWriter, r *http.Request
 
 func (h *AdminHandler) HandleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	var conn models.ProviderConnection
-	if err := json.NewDecoder(r.Body).Decode(&conn); err != nil {
+	if err := decodeJSON(r, &conn); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -374,7 +374,7 @@ func (h *AdminHandler) HandleUpdateProvider(w http.ResponseWriter, r *http.Reque
 	}
 
 	var raw map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+	if err := decodeJSON(r, &raw); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -862,7 +862,7 @@ func (h *AdminHandler) HandleTestProviderModel(w http.ResponseWriter, r *http.Re
 		Model  string `json:"model"`
 		Prompt string `json:"prompt"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+	if err := decodeJSON(r, &reqBody); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -909,7 +909,7 @@ func (h *AdminHandler) HandleGetCombos(w http.ResponseWriter, r *http.Request) {
 
 func (h *AdminHandler) HandleCreateCombo(w http.ResponseWriter, r *http.Request) {
 	var combo models.Combo
-	if err := json.NewDecoder(r.Body).Decode(&combo); err != nil {
+	if err := decodeJSON(r, &combo); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -935,7 +935,7 @@ func (h *AdminHandler) HandleCreateCombo(w http.ResponseWriter, r *http.Request)
 func (h *AdminHandler) HandleUpdateCombo(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var combo models.Combo
-	if err := json.NewDecoder(r.Body).Decode(&combo); err != nil {
+	if err := decodeJSON(r, &combo); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1000,7 +1000,7 @@ func (h *AdminHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request)
 
 func (h *AdminHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1052,7 +1052,7 @@ func (h *AdminHandler) HandleGetProxyPools(w http.ResponseWriter, r *http.Reques
 
 func (h *AdminHandler) HandleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1261,7 +1261,7 @@ func (h *AdminHandler) HandleSetModelAlias(w http.ResponseWriter, r *http.Reques
 		Strategy      string   `json:"strategy,omitempty"`
 		Members       []string `json:"members,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1446,7 +1446,7 @@ func (h *AdminHandler) HandlePreviewModelPolicy(w http.ResponseWriter, r *http.R
 		Models        []string               `json:"models"`
 		Restrictions  models.KeyRestrictions `json:"restrictions"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1559,7 +1559,7 @@ func (h *AdminHandler) HandleAddCustomModel(w http.ResponseWriter, r *http.Reque
 		Kind          string `json:"kind"`
 		Name          string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1620,7 +1620,7 @@ func (h *AdminHandler) HandleDeleteCustomModel(w http.ResponseWriter, r *http.Re
 		Model         string `json:"model"`
 		Type          string `json:"type"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+	if err := decodeJSON(r, &body); err == nil {
 		provider := body.Provider
 		if provider == "" {
 			provider = body.ProviderAlias
@@ -1717,7 +1717,7 @@ func (h *AdminHandler) HandleGetProviderNodes(w http.ResponseWriter, r *http.Req
 
 func (h *AdminHandler) HandleCreateProviderNode(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1760,7 +1760,7 @@ func (h *AdminHandler) HandleUpdateProviderNode(w http.ResponseWriter, r *http.R
 		return
 	}
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1798,7 +1798,7 @@ func (h *AdminHandler) HandleValidateProviderNode(w http.ResponseWriter, r *http
 		Type    string `json:"type"`
 		ModelID string `json:"modelId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.BaseURL == "" {
+	if err := decodeJSON(r, &body); err != nil || body.BaseURL == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "baseUrl is required")
 		return
 	}
@@ -1814,7 +1814,7 @@ func (h *AdminHandler) HandleValidateProviderNode(w http.ResponseWriter, r *http
 		modelsUrl := normalizedBase + "/models"
 		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, modelsUrl, nil)
 		if err != nil {
-			handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"valid": false, "error": err.Error()})
+			handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"valid": false, "error": "invalid endpoint URL"})
 			return
 		}
 		if body.APIKey != "" {
@@ -1874,7 +1874,7 @@ func (h *AdminHandler) HandleValidateProviderNode(w http.ResponseWriter, r *http
 	modelsUrl := normalizedBase + "/models"
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, modelsUrl, nil)
 	if err != nil {
-		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"valid": false, "error": err.Error()})
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"valid": false, "error": "invalid endpoint URL"})
 		return
 	}
 	if body.APIKey != "" {
@@ -1923,7 +1923,7 @@ func (h *AdminHandler) HandleValidateProviderNode(w http.ResponseWriter, r *http
 	}
 
 	if err != nil {
-		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"valid": false, "error": err.Error()})
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"valid": false, "error": "endpoint validation failed"})
 		return
 	}
 
@@ -1948,7 +1948,7 @@ func (h *AdminHandler) HandleSetProviderPrefix(w http.ResponseWriter, r *http.Re
 		Provider string `json:"provider"`
 		Prefix   string `json:"prefix"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1969,7 +1969,7 @@ func (h *AdminHandler) HandleDeleteProviderPrefix(w http.ResponseWriter, r *http
 		var body struct {
 			Provider string `json:"provider"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Provider != "" {
+		if err := decodeJSON(r, &body); err == nil && body.Provider != "" {
 			provider = body.Provider
 		}
 	}
@@ -2000,7 +2000,7 @@ func (h *AdminHandler) HandleExportDatabase(w http.ResponseWriter, r *http.Reque
 
 func (h *AdminHandler) HandleImportDatabase(w http.ResponseWriter, r *http.Request) {
 	var backup db.DatabaseBackup
-	if err := json.NewDecoder(r.Body).Decode(&backup); err != nil {
+	if err := decodeJSON(r, &backup); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid backup JSON payload: "+err.Error())
 		return
 	}
