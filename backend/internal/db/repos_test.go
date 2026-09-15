@@ -106,7 +106,6 @@ func TestCheckAPIKeyRateLimit(t *testing.T) {
 	}
 }
 
-
 func TestGetProviderConnections(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
