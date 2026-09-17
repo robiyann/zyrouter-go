@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"zyrouter/backend/internal/providers"
+	"zyrouter/backend/internal/proxy"
 )
 
 func TestInjectReasoningContent(t *testing.T) {
@@ -45,14 +46,14 @@ func TestForwardOpencode(t *testing.T) {
 		if r.Header.Get("x-opencode-project") != "global" {
 			t.Errorf("expected x-opencode-project global, got %s", r.Header.Get("x-opencode-project"))
 		}
-		if !strings.HasPrefix(r.Header.Get("x-opencode-session"), "ses_") {
-			t.Errorf("expected ses_ prefix on x-opencode-session, got %s", r.Header.Get("x-opencode-session"))
+		if !proxy.OpenCodeSessionRegex.MatchString(r.Header.Get("x-opencode-session")) {
+			t.Errorf("expected canonical x-opencode-session, got %s", r.Header.Get("x-opencode-session"))
 		}
-		if !strings.HasPrefix(r.Header.Get("x-opencode-request"), "msg_") {
-			t.Errorf("expected msg_ prefix on x-opencode-request, got %s", r.Header.Get("x-opencode-request"))
+		if !proxy.OpenCodeRequestRegex.MatchString(r.Header.Get("x-opencode-request")) {
+			t.Errorf("expected canonical x-opencode-request, got %s", r.Header.Get("x-opencode-request"))
 		}
-		if r.Header.Get("User-Agent") != "opencode" {
-			t.Errorf("expected User-Agent opencode, got %s", r.Header.Get("User-Agent"))
+		if r.Header.Get("User-Agent") != proxy.DefaultOpenCodeUA {
+			t.Errorf("expected User-Agent %s, got %s", proxy.DefaultOpenCodeUA, r.Header.Get("User-Agent"))
 		}
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), `"reasoning_content":" "`) {
@@ -120,4 +121,3 @@ func TestForwardOpencodeGo_OpenAIRouting(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rec.Code)
 	}
 }
-
