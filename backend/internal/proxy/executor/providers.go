@@ -274,6 +274,39 @@ func ForwardCommandcode(w http.ResponseWriter, req *Request) error {
 	return handleCommandcodeStream(w, req, resp.Body, oreq.Model)
 }
 
+var opencodeMessagesModels = map[string]bool{
+	"union-alpha":      true,
+	"union-alpha-free": true,
+}
+
+func opencodeMessagesURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(baseURL, "/chat/completions") {
+		return strings.TrimSuffix(baseURL, "/chat/completions") + "/messages"
+	}
+	if strings.HasSuffix(baseURL, "/v1") {
+		return baseURL + "/messages"
+	}
+	if strings.HasSuffix(baseURL, "/messages") {
+		return baseURL
+	}
+	return baseURL + "/messages"
+}
+
+func opencodeMessagesPath(path string) string {
+	path = strings.TrimRight(path, "/")
+	if strings.HasSuffix(path, "/chat/completions") {
+		return strings.TrimSuffix(path, "/chat/completions") + "/messages"
+	}
+	if strings.HasSuffix(path, "/v1") {
+		return path + "/messages"
+	}
+	if strings.HasSuffix(path, "/messages") {
+		return path
+	}
+	return path + "/messages"
+}
+
 // ForwardOpencode handles requests for opencode (free tier).
 func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 	apiKey := req.APIKey
@@ -282,6 +315,62 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 	}
 	if isMuseSparkModel(req.Body) {
 		return forwardMuseSparkResponses(w, req, apiKey)
+	}
+
+	var reqObj struct {
+		Model string `json:"model"`
+	}
+	_ = json.Unmarshal(req.Body, &reqObj)
+	cleanModel := strings.ToLower(reqObj.Model)
+	if idx := strings.LastIndex(cleanModel, "/"); idx != -1 {
+		cleanModel = cleanModel[idx+1:]
+	}
+
+	if opencodeMessagesModels[cleanModel] {
+		body := req.Body
+		var bodyMap map[string]any
+		if err := json.Unmarshal(body, &bodyMap); err == nil {
+			if cleanModel == "union-alpha-free" || cleanModel == "union-alpha" {
+				bodyMap["model"] = "union-alpha"
+			}
+			if mt, ok := bodyMap["max_tokens"].(float64); !ok || mt <= 0 {
+				bodyMap["max_tokens"] = 4096
+			}
+			if newBody, err := json.Marshal(bodyMap); err == nil {
+				body = newBody
+			}
+		}
+
+		cfg := *req.Config
+		relayPath, usingEdgeRelay := cfg.StaticHeaders["x-relay-path"]
+		cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, req.IsStream)
+		cfg.StaticHeaders["anthropic-version"] = "2023-06-01"
+
+		if usingEdgeRelay {
+			cfg.StaticHeaders["x-relay-path"] = opencodeMessagesPath(relayPath)
+		} else {
+			cfg.BaseURL = opencodeMessagesURL(cfg.BaseURL)
+		}
+
+		ctx := req.Ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, body, req.IsStream)
+		if err != nil {
+			return fmt.Errorf("ForwardOpencode (messages route): %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_, bodyErr := proxy.UpstreamBody(resp)
+			return bodyErr
+		}
+
+		if req.IsStream {
+			return execSSEStream(w, resp.Body, req)
+		}
+		return jsonResponse(req.Ctx, w, resp.Body, req.TranslateResp, req.ResponseBuf)
 	}
 
 	body := InjectReasoningContent(req.Body, "opencode")

@@ -681,6 +681,8 @@ var OfficialProviderModels = map[string][]string{
 		"nemotron-3.5-lightning-free",
 		"laguna-s-2.1-free",
 		"deepseek-v4-flash-free",
+		"union-alpha",
+		"union-alpha-free",
 	},
 	"openrouter": {
 		"openai/text-embedding-3-large",

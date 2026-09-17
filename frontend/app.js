@@ -1017,7 +1017,9 @@ const KNOWN_PROVIDER_CATALOG = [
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
       "laguna-s-2.1-free",
-      "deepseek-v4-flash-free"
+      "deepseek-v4-flash-free",
+      "union-alpha",
+      "union-alpha-free"
     ],
     "alias": "oc"
   },

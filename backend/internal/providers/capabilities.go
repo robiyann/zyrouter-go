@@ -59,6 +59,8 @@ var modelCapabilities = map[string]Capabilities{
 	"kimi-for-coding-highspeed":      {Vision: true, VideoInput: true, Reasoning: true, Tools: true},
 	"kimi-k2.7-code":                 {Vision: true, VideoInput: true, Reasoning: true, Tools: true},
 	"kimi-k2.7-code-highspeed":       {Vision: true, VideoInput: true, Reasoning: true, Tools: true},
+	"union-alpha":                 {Vision: true, Reasoning: true, Tools: true},
+	"union-alpha-free":            {Vision: true, Reasoning: true, Tools: true},
 }
 
 var providerCapabilities = map[string]map[string]Capabilities{
@@ -230,6 +232,7 @@ var patternCapabilities = []patternCapability{
 	{"*step-*", Capabilities{Reasoning: true, Tools: true}},
 	{"*nemotron*", Capabilities{Reasoning: true, Tools: true}},
 	{"*ling-*", Capabilities{Reasoning: true, Tools: true}},
+	{"*union-alpha*", Capabilities{Vision: true, Reasoning: true, Tools: true}},
 }
 
 // matchPattern checks if a string matches a glob pattern (only supports * as wildcard)
@@ -246,6 +249,8 @@ func GetModelTokenLimits(model string) (contextWindow int, maxOutput int) {
 	m := strings.ToLower(model)
 
 	switch {
+	case strings.Contains(m, "union-alpha"):
+		return 262144, 131072
 	case strings.Contains(m, "gemini-1.5") || strings.Contains(m, "gemini-2.0") || strings.Contains(m, "gemini-2.5") || strings.Contains(m, "gemini-3"):
 		return 1048576, 65536
 	case strings.Contains(m, "claude-3") || strings.Contains(m, "claude-sonnet") || strings.Contains(m, "claude-opus") || strings.Contains(m, "claude-haiku"):
