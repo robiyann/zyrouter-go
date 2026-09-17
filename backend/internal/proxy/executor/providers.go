@@ -279,6 +279,27 @@ var opencodeMessagesModels = map[string]bool{
 	"union-alpha-free": true,
 }
 
+func normalizeOpencodeModel(body []byte) ([]byte, string) {
+	var bodyMap map[string]any
+	if err := json.Unmarshal(body, &bodyMap); err != nil {
+		return body, ""
+	}
+	rawModel, _ := bodyMap["model"].(string)
+	cleanModel := strings.ToLower(rawModel)
+	if idx := strings.LastIndex(cleanModel, "/"); idx != -1 {
+		cleanModel = cleanModel[idx+1:]
+	}
+	if cleanModel == "union-alpha-free" {
+		cleanModel = "union-alpha"
+	}
+	bodyMap["model"] = cleanModel
+	newBody, err := json.Marshal(bodyMap)
+	if err != nil {
+		return body, cleanModel
+	}
+	return newBody, cleanModel
+}
+
 func opencodeMessagesURL(baseURL string) string {
 	baseURL = strings.TrimRight(baseURL, "/")
 	if strings.HasSuffix(baseURL, "/chat/completions") {
@@ -313,26 +334,23 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 	if apiKey == "" {
 		apiKey = "public"
 	}
+
+	normBody, cleanModel := normalizeOpencodeModel(req.Body)
+
+	if apiKey == "public" {
+		if err := ForwardOpencodeDaemon(w, req, cleanModel); err == nil {
+			return nil
+		}
+	}
+
 	if isMuseSparkModel(req.Body) {
 		return forwardMuseSparkResponses(w, req, apiKey)
 	}
 
-	var reqObj struct {
-		Model string `json:"model"`
-	}
-	_ = json.Unmarshal(req.Body, &reqObj)
-	cleanModel := strings.ToLower(reqObj.Model)
-	if idx := strings.LastIndex(cleanModel, "/"); idx != -1 {
-		cleanModel = cleanModel[idx+1:]
-	}
-
 	if opencodeMessagesModels[cleanModel] {
-		body := req.Body
+		body := normBody
 		var bodyMap map[string]any
 		if err := json.Unmarshal(body, &bodyMap); err == nil {
-			if cleanModel == "union-alpha-free" || cleanModel == "union-alpha" {
-				bodyMap["model"] = "union-alpha"
-			}
 			if mt, ok := bodyMap["max_tokens"].(float64); !ok || mt <= 0 {
 				bodyMap["max_tokens"] = 4096
 			}
@@ -373,7 +391,7 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 		return jsonResponse(req.Ctx, w, resp.Body, req.TranslateResp, req.ResponseBuf)
 	}
 
-	body := InjectReasoningContent(req.Body, "opencode")
+	body := InjectReasoningContent(normBody, "opencode")
 
 	cfg := *req.Config
 	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, req.IsStream)

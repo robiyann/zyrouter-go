@@ -2,9 +2,7 @@ package proxy
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,7 +11,7 @@ import (
 )
 
 const (
-	DefaultOpenCodeUA = "opencode/1.18.31"
+	DefaultOpenCodeUA = "opencode/1.18.30"
 	Base62Chars       = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 
@@ -25,6 +23,9 @@ var (
 	opencodeMu            sync.Mutex
 	lastOpencodeTimestamp int64
 	opencodeCounter       int64
+
+	ocSessionsMu sync.RWMutex
+	ocSessions   = make(map[string]string)
 )
 
 func generateRandomBase62(n int) string {
@@ -37,8 +38,7 @@ func generateRandomBase62(n int) string {
 	return string(res)
 }
 
-// GenerateOpenCodeSessionID generates a canonical descending session identifier.
-func GenerateOpenCodeSessionID() string {
+func generateOpenCodeID(descending bool) string {
 	opencodeMu.Lock()
 	now := time.Now().UnixMilli()
 	if now != lastOpencodeTimestamp {
@@ -49,50 +49,81 @@ func GenerateOpenCodeSessionID() string {
 	cnt := opencodeCounter
 	opencodeMu.Unlock()
 
-	current := uint64(now)*0x1000 + uint64(cnt)
-	value := ^current
-	timeHex := fmt.Sprintf("%012x", value&0xffffffffffff)
-	return "ses_" + timeHex + generateRandomBase62(14)
+	current := now*0x1000 + cnt
+	value := current
+	if descending {
+		value = ^current
+	}
+	var timeBytes [6]byte
+	for i := 0; i < 6; i++ {
+		timeBytes[i] = byte((value >> uint(40-8*i)) & 0xff)
+	}
+	timeHex := hex.EncodeToString(timeBytes[:])
+	return timeHex + generateRandomBase62(14)
+}
+
+// GenerateOpenCodeSessionID generates a canonical descending session identifier.
+func GenerateOpenCodeSessionID() string {
+	return "ses_" + generateOpenCodeID(true)
 }
 
 // GenerateOpenCodeRequestID generates a canonical request identifier.
 func GenerateOpenCodeRequestID() string {
-	now := time.Now().UnixMilli()
-	current := uint64(now)*0x1000 + 1
-	timeHex := fmt.Sprintf("%012x", current&0xffffffffffff)
-	return "msg_" + timeHex + generateRandomBase62(14)
+	return "msg_" + generateOpenCodeID(false)
 }
 
-// TranslateOpenCodeSessionID converts any input session string into a valid canonical format.
+// GetOrCreateOpenCodeSession retrieves or caches a session ID for the given key.
+func GetOrCreateOpenCodeSession(key string) string {
+	if key == "" {
+		return GenerateOpenCodeSessionID()
+	}
+	ocSessionsMu.RLock()
+	if s, ok := ocSessions[key]; ok {
+		ocSessionsMu.RUnlock()
+		return s
+	}
+	ocSessionsMu.RUnlock()
+
+	s := GenerateOpenCodeSessionID()
+	ocSessionsMu.Lock()
+	if len(ocSessions) >= 1000 {
+		for k := range ocSessions {
+			delete(ocSessions, k)
+			break
+		}
+	}
+	ocSessions[key] = s
+	ocSessionsMu.Unlock()
+	return s
+}
+
+// TranslateOpenCodeSessionID converts an incoming session ID to OpenCode canonical format.
 func TranslateOpenCodeSessionID(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if OpenCodeSessionRegex.MatchString(raw) {
 		return raw
 	}
-	if raw == "" {
-		return GenerateOpenCodeSessionID()
-	}
-	h := sha256.Sum256([]byte("opencode:generic:" + raw))
-	timeHex := hex.EncodeToString(h[:6])
-	res := make([]byte, 14)
-	for i := 6; i < 20; i++ {
-		res[i-6] = Base62Chars[int(h[i])%len(Base62Chars)]
-	}
-	return "ses_" + timeHex + string(res)
+	return GetOrCreateOpenCodeSession(raw)
 }
 
-// HasValidOpenCodeVersion checks if User-Agent has opencode/version >= 1.17.0.
+// HasValidOpenCodeVersion checks if a User-Agent string contains opencode >= 1.17.0.
 func HasValidOpenCodeVersion(ua string) bool {
 	matches := opencodeUaRegex.FindStringSubmatch(ua)
 	if len(matches) < 3 {
 		return false
 	}
-	major, _ := strconv.Atoi(matches[1])
-	minor, _ := strconv.Atoi(matches[2])
+	major, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return false
+	}
+	minor, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return false
+	}
 	return major > 1 || (major == 1 && minor >= 17)
 }
 
-// BuildOpenCodeHeaders generates the official OpenCode fingerprint headers to prevent 403 FreeTierError / 429 rate limits.
+// BuildOpenCodeHeaders generates the mandatory headers for OpenCode upstream.
 func BuildOpenCodeHeaders(rawHeaders map[string]string, sessionID string, isStream bool) map[string]string {
 	ua := DefaultOpenCodeUA
 	if rawHeaders != nil {
@@ -106,11 +137,66 @@ func BuildOpenCodeHeaders(rawHeaders map[string]string, sessionID string, isStre
 		}
 	}
 
-	session := TranslateOpenCodeSessionID(sessionID)
+	sesHdr := ""
 	if rawHeaders != nil {
 		for k, v := range rawHeaders {
 			if strings.EqualFold(k, "x-opencode-session") {
-				session = TranslateOpenCodeSessionID(v)
+				sesHdr = strings.TrimSpace(v)
+				break
+			}
+		}
+	}
+
+	var session string
+	if sesHdr != "" && OpenCodeSessionRegex.MatchString(sesHdr) {
+		session = sesHdr
+	} else if sessionID != "" {
+		session = TranslateOpenCodeSessionID(sessionID)
+	} else {
+		session = GenerateOpenCodeSessionID()
+	}
+
+	reqHdr := ""
+	if rawHeaders != nil {
+		for k, v := range rawHeaders {
+			if strings.EqualFold(k, "x-opencode-request") {
+				reqHdr = strings.TrimSpace(v)
+				break
+			}
+		}
+	}
+	var reqId string
+	if reqHdr != "" && OpenCodeRequestRegex.MatchString(reqHdr) {
+		reqId = reqHdr
+	} else {
+		reqId = GenerateOpenCodeRequestID()
+	}
+
+	clientHdr := "desktop"
+	if rawHeaders != nil {
+		for k, v := range rawHeaders {
+			if strings.EqualFold(k, "x-opencode-client") && strings.TrimSpace(v) != "" {
+				clientHdr = strings.TrimSpace(v)
+				break
+			}
+		}
+	}
+
+	projHdr := "global"
+	if rawHeaders != nil {
+		for k, v := range rawHeaders {
+			if strings.EqualFold(k, "x-opencode-project") && strings.TrimSpace(v) != "" {
+				projHdr = strings.TrimSpace(v)
+				break
+			}
+		}
+	}
+
+	auth := "Bearer public"
+	if rawHeaders != nil {
+		for k, v := range rawHeaders {
+			if strings.EqualFold(k, "authorization") && strings.TrimSpace(v) != "" {
+				auth = strings.TrimSpace(v)
 				break
 			}
 		}
@@ -118,21 +204,24 @@ func BuildOpenCodeHeaders(rawHeaders map[string]string, sessionID string, isStre
 
 	res := map[string]string{
 		"Content-Type":       "application/json",
-		"Authorization":      "Bearer public",
+		"Authorization":      auth,
+		"anthropic-version":  "2023-06-01",
 		"User-Agent":         ua,
-		"x-opencode-client":  "desktop",
+		"x-opencode-client":  clientHdr,
 		"x-opencode-session": session,
-		"x-opencode-request": GenerateOpenCodeRequestID(),
-		"x-opencode-project": "global",
+		"x-opencode-request": reqId,
+		"x-opencode-project": projHdr,
 	}
+
 	if isStream {
 		res["Accept"] = "text/event-stream"
 	} else {
 		res["Accept"] = "*/*"
 	}
+
 	for k, v := range rawHeaders {
 		kl := strings.ToLower(k)
-		if kl == "user-agent" || kl == "x-opencode-session" || kl == "x-opencode-request" || kl == "x-opencode-client" || kl == "x-opencode-project" || kl == "authorization" || kl == "content-type" || kl == "accept" {
+		if kl == "user-agent" || kl == "x-opencode-session" || kl == "x-opencode-request" || kl == "x-opencode-client" || kl == "x-opencode-project" || kl == "authorization" || kl == "content-type" || kl == "accept" || kl == "anthropic-version" {
 			continue
 		}
 		res[k] = v
