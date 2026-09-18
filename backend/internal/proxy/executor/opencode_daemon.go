@@ -3,10 +3,13 @@ package executor
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +22,9 @@ const defaultOpencodeDaemonURL = "http://127.0.0.1:4096"
 var (
 	daemonSessionMu sync.RWMutex
 	daemonSessions  = make(map[string]string)
-	daemonClient    = &http.Client{Timeout: 120 * time.Second}
+	daemonClient    = &http.Client{Timeout: 180 * time.Second}
+	toolCallRegex   = regexp.MustCompile(`(?s)\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}`)
+	singleToolRegex = regexp.MustCompile(`(?s)\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{.*?\})\s*\}`)
 )
 
 type opencodeSessionResp struct {
@@ -52,6 +57,21 @@ type opencodeMessageInfo struct {
 type opencodeMessageResp struct {
 	Info  opencodeMessageInfo   `json:"info"`
 	Parts []opencodeMessagePart `json:"parts"`
+}
+
+type openAIToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+func genToolCallID() string {
+	b := make([]byte, 12)
+	rand.Read(b)
+	return "call_" + hex.EncodeToString(b)
 }
 
 func getOrCreateDaemonSession(ctx context.Context, sessionKey string) (string, error) {
@@ -102,18 +122,37 @@ func getOrCreateDaemonSession(ctx context.Context, sessionKey string) (string, e
 	return sResp.ID, nil
 }
 
-func extractPromptFromOpenAIBody(body []byte) string {
+func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 	var parsed struct {
 		Messages []struct {
-			Role    string `json:"role"`
-			Content any    `json:"content"`
+			Role       string           `json:"role"`
+			Content    any              `json:"content"`
+			ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
+			ToolCallID string           `json:"tool_call_id,omitempty"`
+			Name       string           `json:"name,omitempty"`
 		} `json:"messages"`
+		Tools      []any `json:"tools,omitempty"`
+		ToolChoice any   `json:"tool_choice,omitempty"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Messages) == 0 {
-		return "hello"
+		return "hello", false
 	}
 
+	hasTools := len(parsed.Tools) > 0
 	var b strings.Builder
+
+	if hasTools {
+		toolsJSON, _ := json.MarshalIndent(parsed.Tools, "", "  ")
+		b.WriteString("# Available Tools\n")
+		b.WriteString("You have access to the following tools:\n```json\n")
+		b.WriteString(string(toolsJSON))
+		b.WriteString("\n```\n\n")
+		b.WriteString("INSTRUCTIONS FOR TOOL CALLING:\n")
+		b.WriteString("When you need to execute a tool, respond ONLY with a valid JSON object in this exact format:\n")
+		b.WriteString("```json\n{\n  \"tool_calls\": [\n    {\n      \"name\": \"function_name\",\n      \"arguments\": {\"param_name\": \"value\"}\n    }\n  ]\n}\n```\n")
+		b.WriteString("If you do not need to call any tool, answer directly in standard text.\n\n---\n\n")
+	}
+
 	for _, m := range parsed.Messages {
 		role := strings.ToLower(m.Role)
 		content := ""
@@ -129,24 +168,119 @@ func extractPromptFromOpenAIBody(body []byte) string {
 			}
 		}
 		content = strings.TrimSpace(content)
-		if content != "" {
-			if b.Len() > 0 {
-				b.WriteString("\n\n")
-			}
-			if role == "system" {
-				b.WriteString("[System Instructions]\n" + content)
-			} else if role == "assistant" {
-				b.WriteString("[Assistant]\n" + content)
+
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+
+		if role == "system" {
+			b.WriteString("[System Instructions]\n" + content)
+		} else if role == "assistant" {
+			if len(m.ToolCalls) > 0 {
+				tcJSON, _ := json.Marshal(map[string]any{"tool_calls": m.ToolCalls})
+				b.WriteString("[Assistant Tool Call]\n" + string(tcJSON))
 			} else {
-				b.WriteString(content)
+				b.WriteString("[Assistant]\n" + content)
+			}
+		} else if role == "tool" {
+			b.WriteString(fmt.Sprintf("[Tool Result for %s]\n%s", m.ToolCallID, content))
+		} else {
+			b.WriteString(content)
+		}
+	}
+
+	res := b.String()
+	if res == "" {
+		return "hello", hasTools
+	}
+	return res, hasTools
+}
+
+func parseToolCallsFromOutput(text string) ([]openAIToolCall, string) {
+	clean := strings.TrimSpace(text)
+	
+	// Strip code block fences if present
+	if strings.HasPrefix(clean, "```json") && strings.HasSuffix(clean, "```") {
+		clean = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(clean, "```json"), "```"))
+	} else if strings.HasPrefix(clean, "```") && strings.HasSuffix(clean, "```") {
+		clean = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(clean, "```"), "```"))
+	}
+
+	// Try direct unmarshal of {"tool_calls": [...]}
+	var parsed struct {
+		ToolCalls []struct {
+			Name      string `json:"name"`
+			Arguments any    `json:"arguments"`
+		} `json:"tool_calls"`
+	}
+
+	if err := json.Unmarshal([]byte(clean), &parsed); err == nil && len(parsed.ToolCalls) > 0 {
+		var out []openAIToolCall
+		for _, tc := range parsed.ToolCalls {
+			if tc.Name == "" {
+				continue
+			}
+			argsStr := "{}"
+			if str, ok := tc.Arguments.(string); ok {
+				argsStr = str
+			} else if tc.Arguments != nil {
+				if b, mErr := json.Marshal(tc.Arguments); mErr == nil {
+					argsStr = string(b)
+				}
+			}
+			out = append(out, openAIToolCall{
+				ID:   genToolCallID(),
+				Type: "function",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{
+					Name:      tc.Name,
+					Arguments: argsStr,
+				},
+			})
+		}
+		if len(out) > 0 {
+			return out, ""
+		}
+	}
+
+	// Try regex extraction of tool_calls block
+	if match := toolCallRegex.FindString(clean); match != "" {
+		if err := json.Unmarshal([]byte(match), &parsed); err == nil && len(parsed.ToolCalls) > 0 {
+			var out []openAIToolCall
+			for _, tc := range parsed.ToolCalls {
+				if tc.Name == "" {
+					continue
+				}
+				argsStr := "{}"
+				if str, ok := tc.Arguments.(string); ok {
+					argsStr = str
+				} else if tc.Arguments != nil {
+					if b, mErr := json.Marshal(tc.Arguments); mErr == nil {
+						argsStr = string(b)
+					}
+				}
+				out = append(out, openAIToolCall{
+					ID:   genToolCallID(),
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{
+						Name:      tc.Name,
+						Arguments: argsStr,
+					},
+				})
+			}
+			if len(out) > 0 {
+				remText := strings.TrimSpace(strings.Replace(clean, match, "", 1))
+				return out, remText
 			}
 		}
 	}
-	res := b.String()
-	if res == "" {
-		return "hello"
-	}
-	return res
+
+	return nil, text
 }
 
 func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel string) error {
@@ -160,7 +294,7 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 		return fmt.Errorf("opencode daemon session: %w", err)
 	}
 
-	promptText := extractPromptFromOpenAIBody(req.Body)
+	promptText, hasTools := extractPromptFromOpenAIBody(req.Body)
 
 	msgPayload := map[string]any{
 		"model": map[string]string{
@@ -218,7 +352,7 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 		}
 	}
 
-	finalText := textBuilder.String()
+	rawText := textBuilder.String()
 	reasoningText := reasoningBuilder.String()
 	msgID := msgResp.Info.ID
 	if msgID == "" {
@@ -226,6 +360,21 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 	}
 
 	created := time.Now().Unix()
+
+	var toolCalls []openAIToolCall
+	finalText := rawText
+	if hasTools {
+		toolCalls, finalText = parseToolCallsFromOutput(rawText)
+	}
+
+	finishReason := msgResp.Info.Finish
+	if finishReason == "" {
+		if len(toolCalls) > 0 {
+			finishReason = "tool_calls"
+		} else {
+			finishReason = "stop"
+		}
+	}
 
 	if req.IsStream {
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeEventStream)
@@ -235,7 +384,7 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 
 		flusher, ok := w.(http.Flusher)
 
-		// 1. send reasoning if present
+		// 1. Send reasoning if present
 		if reasoningText != "" {
 			reasoningChunk := map[string]any{
 				"id":      msgID,
@@ -260,33 +409,54 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 			}
 		}
 
-		// 2. send text content
-		textChunk := map[string]any{
-			"id":      msgID,
-			"object":  "chat.completion.chunk",
-			"created": created,
-			"model":   cleanModel,
-			"choices": []map[string]any{
-				{
-					"index": 0,
-					"delta": map[string]any{
-						"content": finalText,
+		// 2. Send content or tool_calls
+		if len(toolCalls) > 0 {
+			tcChunk := map[string]any{
+				"id":      msgID,
+				"object":  "chat.completion.chunk",
+				"created": created,
+				"model":   cleanModel,
+				"choices": []map[string]any{
+					{
+						"index": 0,
+						"delta": map[string]any{
+							"role":       "assistant",
+							"tool_calls": toolCalls,
+						},
+						"finish_reason": nil,
 					},
-					"finish_reason": nil,
 				},
-			},
-		}
-		chunkBytes, _ := json.Marshal(textChunk)
-		fmt.Fprintf(w, "data: %s\n\n", string(chunkBytes))
-		if ok {
-			flusher.Flush()
+			}
+			chunkBytes, _ := json.Marshal(tcChunk)
+			fmt.Fprintf(w, "data: %s\n\n", string(chunkBytes))
+			if ok {
+				flusher.Flush()
+			}
+		} else {
+			textChunk := map[string]any{
+				"id":      msgID,
+				"object":  "chat.completion.chunk",
+				"created": created,
+				"model":   cleanModel,
+				"choices": []map[string]any{
+					{
+						"index": 0,
+						"delta": map[string]any{
+							"role":    "assistant",
+							"content": finalText,
+						},
+						"finish_reason": nil,
+					},
+				},
+			}
+			chunkBytes, _ := json.Marshal(textChunk)
+			fmt.Fprintf(w, "data: %s\n\n", string(chunkBytes))
+			if ok {
+				flusher.Flush()
+			}
 		}
 
-		// 3. send finish
-		finishReason := msgResp.Info.Finish
-		if finishReason == "" {
-			finishReason = "stop"
-		}
+		// 3. Send finish chunk
 		finishChunk := map[string]any{
 			"id":      msgID,
 			"object":  "chat.completion.chunk",
@@ -314,9 +484,16 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 		return nil
 	}
 
-	finishReason := msgResp.Info.Finish
-	if finishReason == "" {
-		finishReason = "stop"
+	choiceMsg := map[string]any{
+		"role":              "assistant",
+		"content":           finalText,
+		"reasoning_content": reasoningText,
+	}
+	if len(toolCalls) > 0 {
+		choiceMsg["tool_calls"] = toolCalls
+		if finalText == "" {
+			choiceMsg["content"] = nil
+		}
 	}
 
 	respObj := map[string]any{
@@ -326,12 +503,8 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 		"model":   cleanModel,
 		"choices": []map[string]any{
 			{
-				"index": 0,
-				"message": map[string]any{
-					"role":              "assistant",
-					"content":           finalText,
-					"reasoning_content": reasoningText,
-				},
+				"index":         0,
+				"message":       choiceMsg,
 				"finish_reason": finishReason,
 			},
 		},
@@ -345,6 +518,10 @@ func ForwardOpencodeDaemon(w http.ResponseWriter, req *Request, cleanModel strin
 	outBytes, err := json.Marshal(respObj)
 	if err != nil {
 		return err
+	}
+
+	if req.ResponseBuf != nil {
+		req.ResponseBuf.Write(outBytes)
 	}
 
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
