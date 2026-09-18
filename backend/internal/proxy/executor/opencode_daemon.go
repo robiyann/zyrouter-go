@@ -17,14 +17,16 @@ import (
 	"zyrouter/backend/internal/constants"
 )
 
-const defaultOpencodeDaemonURL = "http://127.0.0.1:4096"
+const (
+	defaultOpencodeDaemonURL = "http://127.0.0.1:4096"
+	maxSafePromptChars       = 32000 // Keeps inference under upstream timeout gate
+)
 
 var (
 	daemonSessionMu sync.RWMutex
 	daemonSessions  = make(map[string]string)
-	daemonClient    = &http.Client{Timeout: 180 * time.Second}
+	daemonClient    = &http.Client{Timeout: 240 * time.Second}
 	toolCallRegex   = regexp.MustCompile(`(?s)\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}`)
-	singleToolRegex = regexp.MustCompile(`(?s)\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{.*?\})\s*\}`)
 )
 
 type opencodeSessionResp struct {
@@ -122,6 +124,15 @@ func getOrCreateDaemonSession(ctx context.Context, sessionKey string) (string, e
 	return sResp.ID, nil
 }
 
+func compactText(text string, maxChars int) string {
+	if len(text) <= maxChars {
+		return text
+	}
+	headSize := maxChars / 2
+	tailSize := maxChars / 2
+	return text[:headSize] + "\n\n[...context compacted for performance...]\n\n" + text[len(text)-tailSize:]
+}
+
 func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 	var parsed struct {
 		Messages []struct {
@@ -142,17 +153,15 @@ func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 	var b strings.Builder
 
 	if hasTools {
-		toolsJSON, _ := json.MarshalIndent(parsed.Tools, "", "  ")
-		b.WriteString("# Available Tools\n")
-		b.WriteString("You have access to the following tools:\n```json\n")
-		b.WriteString(string(toolsJSON))
+		// Minified JSON serialization for tools to save bandwidth and compute
+		toolsMinJSON, _ := json.Marshal(parsed.Tools)
+		b.WriteString("# Available Tools\n```json\n")
+		b.Write(toolsMinJSON)
 		b.WriteString("\n```\n\n")
-		b.WriteString("INSTRUCTIONS FOR TOOL CALLING:\n")
-		b.WriteString("When you need to execute a tool, respond ONLY with a valid JSON object in this exact format:\n")
-		b.WriteString("```json\n{\n  \"tool_calls\": [\n    {\n      \"name\": \"function_name\",\n      \"arguments\": {\"param_name\": \"value\"}\n    }\n  ]\n}\n```\n")
-		b.WriteString("If you do not need to call any tool, answer directly in standard text.\n\n---\n\n")
+		b.WriteString("INSTRUCTIONS: When calling tools, respond ONLY with JSON: `{\"tool_calls\": [{\"name\": \"func_name\", \"arguments\": {\"key\": \"val\"}}]}`.\n\n")
 	}
 
+	var msgParts []string
 	for _, m := range parsed.Messages {
 		role := strings.ToLower(m.Role)
 		content := ""
@@ -169,26 +178,30 @@ func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 		}
 		content = strings.TrimSpace(content)
 
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
-		}
-
 		if role == "system" {
-			b.WriteString("[System Instructions]\n" + content)
+			// System prompt compaction if overly verbose
+			compactSys := compactText(content, 12000)
+			msgParts = append(msgParts, "[System Instructions]\n"+compactSys)
 		} else if role == "assistant" {
 			if len(m.ToolCalls) > 0 {
 				tcJSON, _ := json.Marshal(map[string]any{"tool_calls": m.ToolCalls})
-				b.WriteString("[Assistant Tool Call]\n" + string(tcJSON))
+				msgParts = append(msgParts, "[Assistant Tool Call]\n"+string(tcJSON))
 			} else {
-				b.WriteString("[Assistant]\n" + content)
+				msgParts = append(msgParts, "[Assistant]\n"+compactText(content, 6000))
 			}
 		} else if role == "tool" {
-			b.WriteString(fmt.Sprintf("[Tool Result for %s]\n%s", m.ToolCallID, content))
+			msgParts = append(msgParts, fmt.Sprintf("[Tool Result for %s]\n%s", m.ToolCallID, compactText(content, 6000)))
 		} else {
-			b.WriteString(content)
+			msgParts = append(msgParts, content)
 		}
 	}
 
+	joined := strings.Join(msgParts, "\n\n")
+	if len(joined) > maxSafePromptChars {
+		joined = compactText(joined, maxSafePromptChars)
+	}
+
+	b.WriteString(joined)
 	res := b.String()
 	if res == "" {
 		return "hello", hasTools
@@ -198,15 +211,13 @@ func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 
 func parseToolCallsFromOutput(text string) ([]openAIToolCall, string) {
 	clean := strings.TrimSpace(text)
-	
-	// Strip code block fences if present
+
 	if strings.HasPrefix(clean, "```json") && strings.HasSuffix(clean, "```") {
 		clean = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(clean, "```json"), "```"))
 	} else if strings.HasPrefix(clean, "```") && strings.HasSuffix(clean, "```") {
 		clean = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(clean, "```"), "```"))
 	}
 
-	// Try direct unmarshal of {"tool_calls": [...]}
 	var parsed struct {
 		ToolCalls []struct {
 			Name      string `json:"name"`
@@ -245,7 +256,6 @@ func parseToolCallsFromOutput(text string) ([]openAIToolCall, string) {
 		}
 	}
 
-	// Try regex extraction of tool_calls block
 	if match := toolCallRegex.FindString(clean); match != "" {
 		if err := json.Unmarshal([]byte(match), &parsed); err == nil && len(parsed.ToolCalls) > 0 {
 			var out []openAIToolCall
