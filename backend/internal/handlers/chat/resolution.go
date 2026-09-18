@@ -49,7 +49,7 @@ func (h *ChatHandler) ResolveModel(modelStr string) (*ModelInfo, error) {
 	return h.resolveModel(modelStr)
 }
 
-// resolveClientModel is the only resolver used for public client requests.
+// resolveClientModel is the resolver used for public client requests.
 // Provider/model strings remain an internal routing representation, never a
 // public model namespace. Every public model ID must be an admin-created alias.
 func (h *ChatHandler) resolveClientModel(modelStr string) (*ModelInfo, error) {
@@ -57,20 +57,23 @@ func (h *ChatHandler) resolveClientModel(modelStr string) (*ModelInfo, error) {
 	if modelStr == "" {
 		return nil, fmt.Errorf("missing model")
 	}
+
+	// 1. Direct alias match
+	target, err := h.Repo.GetModelAlias(modelStr)
+	if err == nil && strings.TrimSpace(target) != "" {
+		return h.resolveModel(modelStr)
+	}
+
+	// 2. If model contains a slash (e.g. "oc/mimo-v2.5-free"), check if the sub-model is an alias
 	if strings.Contains(modelStr, "/") {
+		parts := strings.SplitN(modelStr, "/", 2)
+		if subTarget, sErr := h.Repo.GetModelAlias(parts[1]); sErr == nil && strings.TrimSpace(subTarget) != "" {
+			return h.resolveModel(parts[1])
+		}
 		return nil, auth.ErrProviderPrefixForbidden
 	}
-	target, err := h.Repo.GetModelAlias(modelStr)
-	if err != nil {
-		return nil, fmt.Errorf("load model alias: %w", err)
-	}
-	if strings.TrimSpace(target) == "" {
-		return nil, auth.ErrModelAliasRequired
-	}
-	if !strings.Contains(target, "/") && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(target)), "combo:") {
-		return nil, auth.ErrModelAliasRequired
-	}
-	return h.resolveModel(modelStr)
+
+	return nil, auth.ErrModelAliasRequired
 }
 
 func modelResolutionStatus(err error) int {

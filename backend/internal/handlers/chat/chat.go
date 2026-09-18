@@ -267,8 +267,15 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 	if key == nil || info == nil {
 		return nil
 	}
+
+	effectiveAlias := requested
 	if strings.Contains(requested, "/") {
-		return auth.ErrProviderPrefixForbidden
+		parts := strings.SplitN(requested, "/", 2)
+		if subTarget, sErr := h.Repo.GetModelAlias(parts[1]); sErr == nil && strings.TrimSpace(subTarget) != "" {
+			effectiveAlias = parts[1]
+		} else {
+			return auth.ErrProviderPrefixForbidden
+		}
 	}
 	// All keys inherit their model access from the account type tier.
 	// Administrator tier bypasses restriction; other tiers require the alias in accountTypeModels.
@@ -280,14 +287,14 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 		typeID = "administrator"
 	}
 	if h.Repo != nil && typeID != "" && typeID != "administrator" {
-		aliasTarget, err := h.Repo.GetModelAlias(requested)
+		aliasTarget, err := h.Repo.GetModelAlias(effectiveAlias)
 		if err != nil {
 			return fmt.Errorf("model alias lookup failed: %w", err)
 		}
 		if strings.TrimSpace(aliasTarget) == "" {
 			return fmt.Errorf("model alias '%s' does not exist", requested)
 		}
-		allowed, err := h.Repo.IsAliasAllowedForAccountType(typeID, requested)
+		allowed, err := h.Repo.IsAliasAllowedForAccountType(typeID, effectiveAlias)
 		if err != nil {
 			return fmt.Errorf("account type lookup failed: %w", err)
 		}
