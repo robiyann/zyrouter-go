@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -57,12 +58,38 @@ func StartEmbeddedDaemon(ctx context.Context) {
 		return
 	}
 
+	var candidatePaths []string
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidatePaths = append(candidatePaths,
+			filepath.Join(execDir, "bin", "opencode"),
+			filepath.Join(execDir, "..", "bin", "opencode"),
+			filepath.Join(execDir, "opencode"),
+		)
+	}
+	if p, err := exec.LookPath("opencode"); err == nil {
+		candidatePaths = append(candidatePaths, p)
+	}
+	candidatePaths = append(candidatePaths,
+		"/usr/local/bin/opencode",
+		"/usr/bin/opencode",
+	)
+
+	var chosenBinary string
+	for _, p := range candidatePaths {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			chosenBinary = p
+			break
+		}
+	}
+
 	var cmd *exec.Cmd
-	opencodePath, err := exec.LookPath("opencode")
-	if err == nil {
-		cmd = exec.Command(opencodePath, "serve", "--port", "4096", "--hostname", "127.0.0.1")
+	if chosenBinary != "" {
+		cmd = exec.Command(chosenBinary, "serve", "--port", "4096", "--hostname", "127.0.0.1")
+	} else if _, err := exec.LookPath("bun"); err == nil {
+		cmd = exec.Command("bun", "x", "opencode-ai", "serve", "--port", "4096", "--hostname", "127.0.0.1")
 	} else {
-		cmd = exec.Command("npx", "opencode-ai", "serve", "--port", "4096", "--hostname", "127.0.0.1")
+		cmd = exec.Command("npx", "-y", "opencode-ai", "serve", "--port", "4096", "--hostname", "127.0.0.1")
 	}
 
 	homeDir, _ := os.UserHomeDir()
