@@ -29,6 +29,7 @@ import (
 	"zyrouter/backend/internal/shutdown"
 	"zyrouter/backend/internal/telegram"
 	"zyrouter/backend/internal/updater"
+	"zyrouter/backend/internal/proxy/executor"
 )
 
 func main() {
@@ -202,6 +203,8 @@ func runServer(cCtx *cli.Context) error {
 	fmt.Fprintf(os.Stdout, "\n  🚀 Zyrouter AI Gateway (%s) listening on %s\n\n", updater.CurrentVersion, addr)
 	botCtx, botCancel := context.WithCancel(context.Background())
 	defer botCancel()
+	go executor.StartEmbeddedDaemon(botCtx)
+	defer botCancel()
 	if cfg.TelegramBotToken != "" && cfg.TelegramPollingEnabled {
 		tgBot := telegram.NewBotService(repo, cfg.TelegramBotToken, cfg.TelegramBotUsername)
 		go tgBot.Start(botCtx)
@@ -215,6 +218,7 @@ func runServer(cCtx *cli.Context) error {
 	// upstream body, handlers emit a final [DONE], and Shutdown completes well
 	// within its deadline instead of waiting out the full timeout.
 	shutdown.Cancel()
+	executor.StopEmbeddedDaemon()
 
 	// A second signal force-quits immediately (e.g. a stream stuck mid-drain).
 	go func() {

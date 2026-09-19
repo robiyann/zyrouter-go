@@ -345,17 +345,16 @@ func opencodeMessagesPath(path string) string {
 
 // ForwardOpencode handles requests for opencode (free tier).
 func ForwardOpencode(w http.ResponseWriter, req *Request) error {
-	apiKey := req.APIKey
-	if apiKey == "" {
-		apiKey = "public"
-	}
-
 	normBody, cleanModel := normalizeOpencodeModel(req.Body)
 
-	if apiKey == "public" {
-		if err := ForwardOpencodeDaemon(w, req, cleanModel); err == nil {
-			return nil
-		}
+	// Always route free-tier requests through the embedded local engine first
+	if err := ForwardOpencodeDaemon(w, req, cleanModel); err == nil {
+		return nil
+	}
+
+	apiKey := req.APIKey
+	if apiKey == "" || strings.HasPrefix(apiKey, "zy_") {
+		apiKey = "public"
 	}
 
 	if isMuseSparkModel(req.Body) {

@@ -8,10 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"zyrouter/backend/internal/constants"
@@ -27,7 +31,96 @@ var (
 	daemonSessions  = make(map[string]string)
 	daemonClient    = &http.Client{Timeout: 240 * time.Second}
 	toolCallRegex   = regexp.MustCompile(`(?s)\{\s*"tool_calls"\s*:\s*\[(.*?)\]\s*\}`)
+
+	daemonCmd   *exec.Cmd
+	daemonCmdMu sync.Mutex
 )
+
+// IsEmbeddedDaemonAlive checks if the local opencode serve engine is responding.
+func IsEmbeddedDaemonAlive() bool {
+	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	resp, err := client.Get(defaultOpencodeDaemonURL + "/config")
+	if err == nil {
+		resp.Body.Close()
+		return resp.StatusCode >= 200 && resp.StatusCode < 500
+	}
+	return false
+}
+
+// StartEmbeddedDaemon initializes the internal OpenCode engine if not already running.
+func StartEmbeddedDaemon(ctx context.Context) {
+	daemonCmdMu.Lock()
+	defer daemonCmdMu.Unlock()
+
+	if IsEmbeddedDaemonAlive() {
+		log.Println("[opencode] embedded daemon already active on port 4096")
+		return
+	}
+
+	var cmd *exec.Cmd
+	opencodePath, err := exec.LookPath("opencode")
+	if err == nil {
+		cmd = exec.Command(opencodePath, "serve", "--port", "4096", "--hostname", "127.0.0.1")
+	} else {
+		cmd = exec.Command("npx", "opencode-ai", "serve", "--port", "4096", "--hostname", "127.0.0.1")
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	if homeDir == "" {
+		homeDir = "/home/zyrouter"
+	}
+	cmd.Dir = homeDir
+	tmpDir := homeDir + "/tmp"
+	_ = os.MkdirAll(tmpDir, 0755)
+	cmd.Env = append(os.Environ(), "NODE_ENV=production", "TMPDIR="+tmpDir, "TEMP="+tmpDir, "TMP="+tmpDir)
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("[opencode] warning: failed to start embedded daemon: %v", err)
+		return
+	}
+	daemonCmd = cmd
+	log.Printf("[opencode] spawned embedded daemon (PID: %d) on 127.0.0.1:4096", cmd.Process.Pid)
+
+	go func() {
+		_ = cmd.Wait()
+		daemonCmdMu.Lock()
+		if daemonCmd == cmd {
+			daemonCmd = nil
+		}
+		daemonCmdMu.Unlock()
+		log.Printf("[opencode] embedded daemon process exited")
+	}()
+
+	// Wait up to 15 seconds for daemon readiness
+	for i := 0; i < 30; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if IsEmbeddedDaemonAlive() {
+			log.Println("[opencode] embedded daemon ready and listening")
+			break
+		}
+	}
+}
+
+// StopEmbeddedDaemon cleanly terminates the child daemon process on shutdown.
+func StopEmbeddedDaemon() {
+	daemonCmdMu.Lock()
+	defer daemonCmdMu.Unlock()
+	if daemonCmd != nil && daemonCmd.Process != nil {
+		log.Printf("[opencode] stopping embedded daemon (PID: %d)...", daemonCmd.Process.Pid)
+		_ = daemonCmd.Process.Signal(syscall.SIGTERM)
+		done := make(chan error, 1)
+		go func() {
+			_, err := daemonCmd.Process.Wait()
+			done <- err
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			_ = daemonCmd.Process.Kill()
+		}
+		daemonCmd = nil
+	}
+}
 
 type opencodeSessionResp struct {
 	ID string `json:"id"`
@@ -95,7 +188,12 @@ func getOrCreateDaemonSession(ctx context.Context, sessionKey string) (string, e
 
 	resp, err := daemonClient.Do(req)
 	if err != nil {
-		return "", err
+		// Attempt auto-recovery if daemon died
+		StartEmbeddedDaemon(ctx)
+		resp, err = daemonClient.Do(req)
+		if err != nil {
+			return "", err
+		}
 	}
 	defer resp.Body.Close()
 
@@ -153,12 +251,11 @@ func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 	var b strings.Builder
 
 	if hasTools {
-		// Minified JSON serialization for tools to save bandwidth and compute
 		toolsMinJSON, _ := json.Marshal(parsed.Tools)
 		b.WriteString("# Available Tools\n```json\n")
 		b.Write(toolsMinJSON)
 		b.WriteString("\n```\n\n")
-		b.WriteString("INSTRUCTIONS: When calling tools, respond ONLY with JSON: `{\"tool_calls\": [{\"name\": \"func_name\", \"arguments\": {\"key\": \"val\"}}]}`.\n\n")
+		b.WriteString("INSTRUCTIONS: When calling tools, respond ONLY with JSON: `{\"tool_calls\": [{\"name\": \"func_name\", \"arguments\": {\"key\": \"val\"}}]} `.\n\n")
 	}
 
 	var msgParts []string
@@ -179,7 +276,6 @@ func extractPromptFromOpenAIBody(body []byte) (string, bool) {
 		content = strings.TrimSpace(content)
 
 		if role == "system" {
-			// System prompt compaction if overly verbose
 			compactSys := compactText(content, 12000)
 			msgParts = append(msgParts, "[System Instructions]\n"+compactSys)
 		} else if role == "assistant" {
