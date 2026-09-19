@@ -60,9 +60,11 @@ type Config struct {
 	CavemanEnabled         bool
 	PonytailEnabled        bool
 	EnabledProviders       []string
-	TelegramBotToken       string
-	TelegramBotUsername    string
-	TelegramPollingEnabled bool
+	TelegramBotToken            string
+	TelegramBotUsername         string
+	TelegramPollingEnabled      bool
+	TelegramQuotaBotToken       string
+	TelegramQuotaAllowedUserIDs string
 }
 
 // ResolveDataDir returns the base data directory: DATA_DIR env, else the
@@ -141,9 +143,11 @@ func LoadConfig() *Config {
 		CavemanEnabled:         cavemanEnabled,
 		PonytailEnabled:        ponytailEnabled,
 		EnabledProviders:       enabledProviders,
-		TelegramBotToken:       strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
-		TelegramBotUsername:    strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")),
-		TelegramPollingEnabled: strings.ToLower(strings.TrimSpace(os.Getenv("TELEGRAM_POLLING_ENABLED"))) != "false" && os.Getenv("TELEGRAM_POLLING_ENABLED") != "0",
+		TelegramBotToken:            strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+		TelegramBotUsername:         strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME")),
+		TelegramPollingEnabled:      strings.ToLower(strings.TrimSpace(os.Getenv("TELEGRAM_POLLING_ENABLED"))) != "false" && os.Getenv("TELEGRAM_POLLING_ENABLED") != "0",
+		TelegramQuotaBotToken:       strings.TrimSpace(os.Getenv("TELEGRAM_QUOTA_BOT_TOKEN")),
+		TelegramQuotaAllowedUserIDs: strings.TrimSpace(os.Getenv("TELEGRAM_QUOTA_ALLOWED_USER_IDS")),
 	}
 }
 
