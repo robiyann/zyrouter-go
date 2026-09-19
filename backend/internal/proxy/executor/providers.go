@@ -285,11 +285,26 @@ func normalizeOpencodeModel(body []byte) ([]byte, string) {
 		return body, ""
 	}
 	rawModel, _ := bodyMap["model"].(string)
-	cleanModel := strings.ToLower(rawModel)
+	cleanModel := strings.ToLower(strings.TrimSpace(rawModel))
 	if idx := strings.LastIndex(cleanModel, "/"); idx != -1 {
 		cleanModel = cleanModel[idx+1:]
 	}
-	if cleanModel == "union-alpha-free" {
+	switch cleanModel {
+	case "mimo-v2.5", "mimo-2.5", "mimo":
+		cleanModel = "mimo-v2.5-free"
+	case "muse-spark-1.3", "muse-spark":
+		cleanModel = "muse-spark-1.3-contributor-free"
+	case "muse-spark-1.2":
+		cleanModel = "muse-spark-1.2-contributor-free"
+	case "nemotron-3-ultra":
+		cleanModel = "nemotron-3-ultra-free"
+	case "nemotron-3.5-lightning":
+		cleanModel = "nemotron-3.5-lightning-free"
+	case "ling-3.0-flash-fin", "ling-3.0-flash":
+		cleanModel = "ling-3.0-flash-fin-free"
+	case "jev-1.13":
+		cleanModel = "jev-1.13-free"
+	case "union-alpha-free":
 		cleanModel = "union-alpha"
 	}
 	bodyMap["model"] = cleanModel

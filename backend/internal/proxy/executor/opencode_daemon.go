@@ -86,7 +86,7 @@ func getOrCreateDaemonSession(ctx context.Context, sessionKey string) (string, e
 		daemonSessionMu.RUnlock()
 	}
 
-	reqBody, _ := json.Marshal(map[string]string{"directory": "/root"})
+	reqBody, _ := json.Marshal(map[string]string{"directory": "/home/zyrouter"})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, defaultOpencodeDaemonURL+"/session", bytes.NewReader(reqBody))
 	if err != nil {
 		return "", err
