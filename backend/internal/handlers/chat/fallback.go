@@ -464,6 +464,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 			Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 			Status:           fmt.Sprintf("%d", statusCode),
 			PublicModel:      publicModelFromContext(ctx),
+			ErrorMessage:     fwdErr.Error(),
 		}, h.Repo)
 
 		// Record in SQLite requestDetails
@@ -475,6 +476,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 			"timestamp":  now.Format("2006-01-02T15:04:05.000Z"),
 			"latency":    map[string]int64{"total": latencyMs},
 			"error":      fwdErr.Error(),
+			"errorMessage": fwdErr.Error(),
 		})
 		_ = h.Repo.InsertRequestDetail(reqID, provider, model, connectionID, "error", string(reqData))
 		userID, clientID := "", ""

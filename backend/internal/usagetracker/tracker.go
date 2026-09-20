@@ -40,6 +40,7 @@ type RecentRequest struct {
 	DurationMs       int64   `json:"durationMs,omitempty"`
 	Status           string  `json:"status"`
 	PublicModel      string  `json:"publicModel,omitempty"`
+	ErrorMessage     string  `json:"errorMessage,omitempty"`
 }
 
 // StreamPayload represents the payload sent over SSE on /api/usage/stream.

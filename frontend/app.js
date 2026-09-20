@@ -9062,6 +9062,18 @@ function openPayloadInspectorDrawer(reqData = {}) {
           </div>
         </div>
 
+        ${(reqData.errorMessage || reqData.error) ? `
+          <div class="card" style="padding:12px; border-left:3px solid var(--danger); background:rgba(239,68,68,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span class="kicker" style="color:var(--danger); font-weight:700;">ERROR MESSAGE</span>
+              <span style="font-size:9.5px; color:#f87171; font-family:var(--mono);">HTTP ${escapeHtml(String(reqData.status || 500))}</span>
+            </div>
+            <div style="font-family:var(--mono); font-size:11px; color:#fca5a5; line-height:1.4; word-break:break-word; max-height:140px; overflow-y:auto;">
+              ${escapeHtml(reqData.errorMessage || reqData.error)}
+            </div>
+          </div>
+        ` : ''}
+
         <div class="card" style="padding:12px;">
           <span class="kicker">ROUTING &amp; PROXY TRACE</span>
           <div style="display:grid; gap:6px; margin-top:6px; font-family:var(--mono); font-size:11px;">
