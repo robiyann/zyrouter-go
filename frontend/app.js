@@ -5752,8 +5752,13 @@ let poolCurrentPage = 1;
 let poolPageSize = 15;
 let cachedPoolsPayload = { proxyPools: [] };
 
+let authLogsCurrentPage = 1;
+const authLogsPageSize = 50;
+
 function renderAuthLogs(payload = {}) {
   const logs = Array.isArray(payload.logs) ? payload.logs : [];
+  const total = Number(payload.total || logs.length);
+  const totalPages = Math.ceil(total / authLogsPageSize) || 1;
   const security = payload.securitySummary || {};
   const rows = logs.length ? logs.map((entry) => `
     <tr>
@@ -5762,7 +5767,7 @@ function renderAuthLogs(payload = {}) {
       <td><code>${escapeHtml(entry.ip || '--')}</code></td>
       <td>${escapeHtml(`${entry.method || ''} ${entry.path || ''}`.trim() || '--')}</td>
       <td>${escapeHtml(String(entry.status || '--'))}</td>
-      <td><code>${escapeHtml(entry.userAgent || '--')}</code></td>
+      <td title="${escapeHtml(entry.userAgent || '--')}"><code style="max-width:140px; display:inline-block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(entry.userAgent || '--')}</code></td>
       <td>${escapeHtml(entry.detail || '--')}</td>
     </tr>`).join('') : `
     <tr><td colspan="7" style="text-align:center; padding:28px; color:var(--muted);">Belum ada auth event.</td></tr>`;
@@ -5781,12 +5786,44 @@ function renderAuthLogs(payload = {}) {
       <div class="data-table-container">
         <table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>IP Address</th><th>Request</th><th>Status</th><th>User Agent</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
-      <div style="margin-top:10px; color:var(--muted); font:10px var(--mono);">${Number(payload.total || logs.length).toLocaleString()} retained events</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font:12px var(--mono); color:var(--muted);">
+        <div>Showing <strong>${logs.length}</strong> of <strong>${total.toLocaleString()}</strong> events</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="secondary-button" id="btn-authlogs-prev" ${authLogsCurrentPage <= 1 ? 'disabled' : ''} style="padding:4px 10px; font-size:11px;">Prev</button>
+          <span>Page ${authLogsCurrentPage} / ${totalPages}</span>
+          <button type="button" class="secondary-button" id="btn-authlogs-next" ${authLogsCurrentPage >= totalPages ? 'disabled' : ''} style="padding:4px 10px; font-size:11px;">Next</button>
+        </div>
+      </div>
     </div>`;
 }
 
 function bindAuthLogs() {
-  document.querySelector('#btn-refresh-authlogs')?.addEventListener('click', () => setView('authlogs'));
+  document.querySelector('#btn-refresh-authlogs')?.addEventListener('click', () => {
+    authLogsCurrentPage = 1;
+    setView('authlogs');
+  });
+  document.querySelector('#btn-authlogs-prev')?.addEventListener('click', async () => {
+    if (authLogsCurrentPage > 1) {
+      authLogsCurrentPage--;
+      const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
+      const [logs, securitySummary] = await Promise.all([
+        request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
+        request('/api/admin/security/summary').catch(() => ({}))
+      ]);
+      content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
+      bindAuthLogs();
+    }
+  });
+  document.querySelector('#btn-authlogs-next')?.addEventListener('click', async () => {
+    authLogsCurrentPage++;
+    const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
+    const [logs, securitySummary] = await Promise.all([
+      request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
+      request('/api/admin/security/summary').catch(() => ({}))
+    ]);
+    content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
+    bindAuthLogs();
+  });
 }
 
 function renderPools(payload) {
@@ -6072,7 +6109,7 @@ async function renderView(name) {
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: async () => {
           const [logs, securitySummary] = await Promise.all([
-            request('/api/auth-logs?limit=200'),
+            request(`/api/auth-logs?limit=${authLogsPageSize}&offset=0`),
             request('/api/admin/security/summary').catch(() => ({}))
           ]);
           return { ...logs, securitySummary };
