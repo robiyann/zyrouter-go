@@ -19,3 +19,9 @@ backend/data/
 *.log
 tmp/
 graphify-out/
+
+# Binary outputs & worker caches
+backend/zyrouter
+backend/antigravity-quota-bot
+*.db
+.wrangler/
