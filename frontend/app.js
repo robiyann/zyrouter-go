@@ -1888,7 +1888,7 @@ async function renderProviderDetail(provId) {
   
   try {
     const [connPayload, modelPayload, poolPayload, settingsPayload, customPayload, prefixPayload, nodesPayload, aliasPayload] = await Promise.all([
-      request('/api/providers').catch(() => ({ connections: [] })),
+      request(`/api/providers?provider=${encodeURIComponent(provId)}&limit=100&offset=0`).catch(() => ({ connections: [] })),
       request('/models').catch(() => ({ data: [] })),
       request('/api/proxy-pools').catch(() => ({ proxyPools: [] })),
       request('/api/settings').catch(() => ({})),
@@ -6043,7 +6043,7 @@ async function renderView(name) {
     payload = await ({
         providers: async () => {
           const [connsRes, nodesRes] = await Promise.all([
-            request('/api/providers').catch(() => ({ connections: [] })),
+            request('/api/providers?summary=1').catch(() => ({ connections: [] })),
             request('/api/provider-nodes').catch(() => ({ nodes: [] }))
           ]);
           return {
@@ -6081,7 +6081,7 @@ async function renderView(name) {
         aliases: async () => {
           const [aliasRes, provRes, nodesRes] = await Promise.all([
             request('/api/model-aliases'),
-            request('/api/providers').catch(() => ({ connections: [] })),
+            request('/api/providers?summary=1').catch(() => ({ connections: [] })),
             request('/api/provider-nodes').catch(() => ({ nodes: [] }))
           ]);
           cachedProviderConnections = provRes.connections || [];
@@ -6656,7 +6656,7 @@ function bindKeyPolicyEditors() {
       try {
         const [keysPayload, provPayload, modelPayload, nodesPayload, customPayload, typesPayload] = await Promise.all([
           request('/api/keys?page=1&pageSize=100'),
-          request('/api/providers').catch(() => ({ connections: [] })),
+          request('/api/providers?summary=1').catch(() => ({ connections: [] })),
           request('/models').catch(() => ({ data: [] })),
           request('/api/provider-nodes').catch(() => ({ nodes: [] })),
           request('/api/custom-models').catch(() => ({ customModels: [] })),
@@ -7351,7 +7351,7 @@ function setupComboBuilderInteractions(combo = {}, isNew = false) {
 function openCreateComboModal(comboId = null) {
   Promise.all([
     request('/api/combos').catch(() => ({ combos: [] })),
-    request('/api/providers').catch(() => ({ connections: [] })),
+    request('/api/providers?summary=1').catch(() => ({ connections: [] })),
     request('/models').catch(() => ({ data: [] })),
     request('/api/model-aliases').catch(() => ({ aliases: {} })),
     request('/api/provider-nodes').catch(() => ({ nodes: [] }))
@@ -7404,7 +7404,7 @@ function bindComboEditors() {
 
 function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, editConnectionID = '', editCapabilities = []) {
   Promise.all([
-    request('/api/providers').catch(() => ({ connections: [] })),
+    request('/api/providers?summary=1').catch(() => ({ connections: [] })),
     request('/api/provider-nodes').catch(() => ({ nodes: [] })),
     request('/api/model-aliases').catch(() => ({ aliases: {}, records: [] }))
   ]).then(([provPayload, nodesPayload, aliasPayload]) => {
@@ -8053,7 +8053,7 @@ function bindAliasDeckActions() {
 }
 function openCreateKeyModal() {
   Promise.all([
-    request('/api/providers').catch(() => ({ connections: [] })),
+    request('/api/providers?summary=1').catch(() => ({ connections: [] })),
     request('/models').catch(() => ({ data: [] })),
     request('/api/provider-nodes').catch(() => ({ nodes: [] })),
     request('/api/custom-models').catch(() => ({ customModels: [] })),
@@ -9142,7 +9142,7 @@ async function loadOverview() {
   isLoadingOverview = true;
   try {
     const [providerPayload, usagePayload, nodesPayload] = await Promise.all([
-      request('/api/providers').catch(() => ({ connections: [] })),
+      request('/api/providers?summary=1').catch(() => ({ connections: [] })),
       request('/api/usage/stats?period=all&days=all').catch(() => ({})),
       request('/api/provider-nodes').catch(() => ({ nodes: [] }))
     ]);
@@ -9990,9 +9990,6 @@ initSidebarToggle();
 bootstrapDashboardAuth();
 window.addEventListener('load', () => {
   initMeshZoomPanControls();
-  if (!window.location.hash || window.location.hash === '#overview') {
-    loadOverview();
-  }
 });
 
 // Provider CRUD has no dedicated SSE channel yet; poll the lightweight provider
@@ -10002,7 +9999,7 @@ function startMeshProviderSync() {
   meshProviderSyncTimer = window.setInterval(() => {
     const currentView = window.location.hash.slice(1).split('/')[0] || 'overview';
     if (currentView === 'overview' && hasDashboardAccess()) loadOverview();
-  }, 2500);
+  }, 30000);
 }
 
 startMeshProviderSync();

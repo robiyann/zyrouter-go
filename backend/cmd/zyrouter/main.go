@@ -176,6 +176,7 @@ func runServer(cCtx *cli.Context) error {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(chiMiddleware.Compress(5))
 	r.Use(middleware.MaxBody(middleware.DefaultMaxBodySize))
 	r.Use(chiMiddleware.Recoverer)
 

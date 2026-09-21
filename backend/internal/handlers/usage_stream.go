@@ -172,9 +172,9 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		}
 		clause := strings.Join(where, " AND ")
 
-		// Sum tokens from numeric columns OR fallback to JSON tokens object
-		promptSql := "COALESCE(SUM(CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END), 0)"
-		compSql := "COALESCE(SUM(CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END), 0)"
+		// Sum tokens directly from indexed numeric columns
+		promptSql := "COALESCE(SUM(promptTokens), 0)"
+		compSql := "COALESCE(SUM(completionTokens), 0)"
 		query := fmt.Sprintf("SELECT COUNT(*), %s, %s, COALESCE(SUM(cost), 0) FROM usageHistory WHERE %s", promptSql, compSql, clause)
 
 		if err := repo.RawDB().QueryRow(query, args...).Scan(&stats.TotalRequests, &stats.PromptTokens, &stats.CompletionTokens, &stats.TotalCost); err != nil {

@@ -238,7 +238,11 @@ func (h *AdminHandler) HandleDeleteKey(w http.ResponseWriter, r *http.Request) {
 
 func (h *AdminHandler) HandleGetProviders(w http.ResponseWriter, r *http.Request) {
 	provider := r.URL.Query().Get("provider")
-	connections, err := h.repo.GetProviderConnections(provider, false)
+	summary := r.URL.Query().Get("summary") == "1" || r.URL.Query().Get("summary") == "true"
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	connections, total, err := h.repo.GetProviderConnectionsPaginated(provider, false, summary, limit, offset)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -247,9 +251,17 @@ func (h *AdminHandler) HandleGetProviders(w http.ResponseWriter, r *http.Request
 		connections = []*models.ProviderConnection{}
 	}
 
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+	res := map[string]any{
 		"connections": connections,
-	})
+		"total":       total,
+	}
+	if limit > 0 {
+		res["limit"] = limit
+		res["offset"] = offset
+		res["hasMore"] = (offset + len(connections)) < total
+	}
+
+	handlerutil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *AdminHandler) HandleCreateProvider(w http.ResponseWriter, r *http.Request) {

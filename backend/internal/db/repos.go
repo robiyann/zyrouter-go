@@ -949,3 +949,64 @@ func parseJSONString(raw string) string {
 	}
 	return raw
 }
+
+
+// GetProviderConnectionsPaginated retrieves provider connections with pagination and optional summary mode.
+func (r *Repo) GetProviderConnectionsPaginated(provider string, activeOnly bool, summaryOnly bool, limit int, offset int) ([]*models.ProviderConnection, int, error) {
+	var where []string
+	var args []any
+
+	if provider != "" {
+		where = append(where, "provider = ?")
+		args = append(args, provider)
+	}
+	if activeOnly {
+		where = append(where, "isActive = 1")
+	}
+
+	clause := "1=1"
+	if len(where) > 0 {
+		clause = strings.Join(where, " AND ")
+	}
+
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM providerConnections WHERE %s", clause)
+	var total int
+	if err := r.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataCol := "data"
+	if summaryOnly {
+		dataCol = "'' AS data"
+	}
+
+	query := fmt.Sprintf(`SELECT id, provider, authType, name, email, priority, isActive, %s, createdAt, updatedAt
+		FROM providerConnections
+		WHERE %s
+		ORDER BY CASE WHEN priority IS NULL THEN 999999 ELSE priority END ASC, updatedAt DESC`, dataCol, clause)
+
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	}
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var connections []*models.ProviderConnection
+	for rows.Next() {
+		var conn models.ProviderConnection
+		err := rows.Scan(
+			&conn.ID, &conn.Provider, &conn.AuthType, &conn.Name, &conn.Email,
+			&conn.Priority, &conn.IsActive, &conn.Data, &conn.CreatedAt, &conn.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		connections = append(connections, &conn)
+	}
+
+	return connections, total, rows.Err()
+}
