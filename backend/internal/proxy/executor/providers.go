@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"zyrouter/backend/internal/proxy"
+	"zyrouter/backend/internal/translator"
 )
 
 // ---- Provider-specific executors ----
@@ -343,21 +345,17 @@ func opencodeMessagesPath(path string) string {
 	return path + "/messages"
 }
 
-// ForwardOpencode handles requests for opencode (free tier).
+// ForwardOpencode handles requests for opencode (free tier) via pure Go proxy routing.
+// Implements the PR #4188 file-search quartet fingerprint & always-stream upstream protocol.
 func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 	normBody, cleanModel := normalizeOpencodeModel(req.Body)
-
-	// Always route free-tier requests through the embedded local engine first
-	if err := ForwardOpencodeDaemon(w, req, cleanModel); err == nil {
-		return nil
-	}
 
 	apiKey := req.APIKey
 	if apiKey == "" || strings.HasPrefix(apiKey, "zy_") {
 		apiKey = "public"
 	}
 
-	if isMuseSparkModel(req.Body) {
+	if isMuseSparkModel(normBody) {
 		return forwardMuseSparkResponses(w, req, apiKey)
 	}
 
@@ -405,25 +403,180 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 		return jsonResponse(req.Ctx, w, resp.Body, req.TranslateResp, req.ResponseBuf)
 	}
 
-	body := InjectReasoningContent(normBody, "opencode")
+	// 1. Cloak tools with the official 4-tool quartet (bash, glob, grep, read) to satisfy Zen gate
+	cloakedBody := proxy.CloakOpenCodeTools(normBody, false)
+	body := InjectReasoningContent(cloakedBody, "opencode")
 
 	cfg := *req.Config
-	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, req.IsStream)
+	// Upstream Zen MUST always be called with stream=true to bypass 403 FreeTierError
+	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, true)
 
 	ctx := req.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, body, req.IsStream)
+
+	// Forward through rotated proxy client
+	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, body, true)
 	if err != nil {
 		return fmt.Errorf("ForwardOpencode: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, bodyErr := proxy.UpstreamBody(resp)
+		return bodyErr
+	}
+
+	// If client requested SSE streaming, stream chunks directly
 	if req.IsStream {
 		return execSSEStream(w, resp.Body, req)
 	}
-	return jsonResponse(req.Ctx, w, resp.Body, req.TranslateResp, req.ResponseBuf)
+
+	// If client requested non-streaming JSON, aggregate upstream SSE chunks in memory
+	return aggregateOpencodeSSEToJSON(ctx, w, resp.Body, cleanModel, req.TranslateResp, req.ResponseBuf)
+}
+
+func aggregateOpencodeSSEToJSON(ctx context.Context, w http.ResponseWriter, upstream io.Reader, defaultModel string, translate bool, buf io.Writer) error {
+	var (
+		fullID        string
+		created       int64 = time.Now().Unix()
+		modelName     = defaultModel
+		finishReason  = "stop"
+		contentBuf    strings.Builder
+		reasoningBuf  strings.Builder
+		promptTokens  int
+		compTokens    int
+		totalTokens   int
+	)
+
+	scanner := bufio.NewScanner(upstream)
+	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		dataStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if dataStr == "[DONE]" {
+			break
+		}
+
+		var chunk struct {
+			ID      string `json:"id"`
+			Created int64  `json:"created"`
+			Model   string `json:"model"`
+			Choices []struct {
+				Index int `json:"index"`
+				Delta struct {
+					Role             string `json:"role"`
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+				} `json:"delta"`
+				FinishReason *string `json:"finish_reason"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+				TotalTokens      int `json:"total_tokens"`
+			} `json:"usage"`
+		}
+
+		if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil {
+			if chunk.ID != "" && fullID == "" {
+				fullID = chunk.ID
+			}
+			if chunk.Created != 0 {
+				created = chunk.Created
+			}
+			if chunk.Model != "" {
+				modelName = chunk.Model
+			}
+			if len(chunk.Choices) > 0 {
+				c := chunk.Choices[0]
+				if c.Delta.Content != "" {
+					contentBuf.WriteString(c.Delta.Content)
+				}
+				if c.Delta.ReasoningContent != "" {
+					reasoningBuf.WriteString(c.Delta.ReasoningContent)
+				}
+				if c.FinishReason != nil && *c.FinishReason != "" {
+					finishReason = *c.FinishReason
+				}
+			}
+			if chunk.Usage != nil {
+				promptTokens = chunk.Usage.PromptTokens
+				compTokens = chunk.Usage.CompletionTokens
+				totalTokens = chunk.Usage.TotalTokens
+			}
+		}
+	}
+
+	if fullID == "" {
+		fullID = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+	}
+
+	finalContent := contentBuf.String()
+	finalReasoning := reasoningBuf.String()
+
+	msgMap := map[string]any{
+		"role":    "assistant",
+		"content": finalContent,
+	}
+	if finalReasoning != "" {
+		msgMap["reasoning_content"] = finalReasoning
+	}
+
+	if totalTokens == 0 {
+		promptTokens = len(finalContent) / 4
+		compTokens = len(finalContent) / 4
+		totalTokens = promptTokens + compTokens
+	}
+
+	respMap := map[string]any{
+		"id":      fullID,
+		"object":  "chat.completion",
+		"created": created,
+		"model":   modelName,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"message":       msgMap,
+				"finish_reason": finishReason,
+			},
+		},
+		"usage": map[string]int{
+			"prompt_tokens":     promptTokens,
+			"completion_tokens": compTokens,
+			"total_tokens":      totalTokens,
+		},
+	}
+
+	bodyBytes, err := json.Marshal(respMap)
+	if err != nil {
+		return fmt.Errorf("marshal aggregated JSON: %w", err)
+	}
+
+	if buf != nil {
+		buf.Write(bodyBytes)
+	}
+
+	if usage := translator.ParseResponseUsage(bodyBytes); usage != nil {
+		if ctx != nil {
+			translator.SetUsage(ctx, usage)
+		} else {
+			translator.SetLastUsage(usage)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(bodyBytes)
+	return nil
 }
 
 var opencodeGoMessagesModels = map[string]bool{

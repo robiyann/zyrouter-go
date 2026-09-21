@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"crypto/rand"
+	"encoding/json"
+	"fmt"
 	"encoding/hex"
 	"regexp"
 	"strconv"
@@ -11,7 +13,7 @@ import (
 )
 
 const (
-	DefaultOpenCodeUA = "opencode/1.18.30"
+	DefaultOpenCodeUA = "opencode/1.18.31"
 	Base62Chars       = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 
@@ -227,4 +229,78 @@ func BuildOpenCodeHeaders(rawHeaders map[string]string, sessionID string, isStre
 		res[k] = v
 	}
 	return res
+}
+
+
+var OpenCodeFingerprintTools = []string{"bash", "glob", "grep", "read"}
+
+// CloakOpenCodeTools merges the upstream-mandated file-search quartet (bash, glob, grep, read)
+// into the tools array unconditionally to pass Zen free-tier verification without 403 FreeTierError.
+func CloakOpenCodeTools(body []byte, isResponses bool) []byte {
+	var bodyMap map[string]any
+	if err := json.Unmarshal(body, &bodyMap); err != nil {
+		return body
+	}
+
+	present := make(map[string]bool)
+	var tools []any
+	if tArr, ok := bodyMap["tools"].([]any); ok {
+		tools = tArr
+		for _, t := range tools {
+			if tMap, ok := t.(map[string]any); ok {
+				if fn, ok := tMap["function"].(map[string]any); ok {
+					if name, ok := fn["name"].(string); ok && name != "" {
+						present[strings.TrimSpace(name)] = true
+					}
+				}
+				if name, ok := tMap["name"].(string); ok && name != "" {
+					present[strings.TrimSpace(name)] = true
+				}
+			}
+		}
+	} else {
+		tools = make([]any, 0, 4)
+	}
+
+	for _, name := range OpenCodeFingerprintTools {
+		if present[name] {
+			continue
+		}
+		if isResponses {
+			tools = append(tools, map[string]any{
+				"type":        "function",
+				"name":        name,
+				"description": fmt.Sprintf("OpenCode built-in %s tool", name),
+				"parameters":  map[string]any{"type": "object", "properties": map[string]any{}},
+			})
+		} else {
+			tools = append(tools, map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name":        name,
+					"description": fmt.Sprintf("OpenCode built-in %s tool", name),
+					"parameters":  map[string]any{"type": "object", "properties": map[string]any{}},
+				},
+			})
+		}
+		present[name] = true
+	}
+	bodyMap["tools"] = tools
+
+	if _, ok := bodyMap["tool_choice"]; !ok {
+		if isResponses {
+			bodyMap["tool_choice"] = "auto"
+		} else {
+			bodyMap["tool_choice"] = "none"
+		}
+	}
+
+	// Always enforce stream: true for upstream
+	bodyMap["stream"] = true
+
+	newBody, err := json.Marshal(bodyMap)
+	if err != nil {
+		return body
+	}
+	return newBody
 }
