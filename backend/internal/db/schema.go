@@ -181,6 +181,26 @@ func EnsureSchema(db *sql.DB) error {
 			updatedAt  TEXT NOT NULL
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS proxyQuarantine (
+			id            TEXT PRIMARY KEY,
+			name          TEXT,
+			proxyUrl      TEXT,
+			proxyType     TEXT,
+			failCount     INTEGER DEFAULT 0,
+			totalFailures INTEGER DEFAULT 0,
+			totalSuccess  INTEGER DEFAULT 0,
+			lastError     TEXT,
+			lastFailedAt  TEXT,
+			lastSuccessAt TEXT,
+			status        TEXT DEFAULT 'healthy',
+			lastCheckedAt TEXT,
+			checkResult   TEXT,
+			createdAt     TEXT NOT NULL,
+			updatedAt     TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_pq_status ON proxyQuarantine(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_pq_failcount ON proxyQuarantine(failCount);`,
+
 		`CREATE TABLE IF NOT EXISTS kv (
 			scope TEXT NOT NULL,
 			key   TEXT NOT NULL,

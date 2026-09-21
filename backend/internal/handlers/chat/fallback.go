@@ -386,6 +386,9 @@ func (h *ChatHandler) tryForwardWithConnection(
 	})
 
 	if fwdErr == nil {
+		if connData != nil && connData.ProxyPoolID != "" && connData.ProxyPoolID != "__none__" {
+			h.Repo.RecordProxySuccess(connData.ProxyPoolID)
+		}
 		// Clear any existing model lock on success (matching Next.js clearAccountError)
 		if unlockErr := h.Repo.UnlockConnectionModel(connectionID, model); unlockErr != nil {
 			log.Warn("fallback", "unlock failed", "provider", provider, "model", model, "error", unlockErr)
@@ -422,6 +425,9 @@ func (h *ChatHandler) tryForwardWithConnection(
 			reservation.Settled = true
 		}
 	} else {
+		if connData != nil && connData.ProxyPoolID != "" && connData.ProxyPoolID != "__none__" {
+			h.Repo.RecordProxyFailure(connData.ProxyPoolID, fwdErr.Error())
+		}
 		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok && !reservation.Settled {
 			_ = h.Repo.FinalizeUserQuota(reservation.UserID, reservation.Tokens, 0)
 			reservation.Settled = true
