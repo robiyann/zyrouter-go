@@ -7439,12 +7439,16 @@ function bindComboEditors() {
   });
 }
 
-function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, editConnectionID = '', editCapabilities = []) {
-  Promise.all([
+async function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, editConnectionID = '', editCapabilities = []) {
+  if (window.location.hash !== '#aliases') {
+    setView('aliases');
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  const [provPayload, nodesPayload, aliasPayload] = await Promise.all([
     request('/api/providers?summary=1').catch(() => ({ connections: [] })),
     request('/api/provider-nodes').catch(() => ({ nodes: [] })),
     request('/api/model-aliases').catch(() => ({ aliases: {}, records: [] }))
-  ]).then(([provPayload, nodesPayload, aliasPayload]) => {
+  ]);
     const connections = provPayload.connections || [];
     const customNodes = (nodesPayload.nodes || []).slice();
     cachedProviderNodes = customNodes;
@@ -7631,6 +7635,7 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
     content.insertAdjacentHTML('afterbegin', formHtml);
     const form = document.querySelector('[data-create="aliases"]');
     if (!form) return;
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     const closeHandler = () => form.remove();
     form.querySelector('#btn-close-alias-modal')?.addEventListener('click', closeHandler);
@@ -7930,7 +7935,6 @@ function openCreateAliasModal(editAlias = '', editTarget = '', editActive = 1, e
         submitBtn.innerHTML = origText;
       }
     };
-  });
 }
 
 function bindAliasDeckActions() {
