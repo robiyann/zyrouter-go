@@ -675,7 +675,10 @@ var OfficialProviderModels = map[string][]string{
 	},
 	"opencode": {
 		"big-pickle",
+		"mimo-v2.6-flash-free",
 		"mimo-v2.5-free",
+		"muse-spark-1.3-contributor-free",
+		"muse-spark-1.2-contributor-free",
 		"ling-3.0-flash-fin-free",
 		"nemotron-3-ultra-free",
 		"nemotron-3.5-lightning-free",

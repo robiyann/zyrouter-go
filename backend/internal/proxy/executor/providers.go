@@ -292,6 +292,8 @@ func normalizeOpencodeModel(body []byte) ([]byte, string) {
 		cleanModel = cleanModel[idx+1:]
 	}
 	switch cleanModel {
+	case "mimo-v2.6", "mimo-2.6", "mimo-v2.6-flash-free", "mimo-2.6-flash-free", "mimo-v2.6-flash", "mimo-2.6-flash":
+		cleanModel = "mimo-v2.6-flash-free"
 	case "mimo-v2.5", "mimo-2.5", "mimo":
 		cleanModel = "mimo-v2.5-free"
 	case "muse-spark-1.3", "muse-spark":

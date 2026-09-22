@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"zyrouter/backend/internal/proxy"
 	"zyrouter/backend/internal/translator"
@@ -20,7 +22,7 @@ func isMuseSparkModel(body []byte) bool {
 	var request struct {
 		Model string `json:"model"`
 	}
-	return json.Unmarshal(body, &request) == nil && strings.HasPrefix(strings.ToLower(request.Model), "muse-spark-")
+	return json.Unmarshal(body, &request) == nil && strings.Contains(strings.ToLower(request.Model), "muse-spark")
 }
 
 func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey string) error {
@@ -29,9 +31,11 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 		return fmt.Errorf("build Muse Spark Responses request: %w", err)
 	}
 
+	cloakedBody := proxy.CloakOpenCodeTools(requestBody, true)
+
 	cfg := *req.Config
 	relayPath, usingEdgeRelay := cfg.StaticHeaders["x-relay-path"]
-	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, false)
+	cfg.StaticHeaders = proxy.BuildOpenCodeHeaders(cfg.StaticHeaders, req.SessionID, true)
 	// Edge relays are generic; preserve the upstream path prefix (OpenCode uses
 	// /zen/v1, not just /v1) and swap only the final endpoint.
 	if usingEdgeRelay {
@@ -43,7 +47,7 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, requestBody, false)
+	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, cloakedBody, true)
 	if err != nil {
 		return fmt.Errorf("Muse Spark Responses request: %w", err)
 	}
@@ -52,19 +56,11 @@ func forwardMuseSparkResponses(w http.ResponseWriter, req *Request, apiKey strin
 		_, bodyErr := proxy.UpstreamBody(resp)
 		return bodyErr
 	}
-	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-	if err != nil {
-		return fmt.Errorf("read Muse Spark Responses response: %w", err)
-	}
-	chatBody, err := responsesToChatBody(responseBody)
-	if err != nil {
-		return err
-	}
 
 	if req.IsStream {
-		return writeMuseChatStream(w, chatBody, req)
+		return streamMuseResponsesToChatSSE(ctx, w, resp.Body, req)
 	}
-	return jsonResponse(ctx, w, bytes.NewReader(chatBody), req.TranslateResp, req.ResponseBuf)
+	return aggregateMuseResponsesSSEToJSON(ctx, w, resp.Body, req)
 }
 
 func museResponsesURL(baseURL string) string {
@@ -122,13 +118,14 @@ func chatToResponsesBody(body []byte) ([]byte, error) {
 		})
 	}
 	maxTokens := source.MaxTokens
-	if maxTokens < 16 {
-		maxTokens = 16
+	if maxTokens < 2048 {
+		maxTokens = 4096
 	}
 	result := map[string]any{
 		"model":             source.Model,
 		"input":             input,
 		"max_output_tokens": maxTokens,
+		"stream":            true,
 	}
 	if source.ReasoningEffort != "" && source.ReasoningEffort != "none" && source.ReasoningEffort != "off" {
 		result["reasoning"] = map[string]string{"effort": source.ReasoningEffort}
@@ -178,33 +175,288 @@ func responsesToChatBody(body []byte) ([]byte, error) {
 	return json.Marshal(result)
 }
 
-func writeMuseChatStream(w http.ResponseWriter, body []byte, req *Request) error {
-	var response map[string]any
-	if err := json.Unmarshal(body, &response); err != nil {
-		return err
-	}
-	if req.ResponseBuf != nil {
-		req.ResponseBuf.Write(body)
-	}
-	if usage := translator.ParseResponseUsage(body); usage != nil && req.Ctx != nil {
-		translator.SetUsage(req.Ctx, usage)
-	}
+func streamMuseResponsesToChatSSE(ctx context.Context, w http.ResponseWriter, upstream io.Reader, req *Request) error {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
+
 	flusher, _ := w.(http.Flusher)
-	chunk := map[string]any{
-		"id": response["id"], "object": "chat.completion.chunk", "model": response["model"],
-		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"]}, "finish_reason": nil}},
-	}
-	data, _ := json.Marshal(chunk)
-	_, _ = w.Write([]byte("data: " + string(data) + "\n\n"))
 	if flusher != nil {
 		flusher.Flush()
 	}
-	_, _ = w.Write([]byte("data: [DONE]\n\n"))
+
+	var (
+		respID     = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+		created    = time.Now().Unix()
+		modelName  = "muse-spark-1.3-contributor-free"
+		contentBuf strings.Builder
+		promptToks int
+		compToks   int
+		totToks    int
+	)
+
+	scanner := bufio.NewScanner(upstream)
+	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		dataStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if dataStr == "[DONE]" {
+			break
+		}
+
+		var eventData map[string]any
+		if err := json.Unmarshal([]byte(dataStr), &eventData); err != nil {
+			continue
+		}
+
+		eventType, _ := eventData["type"].(string)
+
+		if eventType == "response.created" || eventType == "response.in_progress" {
+			if respObj, ok := eventData["response"].(map[string]any); ok {
+				if id, ok := respObj["id"].(string); ok && id != "" {
+					respID = id
+				}
+				if m, ok := respObj["model"].(string); ok && m != "" {
+					modelName = m
+				}
+			}
+		} else if eventType == "response.output_text.delta" {
+			if deltaStr, ok := eventData["delta"].(string); ok && deltaStr != "" {
+				contentBuf.WriteString(deltaStr)
+				chunk := map[string]any{
+					"id":      respID,
+					"object":  "chat.completion.chunk",
+					"created": created,
+					"model":   modelName,
+					"choices": []map[string]any{
+						{
+							"index": 0,
+							"delta": map[string]any{
+								"content": deltaStr,
+							},
+							"finish_reason": nil,
+						},
+					},
+				}
+				chunkBytes, _ := json.Marshal(chunk)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", chunkBytes)
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		} else if eventType == "response.completed" {
+			if respObj, ok := eventData["response"].(map[string]any); ok {
+				if usageObj, ok := respObj["usage"].(map[string]any); ok {
+					if inTok, ok := usageObj["input_tokens"].(float64); ok {
+						promptToks = int(inTok)
+					}
+					if outTok, ok := usageObj["output_tokens"].(float64); ok {
+						compToks = int(outTok)
+					}
+					if totTok, ok := usageObj["total_tokens"].(float64); ok {
+						totToks = int(totTok)
+					}
+				}
+			}
+		}
+	}
+
+	finalChunk := map[string]any{
+		"id":      respID,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   modelName,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{},
+				"finish_reason": "stop",
+			},
+		},
+	}
+	if totToks > 0 {
+		finalChunk["usage"] = map[string]int{
+			"prompt_tokens":     promptToks,
+			"completion_tokens": compToks,
+			"total_tokens":      totToks,
+		}
+	}
+	finalBytes, _ := json.Marshal(finalChunk)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", finalBytes)
+	_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
 	if flusher != nil {
 		flusher.Flush()
 	}
+
+	fullResponse := map[string]any{
+		"id":      respID,
+		"object":  "chat.completion",
+		"created": created,
+		"model":   modelName,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": contentBuf.String(),
+				},
+				"finish_reason": "stop",
+			},
+		},
+	}
+	if totToks > 0 {
+		fullResponse["usage"] = map[string]int{
+			"prompt_tokens":     promptToks,
+			"completion_tokens": compToks,
+			"total_tokens":      totToks,
+		}
+	}
+	fullBytes, _ := json.Marshal(fullResponse)
+	if req.ResponseBuf != nil {
+		req.ResponseBuf.Write(fullBytes)
+	}
+	if usage := translator.ParseResponseUsage(fullBytes); usage != nil && req.Ctx != nil {
+		translator.SetUsage(req.Ctx, usage)
+	}
+
 	return nil
+}
+
+func aggregateMuseResponsesSSEToJSON(ctx context.Context, w http.ResponseWriter, upstream io.Reader, req *Request) error {
+	var (
+		respID     = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+		created    = time.Now().Unix()
+		modelName  = "muse-spark-1.3-contributor-free"
+		contentBuf strings.Builder
+		promptToks int
+		compToks   int
+		totToks    int
+	)
+
+	scanner := bufio.NewScanner(upstream)
+	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		dataStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if dataStr == "[DONE]" {
+			break
+		}
+
+		var eventData map[string]any
+		if err := json.Unmarshal([]byte(dataStr), &eventData); err != nil {
+			continue
+		}
+
+		eventType, _ := eventData["type"].(string)
+
+		if eventType == "response.created" || eventType == "response.in_progress" {
+			if respObj, ok := eventData["response"].(map[string]any); ok {
+				if id, ok := respObj["id"].(string); ok && id != "" {
+					respID = id
+				}
+				if m, ok := respObj["model"].(string); ok && m != "" {
+					modelName = m
+				}
+			}
+		} else if eventType == "response.output_text.delta" {
+			if deltaStr, ok := eventData["delta"].(string); ok && deltaStr != "" {
+				contentBuf.WriteString(deltaStr)
+			}
+		} else if eventType == "response.completed" {
+			if respObj, ok := eventData["response"].(map[string]any); ok {
+				if id, ok := respObj["id"].(string); ok && id != "" {
+					respID = id
+				}
+				if m, ok := respObj["model"].(string); ok && m != "" {
+					modelName = m
+				}
+				if contentBuf.Len() == 0 {
+					if outputArr, ok := respObj["output"].([]any); ok {
+						for _, outItem := range outputArr {
+							if outMap, ok := outItem.(map[string]any); ok {
+								if cArr, ok := outMap["content"].([]any); ok {
+									for _, cPart := range cArr {
+										if cpMap, ok := cPart.(map[string]any); ok {
+											if tStr, ok := cpMap["text"].(string); ok {
+												contentBuf.WriteString(tStr)
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				if usageObj, ok := respObj["usage"].(map[string]any); ok {
+					if inTok, ok := usageObj["input_tokens"].(float64); ok {
+						promptToks = int(inTok)
+					}
+					if outTok, ok := usageObj["output_tokens"].(float64); ok {
+						compToks = int(outTok)
+					}
+					if totTok, ok := usageObj["total_tokens"].(float64); ok {
+						totToks = int(totTok)
+					}
+				}
+			}
+		}
+	}
+
+	result := map[string]any{
+		"id":      respID,
+		"object":  "chat.completion",
+		"created": created,
+		"model":   modelName,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": contentBuf.String(),
+				},
+				"finish_reason": "stop",
+			},
+		},
+	}
+	if totToks > 0 {
+		result["usage"] = map[string]int{
+			"prompt_tokens":     promptToks,
+			"completion_tokens": compToks,
+			"total_tokens":      totToks,
+		}
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	return jsonResponse(ctx, w, bytes.NewReader(jsonBytes), req.TranslateResp, req.ResponseBuf)
 }

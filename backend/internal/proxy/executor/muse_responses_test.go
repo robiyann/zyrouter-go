@@ -14,7 +14,7 @@ func TestChatToResponsesBody(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("decode transformed body: %v", err)
 	}
-	if got["model"] != "muse-spark-1.3-contributor-free" || got["max_output_tokens"] != float64(16) {
+	if got["model"] != "muse-spark-1.3-contributor-free" || got["max_output_tokens"] != float64(4096) {
 		t.Fatalf("unexpected transformed body: %s", body)
 	}
 	input := got["input"].([]any)
