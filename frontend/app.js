@@ -5007,6 +5007,8 @@ let cachedQuotaPayload = null;
 let currentQuotaFilter = 'all';
 let currentQuotaSearch = '';
 let quotaPollingTimer = null;
+let quotaCurrentPage = 1;
+const quotaPageSize = 6;
 
 function formatResetCountdown(resetAt) {
   if (!resetAt) return '--';
@@ -5105,6 +5107,15 @@ function renderQuota(payload) {
     return true;
   });
 
+  // Calculate pagination
+  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / quotaPageSize));
+  if (quotaCurrentPage > totalPages) quotaCurrentPage = totalPages;
+  if (quotaCurrentPage < 1) quotaCurrentPage = 1;
+
+  const startIdx = (quotaCurrentPage - 1) * quotaPageSize;
+  const endIdx = Math.min(startIdx + quotaPageSize, filteredAccounts.length);
+  const pagedAccounts = filteredAccounts.slice(startIdx, endIdx);
+
   return `
     <div class="card" style="padding:16px; margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -5178,7 +5189,7 @@ function renderQuota(payload) {
       </div>
     </div>
 
-    <!-- Accounts Quota Cards Grid -->
+    <!-- Accounts Quota Cards Grid (Paged Max 6) -->
     ${filteredAccounts.length === 0 ? `
       <div class="card generic-empty" style="padding:32px 20px;">
         <span class="material-symbols-outlined" style="font-size:36px; color:var(--muted);">speed</span>
@@ -5187,13 +5198,14 @@ function renderQuota(payload) {
       </div>
     ` : `
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:12px;" id="quota-cards-grid">
-        ${filteredAccounts.map((account, idx) => {
+        ${pagedAccounts.map((account, idx) => {
+          const actualIndex = startIdx + idx;
           const windows = Array.isArray(account.windows) ? account.windows : [];
           const geminiWindows = windows.filter(w => (w.group || '').toLowerCase().includes('gemini') || (w.id || '').includes('gemini'));
           const thirdPartyWindows = windows.filter(w => (w.group || '').toLowerCase().includes('claude') || (w.group || '').toLowerCase().includes('gpt') || (w.id || '').includes('3p'));
           const otherWindows = windows.filter(w => !geminiWindows.includes(w) && !thirdPartyWindows.includes(w));
 
-          const accountLabel = account.email || account.name || `Account #${idx + 1}`;
+          const accountLabel = account.email || account.name || `Account #${actualIndex + 1}`;
           const connId = account.connectionId ? (account.connectionId.length > 16 ? `${account.connectionId.slice(0, 10)}...${account.connectionId.slice(-4)}` : account.connectionId) : '--';
 
           return `
@@ -5266,6 +5278,20 @@ function renderQuota(payload) {
           `;
         }).join('')}
       </div>
+
+      <!-- Pagination Footer Bar (Max 6 per page) -->
+      ${totalPages > 1 ? `
+        <div style="margin-top:14px; padding:10px 14px; background:rgba(8,10,15,0.7); border:1px solid rgba(255,255,255,0.06); border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="font-size:11px; font-family:var(--mono); color:var(--muted);">
+            Showing <strong>${startIdx + 1}&ndash;${endIdx}</strong> of <strong>${filteredAccounts.length}</strong> accounts (Max 6 per page)
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn filter-pill" id="btn-quota-prev" ${quotaCurrentPage <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} style="height:28px; padding:0 12px; font-size:11px; font-family:var(--mono);">&larr; Prev</button>
+            <span style="font-size:11px; font-family:var(--mono); padding:0 4px; color:var(--text);">Page <strong>${quotaCurrentPage}</strong> / ${totalPages}</span>
+            <button type="button" class="btn filter-pill" id="btn-quota-next" ${quotaCurrentPage >= totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} style="height:28px; padding:0 12px; font-size:11px; font-family:var(--mono);">Next &rarr;</button>
+          </div>
+        </div>
+      ` : ''}
     `}
   `;
 }
@@ -5302,6 +5328,30 @@ function bindQuotaView() {
   if (quotaPollingTimer) {
     clearInterval(quotaPollingTimer);
     quotaPollingTimer = null;
+  }
+
+  const prevBtn = document.querySelector('#btn-quota-prev');
+  if (prevBtn && quotaCurrentPage > 1) {
+    prevBtn.onclick = () => {
+      quotaCurrentPage--;
+      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
+      if (content && cachedQuotaPayload) {
+        content.innerHTML = renderQuota(cachedQuotaPayload);
+        bindQuotaView();
+      }
+    };
+  }
+
+  const nextBtn = document.querySelector('#btn-quota-next');
+  if (nextBtn) {
+    nextBtn.onclick = () => {
+      quotaCurrentPage++;
+      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
+      if (content && cachedQuotaPayload) {
+        content.innerHTML = renderQuota(cachedQuotaPayload);
+        bindQuotaView();
+      }
+    };
   }
 
   const select = document.querySelector('#quota-autorefresh-select');
@@ -5353,6 +5403,7 @@ function bindQuotaView() {
   document.querySelectorAll('[data-quota-filter]').forEach(btn => {
     btn.onclick = () => {
       currentQuotaFilter = btn.dataset.quotaFilter;
+      quotaCurrentPage = 1;
       const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
       if (content && cachedQuotaPayload) {
         content.innerHTML = renderQuota(cachedQuotaPayload);
@@ -5365,6 +5416,7 @@ function bindQuotaView() {
   if (searchInput) {
     searchInput.oninput = (e) => {
       currentQuotaSearch = e.target.value;
+      quotaCurrentPage = 1;
       const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
       if (content && cachedQuotaPayload) {
         content.innerHTML = renderQuota(cachedQuotaPayload);
@@ -5378,7 +5430,6 @@ function bindQuotaView() {
     };
   }
 
-  // Setup auto-polling timer if interval > 0
   const intervalSec = Number(cachedQuotaPayload?.autoRefreshInterval ?? 60);
   setupClientQuotaPolling(intervalSec);
 }
@@ -5391,7 +5442,6 @@ function setupClientQuotaPolling(intervalSec) {
   if (intervalSec <= 0) return;
 
   quotaPollingTimer = setInterval(async () => {
-    // Only poll if currently visible and generic view active
     const generic = document.querySelector('#view-generic');
     const breadcrumb = document.querySelector('#breadcrumb');
     if (!generic || generic.classList.contains('hidden') || !breadcrumb || !breadcrumb.textContent.includes('QUOTA')) {
@@ -5404,7 +5454,6 @@ function setupClientQuotaPolling(intervalSec) {
       const payload = await request('/api/admin/quota').catch(() => request('/api/quota'));
       cachedQuotaPayload = payload;
       const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-      // If user is not currently typing in search, re-render smoothly
       const activeElement = document.activeElement;
       const isSearching = activeElement && activeElement.id === 'quota-search-input';
       if (content && !isSearching) {
