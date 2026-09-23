@@ -357,6 +357,10 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 		apiKey = "public"
 	}
 
+	if isJevModel(normBody) {
+		return forwardJevSystemOne(w, req, apiKey)
+	}
+
 	if isMuseSparkModel(normBody) {
 		return forwardMuseSparkResponses(w, req, apiKey)
 	}
@@ -593,6 +597,11 @@ var opencodeGoMessagesModels = map[string]bool{
 // ForwardOpencodeGo handles requests for opencode-go (paid tier).
 func ForwardOpencodeGo(w http.ResponseWriter, req *Request) error {
 	body := InjectReasoningContent(req.Body, "opencode-go")
+
+	if isJevModel(body) {
+		apiKey := req.APIKey
+		return forwardJevGoSystemOne(w, req, apiKey)
+	}
 
 	var reqObj struct {
 		Model string `json:"model"`

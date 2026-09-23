@@ -687,6 +687,8 @@
     "qwen3.6-plus"
   ],
   "opencode": [
+    "jev-1.13-free",
+    "jev-1.13",
     "big-pickle",
     "mimo-v2.6-flash-free",
     "mimo-v2.5-free",

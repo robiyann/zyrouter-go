@@ -122,6 +122,8 @@ func SetupRoutes(r interface {
 	r.Post("/v1/messages", chatH.HandleMessages)
 	r.Post("/messages/count_tokens", chatH.HandleCountTokens)
 	r.Post("/v1/messages/count_tokens", chatH.HandleCountTokens)
+	r.Post("/systemone", chatH.HandleSystemOne)
+	r.Post("/v1/systemone", chatH.HandleSystemOne)
 	r.Post("/api/chat", chatH.HandleOllamaChat)
 
 	// Proxy Pool Deploy Domain
