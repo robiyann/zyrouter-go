@@ -5006,6 +5006,7 @@ function bindAccountTypeActions(payload) {
 let cachedQuotaPayload = null;
 let currentQuotaFilter = 'all';
 let currentQuotaSearch = '';
+let quotaPollingTimer = null;
 
 function formatResetCountdown(resetAt) {
   if (!resetAt) return '--';
@@ -5055,6 +5056,7 @@ function renderQuota(payload) {
   const data = cachedQuotaPayload || {};
   const accounts = Array.isArray(data.accounts) ? data.accounts : [];
   const fetchedAt = data.fetchedAt ? formatWIBTimestamp(data.fetchedAt) : '--';
+  const autoRefreshSec = Number(data.autoRefreshInterval ?? 60);
 
   let totalAccounts = accounts.length;
   let healthyAccounts = 0;
@@ -5112,11 +5114,23 @@ function renderQuota(payload) {
             <span class="table-badge active" style="font-size:7.5px;">GOOGLE ANTIGRAVITY IDE</span>
           </div>
           <h2 style="font-size:18px; margin-top:2px; font-weight:700;">Quota Tracker</h2>
-          <p style="color:var(--muted); font-size:11px; margin-top:2px;">Real-time tracking of multi-account OAuth burst limits (5-hour) and weekly allocations for Gemini &amp; Claude/GPT 3P models.</p>
+          <p style="color:var(--muted); font-size:11px; margin-top:2px;">Background-synchronized OAuth burst limits (5-hour) &amp; weekly allocations without frontend blocking latency.</p>
         </div>
-        <div style="display:flex; align-items:center; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); padding:4px 8px; border-radius:6px;">
+            <span class="material-symbols-outlined" style="font-size:14px; color:var(--muted);">schedule</span>
+            <label for="quota-autorefresh-select" style="font-size:9.5px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">Sync Interval:</label>
+            <select id="quota-autorefresh-select" style="height:24px; padding:0 6px; border:1px solid #303846; border-radius:4px; background:#080b10; color:#e7edf5; font:600 10.5px var(--mono); outline:none; cursor:pointer;">
+              <option value="0" ${autoRefreshSec === 0 ? 'selected' : ''}>Manual Only (Off)</option>
+              <option value="30" ${autoRefreshSec === 30 ? 'selected' : ''}>Every 30s</option>
+              <option value="60" ${autoRefreshSec === 60 ? 'selected' : ''}>Every 60s (Default)</option>
+              <option value="120" ${autoRefreshSec === 120 ? 'selected' : ''}>Every 2m</option>
+              <option value="300" ${autoRefreshSec === 300 ? 'selected' : ''}>Every 5m</option>
+              <option value="600" ${autoRefreshSec === 600 ? 'selected' : ''}>Every 10m</option>
+            </select>
+          </div>
           <button type="button" class="btn primary-btn" id="btn-refresh-quota" style="height:32px; padding:0 14px; font-size:11px; font-family:var(--mono);">
-            <span class="material-symbols-outlined" style="font-size:15px; margin-right:4px;">sync</span> Force Refresh Live Quota
+            <span class="material-symbols-outlined" style="font-size:15px; margin-right:4px;">sync</span> Force Refresh
           </button>
         </div>
       </div>
@@ -5144,9 +5158,9 @@ function renderQuota(payload) {
           <div style="font-size:9.5px; color:var(--muted); margin-top:2px;">Needs re-auth or refresh</div>
         </div>
         <div class="card" style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:9px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">Telemetry Snapshot</div>
-          <div style="font-size:12px; font-weight:600; font-family:var(--mono); color:var(--text); margin-top:6px;">${fetchedAt}</div>
-          <div style="font-size:9.5px; color:var(--muted); margin-top:4px;"><span class="pulse-dot emerald" style="display:inline-block; width:5px; height:5px; margin-right:3px;"></span> Auto 60s cached</div>
+          <div style="font-size:9px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">Latest Engine Snapshot</div>
+          <div style="font-size:12px; font-weight:600; font-family:var(--mono); color:var(--text); margin-top:6px;" id="quota-last-fetched-label">${fetchedAt}</div>
+          <div style="font-size:9.5px; color:var(--muted); margin-top:4px;"><span class="pulse-dot emerald" style="display:inline-block; width:5px; height:5px; margin-right:3px;"></span> Hot in RAM (${autoRefreshSec > 0 ? `Auto ${autoRefreshSec}s` : 'Manual'})</div>
         </div>
       </div>
 
@@ -5172,7 +5186,7 @@ function renderQuota(payload) {
         <p style="color:var(--muted); font-size:11px; max-width:420px; margin:4px auto 0;">${accounts.length === 0 ? 'No Antigravity OAuth connections exist in the database. Go to Providers &gt; Antigravity to add one.' : 'Try changing your search query or filter selection.'}</p>
       </div>
     ` : `
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:12px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:12px;" id="quota-cards-grid">
         ${filteredAccounts.map((account, idx) => {
           const windows = Array.isArray(account.windows) ? account.windows : [];
           const geminiWindows = windows.filter(w => (w.group || '').toLowerCase().includes('gemini') || (w.id || '').includes('gemini'));
@@ -5285,19 +5299,53 @@ function renderQuotaWindowBar(w) {
 }
 
 function bindQuotaView() {
+  if (quotaPollingTimer) {
+    clearInterval(quotaPollingTimer);
+    quotaPollingTimer = null;
+  }
+
+  const select = document.querySelector('#quota-autorefresh-select');
+  if (select) {
+    select.onchange = async (e) => {
+      const intervalSec = Number(e.target.value) || 0;
+      try {
+        await fetch(`${apiBase}/api/admin/quota/settings`, {
+          method: 'POST',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoRefreshInterval: intervalSec })
+        }).catch(() => fetch(`${apiBase}/api/quota/settings`, {
+          method: 'POST',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoRefreshInterval: intervalSec })
+        }));
+        if (cachedQuotaPayload) {
+          cachedQuotaPayload.autoRefreshInterval = intervalSec;
+        }
+        setupClientQuotaPolling(intervalSec);
+        showToast(intervalSec > 0 ? `Auto-refresh set to ${intervalSec}s` : 'Auto-refresh disabled', 'success');
+      } catch (err) {
+        alert('Failed to save auto-refresh settings: ' + err.message);
+      }
+    };
+  }
+
   const refreshBtn = document.querySelector('#btn-refresh-quota');
   if (refreshBtn) {
     refreshBtn.onclick = async () => {
       refreshBtn.disabled = true;
-      refreshBtn.innerHTML = '<span class="loading-line" style="display:inline-block; width:12px; height:12px; margin-right:4px;"></span> Fetching Live Upstream...';
+      refreshBtn.innerHTML = '<span class="loading-line" style="display:inline-block; width:12px; height:12px; margin-right:4px;"></span> Refreshing...';
       try {
         const payload = await request('/api/admin/quota?refresh=true').catch(() => request('/api/quota?refresh=true'));
         cachedQuotaPayload = payload;
-        await renderView('quota');
+        const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
+        if (content) {
+          content.innerHTML = renderQuota(cachedQuotaPayload);
+          bindQuotaView();
+        }
       } catch (err) {
         alert('Failed to refresh quota: ' + err.message);
         refreshBtn.disabled = false;
-        refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; margin-right:4px;">sync</span> Force Refresh Live Quota';
+        refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; margin-right:4px;">sync</span> Force Refresh';
       }
     };
   }
@@ -5329,6 +5377,45 @@ function bindQuotaView() {
       }
     };
   }
+
+  // Setup auto-polling timer if interval > 0
+  const intervalSec = Number(cachedQuotaPayload?.autoRefreshInterval ?? 60);
+  setupClientQuotaPolling(intervalSec);
+}
+
+function setupClientQuotaPolling(intervalSec) {
+  if (quotaPollingTimer) {
+    clearInterval(quotaPollingTimer);
+    quotaPollingTimer = null;
+  }
+  if (intervalSec <= 0) return;
+
+  quotaPollingTimer = setInterval(async () => {
+    // Only poll if currently visible and generic view active
+    const generic = document.querySelector('#view-generic');
+    const breadcrumb = document.querySelector('#breadcrumb');
+    if (!generic || generic.classList.contains('hidden') || !breadcrumb || !breadcrumb.textContent.includes('QUOTA')) {
+      clearInterval(quotaPollingTimer);
+      quotaPollingTimer = null;
+      return;
+    }
+
+    try {
+      const payload = await request('/api/admin/quota').catch(() => request('/api/quota'));
+      cachedQuotaPayload = payload;
+      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
+      // If user is not currently typing in search, re-render smoothly
+      const activeElement = document.activeElement;
+      const isSearching = activeElement && activeElement.id === 'quota-search-input';
+      if (content && !isSearching) {
+        content.innerHTML = renderQuota(cachedQuotaPayload);
+        bindQuotaView();
+      } else if (payload?.fetchedAt) {
+        const timeLabel = document.querySelector('#quota-last-fetched-label');
+        if (timeLabel) timeLabel.textContent = formatWIBTimestamp(payload.fetchedAt);
+      }
+    } catch {}
+  }, Math.max(10, intervalSec) * 1000);
 }
 
 function renderSettings(payload) {

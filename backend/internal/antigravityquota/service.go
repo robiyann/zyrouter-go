@@ -59,13 +59,17 @@ type Snapshot struct {
 }
 
 type Service struct {
-	repo      *db.Repo
-	client    *http.Client
-	baseURLs  []string
-	refreshMu sync.Mutex
-	cacheMu   sync.Mutex
-	cachedAt  time.Time
-	cached    *Snapshot
+	repo           *db.Repo
+	client         *http.Client
+	baseURLs       []string
+	refreshMu      sync.Mutex
+	cacheMu        sync.Mutex
+	cachedAt       time.Time
+	cached         *Snapshot
+	autoRefreshSec int
+	tickerCtx      context.Context
+	tickerCancel   context.CancelFunc
+	tickerMu       sync.Mutex
 }
 
 func NewService(repo *db.Repo) *Service {
@@ -85,7 +89,79 @@ func NewServiceWithClient(repo *db.Repo, client *http.Client, baseURLs []string)
 	if len(clean) == 0 {
 		clean = append(clean, defaultBaseURLs...)
 	}
-	return &Service{repo: repo, client: client, baseURLs: clean}
+	s := &Service{repo: repo, client: client, baseURLs: clean, autoRefreshSec: 60}
+	interval := 60
+	if repo != nil {
+		if settings, err := repo.GetSettings(); err == nil && settings != nil {
+			if settings.QuotaAutoRefreshInterval >= 0 {
+				interval = settings.QuotaAutoRefreshInterval
+			}
+		}
+	}
+	s.SetAutoRefreshInterval(context.Background(), interval)
+	// Warm up cache immediately in background on launch
+	go func() {
+		_, _ = s.Snapshot(context.Background(), true)
+	}()
+	return s
+}
+
+// GetCachedSnapshot returns the currently cached snapshot instantly if available (zero latency).
+func (s *Service) GetCachedSnapshot() *Snapshot {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.cached != nil {
+		return cloneSnapshot(s.cached)
+	}
+	return nil
+}
+
+// GetAutoRefreshInterval returns the auto-refresh interval in seconds (0 = disabled).
+func (s *Service) GetAutoRefreshInterval() int {
+	s.tickerMu.Lock()
+	defer s.tickerMu.Unlock()
+	return s.autoRefreshSec
+}
+
+// SetAutoRefreshInterval sets the interval in seconds and manages the background worker.
+func (s *Service) SetAutoRefreshInterval(parentCtx context.Context, seconds int) {
+	s.tickerMu.Lock()
+	defer s.tickerMu.Unlock()
+
+	if s.tickerCancel != nil {
+		s.tickerCancel()
+		s.tickerCancel = nil
+	}
+
+	if seconds <= 0 {
+		s.autoRefreshSec = 0
+		return
+	}
+
+	if seconds < 10 {
+		seconds = 10
+	}
+	s.autoRefreshSec = seconds
+
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parentCtx)
+	s.tickerCtx = ctx
+	s.tickerCancel = cancel
+
+	go func(c context.Context, interval time.Duration) {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-c.Done():
+				return
+			case <-ticker.C:
+				_, _ = s.Snapshot(c, true)
+			}
+		}
+	}(ctx, time.Duration(seconds)*time.Second)
 }
 
 // Snapshot returns a cached snapshot unless force is true. Refreshes are

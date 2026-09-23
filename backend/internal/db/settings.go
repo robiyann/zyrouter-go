@@ -24,6 +24,7 @@ type SettingsData struct {
 	HeadroomUrl        string                      `json:"headroomUrl"`
 	HeadroomCodeAware  bool                        `json:"headroomCodeAware"`
 	HeadroomKompress   bool                        `json:"headroomKompress"`
+	QuotaAutoRefreshInterval int                         `json:"quotaAutoRefreshInterval"`
 	ProviderStrategies map[string]ProviderStrategy `json:"providerStrategies,omitempty"`
 	Password           *string                     `json:"password,omitempty"`
 	RequireLogin       *bool                       `json:"requireLogin,omitempty"`
@@ -38,6 +39,7 @@ func DefaultSettings() *SettingsData {
 		PonytailLevel:    "full",
 		HeadroomUrl:      "http://localhost:8787",
 		HeadroomKompress: true,
+		QuotaAutoRefreshInterval: 60,
 	}
 }
 
@@ -78,6 +80,9 @@ func (r *Repo) GetSettings() (*SettingsData, error) {
 	}
 	if v, ok := raw["headroomKompress"].(bool); ok {
 		s.HeadroomKompress = v
+	}
+	if v, ok := raw["quotaAutoRefreshInterval"].(float64); ok {
+		s.QuotaAutoRefreshInterval = int(v)
 	}
 	if ps, ok := raw["providerStrategies"].(map[string]any); ok {
 		s.ProviderStrategies = make(map[string]ProviderStrategy)
