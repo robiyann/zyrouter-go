@@ -113,6 +113,157 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
 }
 
+const DASHBOARD_APPEARANCE_DEFAULTS = Object.freeze({
+  backgroundImage: '',
+  backgroundOpacity: 0.28,
+  backgroundBlur: 8,
+  glassEnabled: true,
+  glassDepth: 'subtle',
+  glassSurfaceColor: '#121216',
+  glassSurfaceOpacity: 0,
+  brandName: 'Zyrouter',
+  brandSubtitle: 'AI Routing Gateway',
+  brandIcon: '',
+  favicon: ''
+});
+
+function isSafeImageDataUrl(value, maxLength = 4 * 1024 * 1024) {
+  return typeof value === 'string' && value.length <= maxLength && /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(value);
+}
+
+function isHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function hexToRgb(value) {
+  const hex = isHexColor(value) ? value.slice(1) : '121216';
+  return `${parseInt(hex.slice(0, 2), 16)}, ${parseInt(hex.slice(2, 4), 16)}, ${parseInt(hex.slice(4, 6), 16)}`;
+}
+
+function normalizeDashboardAppearance(payload = {}) {
+  const opacity = Number(payload.backgroundOpacity);
+  const blur = Number(payload.backgroundBlur);
+  const depth = payload.glassDepth === 'strong' ? 'strong' : 'subtle';
+  const configuredSurfaceOpacity = Number(payload.glassSurfaceOpacity);
+  const defaultSurfaceOpacity = depth === 'strong' ? 0.38 : 0.22;
+  return {
+    backgroundImage: isSafeImageDataUrl(payload.backgroundImage) ? payload.backgroundImage : '',
+    backgroundOpacity: Number.isFinite(opacity) ? Math.min(0.8, Math.max(0, opacity)) : DASHBOARD_APPEARANCE_DEFAULTS.backgroundOpacity,
+    backgroundBlur: Number.isFinite(blur) ? Math.min(32, Math.max(0, Math.round(blur))) : DASHBOARD_APPEARANCE_DEFAULTS.backgroundBlur,
+    glassEnabled: payload.glassEnabled !== false,
+    glassDepth: depth,
+    glassSurfaceColor: isHexColor(payload.glassSurfaceColor) ? payload.glassSurfaceColor : DASHBOARD_APPEARANCE_DEFAULTS.glassSurfaceColor,
+    glassSurfaceOpacity: Number.isFinite(configuredSurfaceOpacity) && configuredSurfaceOpacity > 0
+      ? Math.min(0.8, Math.max(0.08, configuredSurfaceOpacity))
+      : defaultSurfaceOpacity,
+    brandName: String(payload.brandName || DASHBOARD_APPEARANCE_DEFAULTS.brandName).trim().slice(0, 80) || DASHBOARD_APPEARANCE_DEFAULTS.brandName,
+    brandSubtitle: String(payload.brandSubtitle || DASHBOARD_APPEARANCE_DEFAULTS.brandSubtitle).trim().slice(0, 120) || DASHBOARD_APPEARANCE_DEFAULTS.brandSubtitle,
+    brandIcon: isSafeImageDataUrl(payload.brandIcon, 2 * 1024 * 1024) ? payload.brandIcon : '',
+    favicon: isSafeImageDataUrl(payload.favicon, 2 * 1024 * 1024) ? payload.favicon : ''
+  };
+}
+
+function applyDashboardCustomization(payload = {}) {
+  const appearance = normalizeDashboardAppearance(payload);
+  const root = document.documentElement;
+  const backdrop = document.querySelector('#theme-background');
+  root.style.setProperty('--theme-background-image', appearance.backgroundImage ? `url("${appearance.backgroundImage}")` : 'none');
+  root.style.setProperty('--theme-background-opacity', String(appearance.backgroundOpacity));
+  root.style.setProperty('--theme-background-blur', `${appearance.backgroundBlur}px`);
+  root.dataset.glassDepth = appearance.glassDepth;
+  document.body.classList.toggle('glass-enabled', appearance.glassEnabled);
+  document.body.classList.toggle('has-custom-background', Boolean(appearance.backgroundImage));
+  document.body.style.setProperty('--glass-surface-rgb', hexToRgb(appearance.glassSurfaceColor));
+  document.body.style.setProperty('--glass-surface-alpha', String(appearance.glassSurfaceOpacity));
+
+  if (backdrop) {
+    backdrop.style.opacity = appearance.backgroundImage ? String(appearance.backgroundOpacity) : '0';
+    backdrop.style.filter = `blur(${appearance.backgroundBlur}px)`;
+  }
+
+  const brandName = document.querySelector('#brand-title-text');
+  const brandSubtitle = document.querySelector('#brand-subtitle');
+  if (brandName) brandName.textContent = appearance.brandName;
+  if (brandSubtitle) brandSubtitle.textContent = appearance.brandSubtitle;
+  document.title = `${appearance.brandName} / Control Center`;
+
+  const logo = document.querySelector('.logo-symbol');
+  if (logo) {
+    logo.replaceChildren();
+    if (appearance.brandIcon) {
+      const image = document.createElement('img');
+      image.src = appearance.brandIcon;
+      image.alt = `${appearance.brandName} logo`;
+      image.loading = 'eager';
+      logo.appendChild(image);
+      logo.classList.add('has-image');
+    } else {
+      logo.textContent = appearance.brandName.charAt(0).toUpperCase() || 'Z';
+      logo.classList.remove('has-image');
+    }
+  }
+
+  const favicon = document.querySelector('#favicon-link');
+  if (favicon) {
+    favicon.setAttribute('href', appearance.favicon || favicon.dataset.defaultHref || '');
+  }
+}
+
+function readBlobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Browser image encoder returned no data')), type, quality);
+  });
+}
+
+async function compressImageFile(file, { maxDimension, maxBytes, outputType = 'image/webp' }) {
+  if (!file || !String(file.type || '').startsWith('image/')) {
+    throw new Error('Select an image file (PNG, JPG, or WebP).');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('Unable to decode image'));
+      element.src = objectUrl;
+    });
+    let width = image.naturalWidth || image.width;
+    let height = image.naturalHeight || image.height;
+    const initialScale = Math.min(1, maxDimension / Math.max(width, height));
+    width = Math.max(1, Math.round(width * initialScale));
+    height = Math.max(1, Math.round(height * initialScale));
+
+    for (let sizeAttempt = 0; sizeAttempt < 4; sizeAttempt += 1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d', { alpha: true });
+      if (!context) throw new Error('Canvas image compression is unavailable in this browser');
+      context.drawImage(image, 0, 0, width, height);
+
+      for (const quality of [0.86, 0.76, 0.66, 0.56, 0.46]) {
+        const blob = await canvasToBlob(canvas, outputType, quality);
+        if (blob.size <= maxBytes) return readBlobAsDataUrl(blob);
+      }
+      width = Math.max(128, Math.round(width * 0.72));
+      height = Math.max(128, Math.round(height * 0.72));
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+  throw new Error('Image is still too large after compression. Try a smaller image.');
+}
+
 function maskKey(value) {
   const key = String(value || '');
   return key.length > 10 ? `${key.slice(0, 7)}...${key.slice(-4)}` : key || '--';
@@ -243,6 +394,13 @@ function renderFullLoginGate() {
       showToast('Welcome back! Dashboard unlocked.', 'success');
       overlay.remove();
       ensureGlobalStream();
+
+      // Apply persisted appearance after a fresh login as well as on an
+      // already-authenticated page load. New browsers do not have the
+      // session cookie yet, so bootstrapDashboardAuth cannot load settings
+      // until this point.
+      const settings = await request('/api/settings').catch(() => null);
+      if (settings) applyDashboardCustomization(settings);
 
       // Reload view with fresh credentials
       const currentView = window.location.hash.slice(1) || 'overview';
@@ -5482,6 +5640,7 @@ function setupClientQuotaPolling(intervalSec) {
 function renderSettings(payload) {
   if (!payload) return emptySurface('No settings loaded');
   const source = JSON.stringify(payload, null, 2);
+  const appearance = normalizeDashboardAppearance(payload);
   return `
     <div class="aliases-deck-container">
       <!-- 1. Database Backup & Restore Card (100% 9router Parity) -->
@@ -5508,7 +5667,106 @@ function renderSettings(payload) {
         </div>
       </div>
 
-      <!-- 2. System Settings & Toggles Card -->
+      <!-- 2. Appearance & Branding Card -->
+      <div class="card settings-surface appearance-surface" style="padding:18px;">
+        <div class="card-top" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:14px;">
+          <div>
+            <span class="kicker">VISUAL SYSTEM</span>
+            <h3 style="font-size:14px; margin:2px 0 0;">Appearance &amp; Branding</h3>
+          </div>
+          <span class="table-badge purple" style="font-size:8px;">PERSISTED TO SQLITE</span>
+        </div>
+        <p class="appearance-intro">Personalize the control center without sacrificing readability. Background images are resized and compressed in your browser before storage.</p>
+        <div class="appearance-grid">
+          <section class="appearance-panel">
+            <div class="appearance-panel-head">
+              <div>
+                <span class="appearance-kicker">BACKDROP</span>
+                <h4>Custom background</h4>
+              </div>
+              <button class="text-button" id="clear-background" type="button">Clear</button>
+            </div>
+            <label class="file-dropzone" for="appearance-background-file">
+              <span class="material-symbols-outlined">wallpaper</span>
+              <span><strong>Choose an image</strong><small>PNG, JPG, or WebP · compressed to ≤ 900 KB</small></span>
+            </label>
+            <input id="appearance-background-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+            <div id="appearance-background-preview" class="appearance-image-preview" role="img" aria-label="Background preview"><span>No custom background</span></div>
+            <div class="appearance-range-row">
+              <label for="background-opacity">Image opacity</label>
+              <output id="background-opacity-value" for="background-opacity">${Math.round(appearance.backgroundOpacity * 100)}%</output>
+            </div>
+            <input id="background-opacity" type="range" min="0" max="0.8" step="0.01" value="${appearance.backgroundOpacity}" aria-label="Background image opacity" />
+            <div class="appearance-range-row">
+              <label for="background-blur">Image blur</label>
+              <output id="background-blur-value" for="background-blur">${appearance.backgroundBlur}px</output>
+            </div>
+            <input id="background-blur" type="range" min="0" max="32" step="1" value="${appearance.backgroundBlur}" aria-label="Background image blur" />
+          </section>
+
+          <section class="appearance-panel">
+            <div class="appearance-panel-head">
+              <div>
+                <span class="appearance-kicker">SURFACES</span>
+                <h4>Translucent depth</h4>
+              </div>
+              <span class="table-badge active" style="font-size:8px;">BACKDROP BLUR</span>
+            </div>
+            <label class="appearance-toggle"><input id="glass-enabled" type="checkbox" ${appearance.glassEnabled ? 'checked' : ''} /><span><strong>Glass surfaces</strong><small>Apply translucent layers to cards, nav, and header.</small></span></label>
+            <label class="setting-field" for="glass-depth">Glass depth type
+              <select id="glass-depth">
+                <option value="subtle" ${appearance.glassDepth === 'subtle' ? 'selected' : ''}>Subtle — calm, low contrast</option>
+                <option value="strong" ${appearance.glassDepth === 'strong' ? 'selected' : ''}>Strong — deeper blur &amp; elevation</option>
+              </select>
+            </label>
+            <div class="appearance-inline-controls">
+              <label class="setting-field" for="glass-surface-color">Surface tint
+                <input id="glass-surface-color" type="color" value="${escapeHtml(appearance.glassSurfaceColor)}" aria-label="Glass surface tint" />
+              </label>
+              <label class="setting-field" for="glass-surface-opacity">Surface opacity
+                <output id="glass-surface-opacity-value" for="glass-surface-opacity">${Math.round(appearance.glassSurfaceOpacity * 100)}%</output>
+                <input id="glass-surface-opacity" type="range" min="0.08" max="0.8" step="0.01" value="${appearance.glassSurfaceOpacity}" aria-label="Glass surface opacity" />
+              </label>
+            </div>
+            <div class="glass-preview" aria-hidden="true"><span class="glass-preview-orb"></span><strong>Glass surface</strong><small>Translucent depth with backdrop blur</small></div>
+          </section>
+
+          <section class="appearance-panel">
+            <div class="appearance-panel-head">
+              <div>
+                <span class="appearance-kicker">IDENTITY</span>
+                <h4>Branding</h4>
+              </div>
+            </div>
+            <div class="branding-fields">
+              <label class="setting-field" for="brand-name">Brand name
+                <input id="brand-name" maxlength="80" value="${escapeHtml(appearance.brandName)}" />
+              </label>
+              <label class="setting-field" for="brand-subtitle">Subtitle
+                <input id="brand-subtitle-input" maxlength="120" value="${escapeHtml(appearance.brandSubtitle)}" />
+              </label>
+            </div>
+            <div class="branding-upload-grid">
+              <div>
+                <label class="file-dropzone compact" for="brand-icon-file"><span class="material-symbols-outlined">account_circle</span><span><strong>Brand icon</strong><small>PNG, JPG, or WebP · ≤ 2 MB</small></span></label>
+                <input id="brand-icon-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+                <div class="branding-preview-wrap"><img id="brand-icon-preview" class="branding-preview" alt="Brand icon preview" /><button class="text-button" id="clear-brand-icon" type="button">Clear</button></div>
+              </div>
+              <div>
+                <label class="file-dropzone compact" for="favicon-file"><span class="material-symbols-outlined">web</span><span><strong>Website icon</strong><small>PNG, JPG, or WebP · ≤ 256 KB</small></span></label>
+                <input id="favicon-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+                <div class="branding-preview-wrap"><img id="favicon-preview" class="branding-preview favicon-preview" alt="Website icon preview" /><button class="text-button" id="clear-favicon" type="button">Clear</button></div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="appearance-actions">
+          <span id="appearance-result" class="result-line" role="status" aria-live="polite"></span>
+          <button class="solid-button" id="save-appearance" type="button">Save Appearance</button>
+        </div>
+      </div>
+
+      <!-- 3. System Settings & Toggles Card -->
       <div class="card settings-surface" style="padding:18px;">
         <div class="card-top" style="border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:14px;">
           <div>
@@ -9126,6 +9384,156 @@ function bindSettings() {
   const exportDbBtn = document.querySelector('#btn-export-database');
   const importDbInput = document.querySelector('#import-database-file');
   const dbStatusEl = document.querySelector('#db-backup-status');
+  const appearanceResult = document.querySelector('#appearance-result');
+  const appearanceDraft = normalizeDashboardAppearance(json ? JSON.parse(json.value || '{}') : {});
+  const backgroundPreview = document.querySelector('#appearance-background-preview');
+  const brandIconPreview = document.querySelector('#brand-icon-preview');
+  const faviconPreview = document.querySelector('#favicon-preview');
+
+  const updateAppearancePreviews = () => {
+    if (backgroundPreview) {
+      backgroundPreview.style.backgroundImage = appearanceDraft.backgroundImage ? `url("${appearanceDraft.backgroundImage}")` : 'none';
+      backgroundPreview.classList.toggle('has-image', Boolean(appearanceDraft.backgroundImage));
+      backgroundPreview.querySelector('span').textContent = appearanceDraft.backgroundImage ? 'Compressed preview' : 'No custom background';
+    }
+    if (brandIconPreview) {
+      if (appearanceDraft.brandIcon) brandIconPreview.src = appearanceDraft.brandIcon;
+      else brandIconPreview.removeAttribute('src');
+      brandIconPreview.classList.toggle('has-image', Boolean(appearanceDraft.brandIcon));
+    }
+    if (faviconPreview) {
+      if (appearanceDraft.favicon) faviconPreview.src = appearanceDraft.favicon;
+      else faviconPreview.removeAttribute('src');
+      faviconPreview.classList.toggle('has-image', Boolean(appearanceDraft.favicon));
+    }
+  };
+
+  const updateRangeOutput = (input, output, suffix = '') => {
+    if (!input || !output) return;
+    output.textContent = suffix === '%' ? `${Math.round(Number(input.value) * 100)}%` : `${input.value}${suffix}`;
+  };
+
+  const bindImageInput = (inputId, key, options) => {
+    const input = document.querySelector(inputId);
+    if (!input) return;
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      try {
+        if (appearanceResult) appearanceResult.textContent = `Compressing ${key === 'backgroundImage' ? 'background' : key === 'brandIcon' ? 'brand icon' : 'website icon'}...`;
+        appearanceDraft[key] = await compressImageFile(file, options);
+        updateAppearancePreviews();
+        if (appearanceResult) appearanceResult.textContent = 'Compressed locally. Save Appearance to persist it.';
+      } catch (error) {
+        if (appearanceResult) appearanceResult.textContent = `Image failed: ${error.message}`;
+        showToast(error.message, 'error');
+      }
+    };
+  };
+
+  updateAppearancePreviews();
+  bindImageInput('#appearance-background-file', 'backgroundImage', { maxDimension: 2200, maxBytes: 900 * 1024 });
+  bindImageInput('#brand-icon-file', 'brandIcon', { maxDimension: 512, maxBytes: 2 * 1024 * 1024 });
+  bindImageInput('#favicon-file', 'favicon', { maxDimension: 256, maxBytes: 256 * 1024, outputType: 'image/png' });
+
+  const backgroundOpacity = document.querySelector('#background-opacity');
+  const backgroundOpacityValue = document.querySelector('#background-opacity-value');
+  const backgroundBlur = document.querySelector('#background-blur');
+  const backgroundBlurValue = document.querySelector('#background-blur-value');
+  if (backgroundOpacity) {
+    backgroundOpacity.oninput = () => {
+      appearanceDraft.backgroundOpacity = Number(backgroundOpacity.value);
+      updateRangeOutput(backgroundOpacity, backgroundOpacityValue, '%');
+      applyDashboardCustomization(appearanceDraft);
+    };
+  }
+  if (backgroundBlur) {
+    backgroundBlur.oninput = () => {
+      appearanceDraft.backgroundBlur = Number(backgroundBlur.value);
+      updateRangeOutput(backgroundBlur, backgroundBlurValue, 'px');
+      applyDashboardCustomization(appearanceDraft);
+    };
+  }
+  const glassEnabled = document.querySelector('#glass-enabled');
+  if (glassEnabled) glassEnabled.onchange = () => {
+    appearanceDraft.glassEnabled = glassEnabled.checked;
+    applyDashboardCustomization(appearanceDraft);
+  };
+  const glassDepth = document.querySelector('#glass-depth');
+  if (glassDepth) glassDepth.onchange = () => {
+    appearanceDraft.glassDepth = glassDepth.value === 'strong' ? 'strong' : 'subtle';
+    applyDashboardCustomization(appearanceDraft);
+  };
+  const glassSurfaceColor = document.querySelector('#glass-surface-color');
+  if (glassSurfaceColor) glassSurfaceColor.oninput = () => {
+    appearanceDraft.glassSurfaceColor = isHexColor(glassSurfaceColor.value) ? glassSurfaceColor.value : DASHBOARD_APPEARANCE_DEFAULTS.glassSurfaceColor;
+    applyDashboardCustomization(appearanceDraft);
+  };
+  const glassSurfaceOpacity = document.querySelector('#glass-surface-opacity');
+  const glassSurfaceOpacityValue = document.querySelector('#glass-surface-opacity-value');
+  if (glassSurfaceOpacity) glassSurfaceOpacity.oninput = () => {
+    appearanceDraft.glassSurfaceOpacity = Number(glassSurfaceOpacity.value);
+    updateRangeOutput(glassSurfaceOpacity, glassSurfaceOpacityValue, '%');
+    applyDashboardCustomization(appearanceDraft);
+  };
+  const brandName = document.querySelector('#brand-name');
+  if (brandName) brandName.oninput = () => {
+    appearanceDraft.brandName = brandName.value;
+    applyDashboardCustomization(appearanceDraft);
+  };
+  const brandSubtitle = document.querySelector('#brand-subtitle-input');
+  if (brandSubtitle) brandSubtitle.oninput = () => {
+    appearanceDraft.brandSubtitle = brandSubtitle.value;
+    applyDashboardCustomization(appearanceDraft);
+  };
+  document.querySelector('#clear-background')?.addEventListener('click', () => {
+    appearanceDraft.backgroundImage = '';
+    updateAppearancePreviews();
+    applyDashboardCustomization(appearanceDraft);
+  });
+  document.querySelector('#clear-brand-icon')?.addEventListener('click', () => {
+    appearanceDraft.brandIcon = '';
+    updateAppearancePreviews();
+    applyDashboardCustomization(appearanceDraft);
+  });
+  document.querySelector('#clear-favicon')?.addEventListener('click', () => {
+    appearanceDraft.favicon = '';
+    updateAppearancePreviews();
+    applyDashboardCustomization(appearanceDraft);
+  });
+
+  const saveAppearance = document.querySelector('#save-appearance');
+  if (saveAppearance && json) {
+    saveAppearance.onclick = async () => {
+      saveAppearance.disabled = true;
+      const originalText = saveAppearance.textContent;
+      saveAppearance.textContent = 'Saving...';
+      try {
+        const payload = JSON.parse(json.value || '{}');
+        Object.assign(payload, normalizeDashboardAppearance(appearanceDraft));
+        const response = await fetch(`${apiBase}/api/settings`, {
+          method: 'PUT',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const resText = await response.text();
+        let body = {};
+        try { body = JSON.parse(resText); } catch {}
+        if (!response.ok) throw new Error(body.error || resText || `${response.status} ${response.statusText}`);
+        json.value = JSON.stringify(payload, null, 2);
+        applyDashboardCustomization(payload);
+        if (appearanceResult) appearanceResult.textContent = 'Appearance saved to SQLite.';
+        showToast('Appearance saved successfully!', 'success');
+      } catch (error) {
+        if (appearanceResult) appearanceResult.textContent = `Save failed: ${error.message}`;
+        showToast(`Appearance save failed: ${error.message}`, 'error');
+      } finally {
+        saveAppearance.disabled = false;
+        saveAppearance.textContent = originalText;
+      }
+    };
+  }
 
   // Full Database Backup Export
   if (exportDbBtn) {
@@ -9288,6 +9696,7 @@ function bindSettings() {
         try { body = JSON.parse(resText); } catch {}
         if (!response.ok) throw new Error(body.error || resText || `${response.status} ${response.statusText}`);
         result.textContent = 'Settings saved to SQLite database.';
+        applyDashboardCustomization(payload);
         showToast('Settings saved successfully!', 'success');
       } catch (error) {
         result.textContent = `Save failed: ${error.message}`;
@@ -9687,7 +10096,9 @@ async function loadOverview() {
     const completionTokens = Number(usagePayload.completionTokens ?? usagePayload.totalCompletionTokens ?? 0);
     const totalTokens = Number(usagePayload.totalTokens ?? (promptTokens + completionTokens) ?? 0);
     const activeConnsCount = providers.filter(isItemActive).length;
-    const totalConnsCount = providers.length;
+    const providerKey = (connection) => String(connection?.provider || '').trim().toLowerCase();
+    const totalUpstreamProviders = new Set(meshProviders.map(providerKey).filter(Boolean));
+    const activeUpstreamProviders = new Set(meshProviders.filter(isItemActive).map(providerKey).filter(Boolean));
 
     // 1. Throughput & Tokens Card V2 (Real-time stream token rate)
     const tokRateEl = document.querySelector('#realtime-tok-rate');
@@ -9709,7 +10120,7 @@ async function loadOverview() {
     // 3. Upstream Nodes Card V2
     const nodesCountEl = document.querySelector('#providers-count-v2');
     if (nodesCountEl) {
-      nodesCountEl.textContent = `${activeConnsCount}/${totalConnsCount}`;
+      nodesCountEl.textContent = `${activeUpstreamProviders.size}/${totalUpstreamProviders.size}`;
     }
     const activeAccountsTxt = document.querySelector('#active-accounts-txt');
     if (activeAccountsTxt) {
@@ -9717,7 +10128,7 @@ async function loadOverview() {
     }
 
     const navBadge = document.querySelector('#nav-badge-providers');
-    if (navBadge) navBadge.textContent = totalConnsCount;
+    if (navBadge) navBadge.textContent = totalUpstreamProviders.size;
 
     // 4. Routing Success Rate Card V2
     const recentReqs = Array.isArray(usagePayload.recentRequests) ? usagePayload.recentRequests : [];
@@ -9752,7 +10163,7 @@ async function loadOverview() {
           const timeStr = formatWIBTime(req.timestamp);
 
           return `
-            <div class="console-log-row" style="background:#05070a; border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div class="console-log-row" style="border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
               <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
                 <span style="color:${statusColor}; font-weight:bold; font-size:10px; font-family:var(--mono);">● ${escapeHtml(String(statusCode))}</span>
                 <span class="method-tag post" style="margin:0; font-size:8px;">POST</span>
@@ -10466,7 +10877,7 @@ startStream('/api/usage/stream', (payload) => {
 
       const itemEl = document.createElement('div');
       itemEl.className = `console-log-row live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
-      itemEl.style.cssText = 'background:#05070a; border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;';
+      itemEl.style.cssText = 'border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;';
       itemEl.innerHTML = `
         <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
           <span style="color:${statusColor}; font-weight:bold; font-size:10px; font-family:var(--mono);">● ${escapeHtml(String(statusCode))}</span>
@@ -10498,6 +10909,8 @@ async function bootstrapDashboardAuth() {
 
   if (dashboardAuthenticated) {
     document.querySelector('#full-login-overlay')?.remove();
+    const settings = await request('/api/settings').catch(() => null);
+    if (settings) applyDashboardCustomization(settings);
     ensureGlobalStream();
     setView(window.location.hash.slice(1) || 'overview');
   } else {

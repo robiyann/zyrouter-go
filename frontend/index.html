@@ -5,14 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07090e" />
     <title>Zyrouter / Control Center</title>
+    <link id="favicon-link" rel="icon" type="image/svg+xml" data-default-href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090d12'/%3E%3Cpath d='M16 15h32v8H25v9h20v8H25v9h23v8H16z' fill='%23c8ff63'/%3E%3C/svg%3E" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090d12'/%3E%3Cpath d='M16 15h32v8H25v9h20v8H25v9h23v8H16z' fill='%23c8ff63'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
-    <link rel="stylesheet" href="./styles.css?v=2.8.1" />
+    <link rel="stylesheet" href="./styles.css?v=2.9.0" />
   </head>
   <body>
+    <div id="theme-background" class="theme-background" aria-hidden="true"></div>
     <div class="room-shell">
       <!-- SIDEBAR -->
       <aside class="dock" aria-label="Navigasi utama">
@@ -21,8 +23,8 @@
             <span class="logo-symbol">Z</span>
           </a>
           <div class="brand-text">
-            <div class="brand-title">Zyrouter <span class="brand-badge">CORE</span></div>
-            <div class="brand-sub">AI Routing Gateway</div>
+            <div class="brand-title"><span id="brand-title-text">Zyrouter</span> <span class="brand-badge">CORE</span></div>
+            <div class="brand-sub" id="brand-subtitle">AI Routing Gateway</div>
           </div>
           <button class="sidebar-close-button" id="btn-sidebar-close" aria-label="Close navigation sidebar" title="Close navigation sidebar">
             <span class="material-symbols-outlined">close</span>
@@ -197,10 +199,10 @@
               </div>
             </article>
 
-            <!-- 3. ACTIVE UPSTREAM NODES -->
+            <!-- 3. ACTIVE UPSTREAM PROVIDERS -->
             <article class="card stat-card-v2">
               <div class="stat-card-top">
-                <span class="stat-kicker">ACTIVE UPSTREAM NODES</span>
+                <span class="stat-kicker">ACTIVE UPSTREAM PROVIDERS</span>
                 <div class="stat-chip-pill purple">
                   <span>Topology</span>
                   <span class="material-symbols-outlined" style="font-size:12px;">show_chart</span>
@@ -208,14 +210,14 @@
               </div>
               <div class="stat-main-metric">
                 <span class="stat-value" id="providers-count-v2">0/0</span>
-                <span class="stat-unit">Nodes</span>
+                <span class="stat-unit">Providers</span>
               </div>
               <div class="stat-bottom-meta">
                 <div class="nodes-sub-stat">
                   <span class="cooldown-txt" id="cooldown-nodes-txt">&bull; 0 in Cooldown</span>
                   <span class="degraded-txt" id="active-accounts-txt">0 Accounts Active</span>
                 </div>
-                <span class="stat-desc">Authenticated upstream endpoints</span>
+                <span class="stat-desc">Unique upstream providers with configured connections</span>
               </div>
             </article>
 
@@ -413,6 +415,6 @@
         </section>
       </main>
     </div>
-    <script src="./app.js?v=2.8.2"></script>
+    <script src="./app.js?v=2.9.0"></script>
   </body>
 </html>

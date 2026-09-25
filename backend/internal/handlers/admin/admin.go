@@ -1013,6 +1013,7 @@ func (h *AdminHandler) HandleGetSettings(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *AdminHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 6<<20)
 	var body map[string]any
 	if err := decodeJSON(r, &body); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid request body")
