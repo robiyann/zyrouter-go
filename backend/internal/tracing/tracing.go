@@ -29,6 +29,13 @@ var (
 	startT = time.Now()
 )
 
+// UptimeSecs returns the elapsed lifetime of the process that owns the
+// in-memory tracing ring. It is intentionally derived from the same package
+// start point as the latency telemetry so both cards describe one runtime.
+func UptimeSecs() int64 {
+	return int64(time.Since(startT).Seconds())
+}
+
 // Record appends a completed span, trimming the ring to limit.
 func Record(s Span) {
 	if s.At == 0 {
@@ -123,7 +130,7 @@ func percentile(durs []int64, p float64) float64 {
 // JSON renders the recent-traces payload for the debug endpoint.
 func JSON(n int) ([]byte, error) {
 	return json.Marshal(struct {
-		Spans  []Span         `json:"spans"`
+		Spans   []Span         `json:"spans"`
 		Latency []LatencyStats `json:"latency"`
 	}{
 		Spans:   Recent(n),

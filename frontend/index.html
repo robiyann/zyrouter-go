@@ -150,6 +150,50 @@
             </div>
           </div>
 
+          <!-- SYSTEM OVERVIEW -->
+          <section class="card system-overview-card" id="system-overview-card" style="padding:14px 16px; margin-bottom:14px;">
+            <div class="card-top" style="margin-bottom:10px;">
+              <div>
+                <span class="kicker">SYSTEM OVERVIEW</span>
+                <h2 style="font-size:14px; margin:2px 0 0;">Runtime health &amp; upstream capacity</h2>
+                <p style="font-size:10px; color:var(--muted); margin:2px 0 0;">Process memory, request latency, proxy capacity, and gateway uptime.</p>
+              </div>
+              <button type="button" class="secondary-button" id="btn-system-overview-refresh" style="font-size:10px; padding:5px 9px;">
+                <span class="material-symbols-outlined" style="font-size:12px;">refresh</span> Refresh
+              </button>
+            </div>
+            <div class="system-overview-grid" style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;">
+              <article class="system-overview-tile" style="padding:10px 11px;">
+                <div class="system-overview-tile-head"><span class="material-symbols-outlined system-overview-icon purple">memory</span><span class="stat-card-kicker">RAM &amp; MEMORY</span></div>
+                <strong class="system-overview-value" id="system-memory-value">--</strong>
+                <span class="system-overview-label" id="system-memory-sub">Go heap allocated</span>
+                <div class="system-overview-progress"><span id="system-memory-bar" style="width:0%; background:#c084fc;"></span></div>
+                <small class="system-overview-detail" id="system-memory-detail">Waiting for runtime telemetry</small>
+              </article>
+              <article class="system-overview-tile" style="padding:10px 11px;">
+                <div class="system-overview-tile-head"><span class="material-symbols-outlined system-overview-icon cyan">speed</span><span class="stat-card-kicker">REQUEST LATENCY</span></div>
+                <strong class="system-overview-value" id="system-latency-p95">--</strong>
+                <span class="system-overview-label">p95 recent upstream</span>
+                <div class="system-overview-inline-stats"><span>AVG <b id="system-latency-avg">--</b></span><span>ERRORS <b id="system-latency-errors">--</b></span></div>
+                <small class="system-overview-detail" id="system-latency-detail">No completed traces yet</small>
+              </article>
+              <article class="system-overview-tile" style="padding:10px 11px;">
+                <div class="system-overview-tile-head"><span class="material-symbols-outlined system-overview-icon orange">dns</span><span class="stat-card-kicker">PROXY POOL</span></div>
+                <strong class="system-overview-value" id="system-proxy-value">--</strong>
+                <span class="system-overview-label" id="system-proxy-sub">active endpoints</span>
+                <div class="system-overview-progress"><span id="system-proxy-bar" style="width:0%; background:#38bdf8;"></span></div>
+                <small class="system-overview-detail" id="system-proxy-detail">No proxy pool telemetry yet</small>
+              </article>
+              <article class="system-overview-tile" style="padding:10px 11px;">
+                <div class="system-overview-tile-head"><span class="material-symbols-outlined system-overview-icon lime">schedule</span><span class="stat-card-kicker">UPTIME</span></div>
+                <strong class="system-overview-value" id="system-uptime-value">--</strong>
+                <span class="system-overview-label">gateway process uptime</span>
+                <div class="system-overview-inline-stats"><span>CPU <b id="system-uptime-cpu">--</b></span><span>GOROUTINES <b id="system-uptime-goroutines">--</b></span></div>
+                <small class="system-overview-detail" id="system-uptime-detail">Runtime details unavailable</small>
+              </article>
+            </div>
+          </section>
+
           <!-- 4-COLUMN STATS (High-Density Metric Cards) -->
           <div class="stats-matrix-grid">
             <!-- 1. REALTIME THROUGHPUT -->

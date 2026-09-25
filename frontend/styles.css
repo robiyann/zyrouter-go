@@ -584,6 +584,96 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* ─────────────────────────────────────────────────────────────
    5. OVERVIEW STATS MATRIX (High-Density Metric Cards V2)
    ───────────────────────────────────────────────────────────── */
+.system-overview-card {
+  background: rgba(14, 17, 24, 0.58);
+}
+
+.system-overview-tile {
+  min-width: 0;
+  min-height: 108px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(28, 29, 36, 0.58);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.system-overview-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.system-overview-icon {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 6px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.system-overview-icon.purple { color: #c084fc; }
+.system-overview-icon.cyan { color: #67e8f9; }
+.system-overview-icon.orange { color: #fb923c; }
+.system-overview-icon.lime { color: var(--lime); }
+
+.system-overview-value {
+  display: block;
+  margin-top: 9px;
+  color: var(--text-bright);
+  font: 800 20px var(--mono);
+  letter-spacing: -0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.system-overview-label,
+.system-overview-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.system-overview-progress {
+  height: 4px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.system-overview-progress > span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+.system-overview-inline-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  color: #71717a;
+  font: 700 8px var(--mono);
+}
+
+.system-overview-inline-stats b {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.system-overview-detail {
+  margin-top: 7px;
+  color: #71717a;
+  font-family: var(--mono);
+}
+
 .stats-matrix-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3425,6 +3515,9 @@ body.glass-enabled .settings-surface textarea {
    14. RESPONSIVE MEDIA QUERIES
    ───────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
+  .system-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
   .stats-matrix-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -3564,6 +3657,10 @@ body.glass-enabled .settings-surface textarea {
 }
 
 @media (max-width: 640px) {
+  .system-overview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
   .combo-builder-form {
     padding: 12px !important;
   }

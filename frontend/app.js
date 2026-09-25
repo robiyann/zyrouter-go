@@ -6040,7 +6040,6 @@ function renderAuthLogs(payload = {}) {
   const logs = Array.isArray(payload.logs) ? payload.logs : [];
   const total = Number(payload.total || logs.length);
   const totalPages = Math.ceil(total / authLogsPageSize) || 1;
-  const security = payload.securitySummary || {};
   const rows = logs.length ? logs.map((entry) => `
     <tr>
       <td>${escapeHtml(formatWIBTimestamp(entry.timestamp || Date.now()))}</td>
@@ -6057,12 +6056,6 @@ function renderAuthLogs(payload = {}) {
       <div class="section-header" style="margin-bottom:12px;">
         <div><span class="kicker">SECURITY EVENTS</span><h2>Admin Auth Log</h2><p>Login success, password failure, lockout, dan akses admin yang ditolak. Credential tidak disimpan.</p></div>
         <button type="button" class="secondary-button" id="btn-refresh-authlogs">Refresh</button>
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin-bottom:12px;">
-        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">MIGRATION</span><strong style="display:block; margin-top:4px; color:var(--lime);">${escapeHtml(security.migrationMarker || 'not detected')}</strong></div>
-        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">PLAINTEXT LEGACY</span><strong style="display:block; margin-top:4px; color:${Number(security.legacyGatewayPlaintext || 0) ? 'var(--danger)' : 'var(--lime)'};">${Number(security.legacyGatewayPlaintext || 0).toLocaleString()}</strong></div>
-        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">HASHED KEYS</span><strong style="display:block; margin-top:4px; color:var(--text-bright);">${Number(security.hashedKeys || 0).toLocaleString()}</strong></div>
-        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">INACTIVE</span><strong style="display:block; margin-top:4px; color:var(--muted);">${Number(security.inactiveKeys || 0).toLocaleString()}</strong></div>
       </div>
       <div class="data-table-container">
         <table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>IP Address</th><th>Request</th><th>Status</th><th>User Agent</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
@@ -6087,22 +6080,16 @@ function bindAuthLogs() {
     if (authLogsCurrentPage > 1) {
       authLogsCurrentPage--;
       const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
-      const [logs, securitySummary] = await Promise.all([
-        request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
-        request('/api/admin/security/summary').catch(() => ({}))
-      ]);
-      content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
+      const logs = await request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`);
+      content.innerHTML = renderAuthLogs(logs);
       bindAuthLogs();
     }
   });
   document.querySelector('#btn-authlogs-next')?.addEventListener('click', async () => {
     authLogsCurrentPage++;
     const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
-    const [logs, securitySummary] = await Promise.all([
-      request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
-      request('/api/admin/security/summary').catch(() => ({}))
-    ]);
-    content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
+    const logs = await request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`);
+    content.innerHTML = renderAuthLogs(logs);
     bindAuthLogs();
   });
 }
@@ -6389,11 +6376,7 @@ async function renderView(name) {
         usage: () => request('/api/usage/stats?period=all&days=all'),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: async () => {
-          const [logs, securitySummary] = await Promise.all([
-            request(`/api/auth-logs?limit=${authLogsPageSize}&offset=0`),
-            request('/api/admin/security/summary').catch(() => ({}))
-          ]);
-          return { ...logs, securitySummary };
+          return request(`/api/auth-logs?limit=${authLogsPageSize}&offset=0`);
         },
         pools: () => request('/api/proxy-pools'),
         aliases: async () => {
@@ -9606,6 +9589,81 @@ function setView(name) {
 let isLoadingOverview = false;
 let meshProviderSignature = '';
 let meshProviderSyncTimer = null;
+
+function formatSystemDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  if (total < 60) return `${Math.floor(total)}s`;
+  const minutes = Math.floor(total / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m ${Math.floor(total % 60)}s`;
+}
+
+function formatSystemLatency(ms) {
+  const value = Number(ms) || 0;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
+  return `${Math.round(value)}ms`;
+}
+
+function updateSystemOverview(payload = {}) {
+  const memory = payload.memory || {};
+  const latency = payload.latency || {};
+  const pools = payload.proxyPools || {};
+  const runtimeInfo = payload.runtime || {};
+  const heapAlloc = Number(memory.heapAllocMb) || 0;
+  const heapSys = Number(memory.heapSysMb) || 0;
+  const sysMemory = Number(memory.sysMb) || 0;
+  const memoryRatio = heapSys > 0 ? Math.min(100, (heapAlloc / heapSys) * 100) : 0;
+  const totalEndpoints = Number(pools.totalEndpoints) || 0;
+  const activeEndpoints = Number(pools.activeEndpoints) || 0;
+  const proxyRatio = totalEndpoints > 0 ? Math.min(100, (activeEndpoints / totalEndpoints) * 100) : 0;
+  const byType = Object.entries(pools.byType || {})
+    .filter(([, count]) => Number(count) > 0)
+    .map(([type, count]) => `${type.toUpperCase()} ${Number(count).toLocaleString()}`)
+    .join(' · ');
+
+  const setText = (selector, value) => {
+    const element = document.querySelector(selector);
+    if (element) element.textContent = value;
+  };
+  setText('#system-memory-value', heapAlloc > 0 ? `${heapAlloc.toFixed(1)} MB` : '--');
+  setText('#system-memory-sub', heapSys > 0 ? `${heapSys.toFixed(1)} MB heap reserved` : 'Go heap allocated');
+  setText('#system-memory-detail', sysMemory > 0 ? `${sysMemory.toFixed(1)} MB runtime · ${Number(memory.gcCycles || 0).toLocaleString()} GC cycles` : 'Waiting for runtime telemetry');
+  const memoryBar = document.querySelector('#system-memory-bar');
+  if (memoryBar) memoryBar.style.width = `${memoryRatio}%`;
+
+  setText('#system-latency-p95', latency.count > 0 ? formatSystemLatency(latency.p95Ms) : '--');
+  setText('#system-latency-avg', latency.count > 0 ? formatSystemLatency(latency.averageMs) : '--');
+  setText('#system-latency-errors', latency.count > 0 ? Number(latency.errors || 0).toLocaleString() : '--');
+  setText('#system-latency-detail', latency.count > 0 ? `${Number(latency.count).toLocaleString()} recent traces · p50 ${formatSystemLatency(latency.p50Ms)} · p99 ${formatSystemLatency(latency.p99Ms)}` : 'No completed traces yet');
+
+  setText('#system-proxy-value', `${activeEndpoints.toLocaleString()}/${totalEndpoints.toLocaleString()}`);
+  setText('#system-proxy-sub', `${Number(pools.activePools || 0).toLocaleString()}/${Number(pools.totalPools || 0).toLocaleString()} pools active`);
+  setText('#system-proxy-detail', byType || 'No configured proxy endpoints');
+  const proxyBar = document.querySelector('#system-proxy-bar');
+  if (proxyBar) proxyBar.style.width = `${proxyRatio}%`;
+
+  setText('#system-uptime-value', formatSystemDuration(payload.uptimeSecs));
+  setText('#system-uptime-cpu', `${Number(runtimeInfo.cpuCores || 0).toLocaleString()} cores`);
+  setText('#system-uptime-goroutines', Number(runtimeInfo.goroutines || 0).toLocaleString());
+  setText('#system-uptime-detail', runtimeInfo.goVersion ? `${runtimeInfo.goVersion} · ${runtimeInfo.os || '--'}/${runtimeInfo.arch || '--'}` : 'Runtime details unavailable');
+}
+
+async function loadSystemOverview() {
+  if (!hasDashboardAccess()) return;
+  const refreshButton = document.querySelector('#btn-system-overview-refresh');
+  if (refreshButton) refreshButton.disabled = true;
+  try {
+    updateSystemOverview(await request('/api/system/overview'));
+  } catch (error) {
+    console.debug('[zyrouter] system overview unavailable', error.message);
+  } finally {
+    if (refreshButton) refreshButton.disabled = false;
+  }
+}
+
 async function loadOverview() {
   if (isLoadingOverview) return;
   if (!hasDashboardAccess()) {
@@ -9614,11 +9672,13 @@ async function loadOverview() {
   }
   isLoadingOverview = true;
   try {
-    const [providerPayload, usagePayload, nodesPayload] = await Promise.all([
+    const [providerPayload, usagePayload, nodesPayload, systemPayload] = await Promise.all([
       request('/api/providers?summary=1').catch(() => ({ connections: [] })),
       request('/api/usage/stats?period=all&days=all').catch(() => ({})),
-      request('/api/provider-nodes').catch(() => ({ nodes: [] }))
+      request('/api/provider-nodes').catch(() => ({ nodes: [] })),
+      request('/api/system/overview').catch(() => ({}))
     ]);
+    updateSystemOverview(systemPayload);
     const providers = providerPayload.connections || [];
     const customNodes = nodesPayload.nodes || [];
     const customNodeIds = new Set(customNodes.map((n) => String(n.id || '').toLowerCase()));
@@ -10294,6 +10354,7 @@ document.addEventListener('click', (event) => {
 });
 document.querySelector('.strip-action')?.addEventListener('click', (event) => event.currentTarget.closest('.connection-strip').remove());
 document.querySelector('#refresh-button')?.addEventListener('click', loadOverview);
+document.querySelector('#btn-system-overview-refresh')?.addEventListener('click', loadSystemOverview);
 document.querySelector('.avatar')?.addEventListener('click', async () => {
   const confirmed = await showConfirmModal({
     title: 'Sign Out of Dashboard',
