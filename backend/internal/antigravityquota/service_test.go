@@ -65,6 +65,11 @@ func TestSnapshotReadsDatabaseAndFormatsSummaryWindows(t *testing.T) {
 		if r.Header.Get("User-Agent") != DefaultUserAgent {
 			t.Errorf("unexpected User-Agent: %q", r.Header.Get("User-Agent"))
 		}
+		if r.URL.Path == "/v1internal:loadCodeAssist" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"allowedTiers":[{"id":"pro-tier","displayName":"Pro","isDefault":true}]}`))
+			return
+		}
 		var payload map[string]string
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Errorf("decode request body: %v", err)
@@ -96,6 +101,9 @@ func TestSnapshotReadsDatabaseAndFormatsSummaryWindows(t *testing.T) {
 	}
 	if account.Windows[1].RemainingPercentage != 72 {
 		t.Fatalf("unexpected weekly percentage: %+v", account.Windows[1])
+	}
+	if account.AccountType != "Pro" || account.TierID != "pro-tier" || account.TierName != "Pro" {
+		t.Fatalf("account tier was not fetched from loadCodeAssist: %+v", account)
 	}
 	if strings.Contains(account.Error, "weekly") {
 		t.Fatalf("unexpected weekly error: %q", account.Error)

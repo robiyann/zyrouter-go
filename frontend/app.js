@@ -5377,6 +5377,7 @@ function renderQuota(payload) {
 
           const accountLabel = account.email || account.name || `Account #${actualIndex + 1}`;
           const connId = account.connectionId ? (account.connectionId.length > 16 ? `${account.connectionId.slice(0, 10)}...${account.connectionId.slice(-4)}` : account.connectionId) : '--';
+          const accountType = account.accountType || account.tierName || account.tierId || 'Unknown';
 
           return `
             <div class="card" style="padding:14px; border:1px solid rgba(255,255,255,0.08); background:linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(8,10,15,0.85) 100%);">
@@ -5392,6 +5393,7 @@ function renderQuota(payload) {
                   </div>
                 </div>
                 <div>
+                  <span class="table-badge purple" style="font-size:8px; padding:2px 6px; display:block; margin-bottom:5px;" title="Tier from Antigravity loadCodeAssist">${escapeHtml(accountType)}</span>
                   ${getQuotaStatusBadge(account)}
                 </div>
               </div>

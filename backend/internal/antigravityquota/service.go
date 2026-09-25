@@ -48,6 +48,9 @@ type AccountQuota struct {
 	ConnectionID string   `json:"connectionId"`
 	Email        string   `json:"email,omitempty"`
 	Name         string   `json:"name,omitempty"`
+	AccountType  string   `json:"accountType,omitempty"`
+	TierID       string   `json:"tierId,omitempty"`
+	TierName     string   `json:"tierName,omitempty"`
 	Windows      []Window `json:"windows,omitempty"`
 	Error        string   `json:"error,omitempty"`
 }
@@ -288,6 +291,11 @@ func (s *Service) fetchAccount(ctx context.Context, connection *models.ProviderC
 			projectID, _ = nested["projectId"].(string)
 		}
 	}
+	if tierID, tierName, accountType, err := s.fetchAccountTier(ctx, accessToken); err == nil {
+		account.TierID = tierID
+		account.TierName = tierName
+		account.AccountType = accountType
+	}
 
 	summary, summaryErr := s.fetchSummary(ctx, accessToken, projectID)
 	account.Windows = summary
@@ -295,6 +303,110 @@ func (s *Service) fetchAccount(ctx context.Context, connection *models.ProviderC
 		account.Error = fmt.Sprintf("weekly/5-hour summary unavailable: %v", summaryErr)
 	}
 	return account
+}
+
+// fetchAccountTier calls Antigravity's loadCodeAssist RPC directly. The RPC
+// exposes the OAuth account's allowed tiers; quota summary alone does not.
+func (s *Service) fetchAccountTier(ctx context.Context, token string) (tierID, tierName, accountType string, err error) {
+	metadata := map[string]any{"ideType": 9, "platform": 2, "pluginType": 2}
+	payload, marshalErr := json.Marshal(map[string]any{"metadata": metadata})
+	if marshalErr != nil {
+		return "", "", "", marshalErr
+	}
+	var lastErr error
+	for _, base := range s.baseURLs {
+		req, requestErr := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1internal:loadCodeAssist", strings.NewReader(string(payload)))
+		if requestErr != nil {
+			lastErr = requestErr
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", DefaultUserAgent)
+		req.Header.Set("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+		metadataHeader, _ := json.Marshal(metadata)
+		req.Header.Set("Client-Metadata", string(metadataHeader))
+
+		resp, requestErr := s.client.Do(req)
+		if requestErr != nil {
+			lastErr = requestErr
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			lastErr = fmt.Errorf("loadCodeAssist returned HTTP %d", resp.StatusCode)
+			continue
+		}
+		return parseAccountTier(body)
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("loadCodeAssist returned no response")
+	}
+	return "", "", "", lastErr
+}
+
+func parseAccountTier(body []byte) (tierID, tierName, accountType string, err error) {
+	var root map[string]interface{}
+	if err := json.Unmarshal(body, &root); err != nil {
+		return "", "", "", err
+	}
+
+	tierID = firstString(root, "tierId", "tier_id", "planId", "plan_id")
+	tierName = firstString(root, "tierName", "tier_name", "planName", "plan_name", "displayName")
+	accountType = firstString(root, "accountType", "account_type", "subscriptionType", "subscription_type", "plan")
+
+	if allowed, ok := root["allowedTiers"].([]interface{}); ok {
+		var fallback map[string]interface{}
+		for _, raw := range allowed {
+			tier, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if fallback == nil {
+				fallback = tier
+			}
+			if isDefault, _ := tier["isDefault"].(bool); isDefault {
+				fallback = tier
+				break
+			}
+		}
+		if fallback != nil {
+			if tierID == "" {
+				tierID = firstString(fallback, "id", "tierId", "tier_id")
+			}
+			if tierName == "" {
+				tierName = firstString(fallback, "displayName", "display_name", "name", "label")
+			}
+			if accountType == "" {
+				accountType = firstString(fallback, "accountType", "account_type", "plan", "type")
+			}
+		}
+	}
+	if accountType == "" {
+		accountType = classifyAccountType(strings.Join([]string{tierID, tierName}, " "))
+	}
+	return tierID, tierName, accountType, nil
+}
+
+func classifyAccountType(value string) string {
+	value = strings.ToLower(value)
+	switch {
+	case strings.Contains(value, "enterprise"):
+		return "Enterprise"
+	case strings.Contains(value, "pro"), strings.Contains(value, "paid"), strings.Contains(value, "premium"):
+		return "Pro"
+	case strings.Contains(value, "free"), strings.Contains(value, "trial"):
+		return "Free"
+	case strings.Contains(value, "standard"):
+		return "Standard"
+	default:
+		return "Unknown"
+	}
 }
 
 func (s *Service) fetchSummary(ctx context.Context, token, projectID string) ([]Window, error) {
