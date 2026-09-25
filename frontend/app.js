@@ -10391,6 +10391,9 @@ startStream('/api/usage/stream', (payload) => {
         const isErr = topReq.status === 'error' || String(topReq.status).startsWith('4') || String(topReq.status).startsWith('5');
         const displayStatus = (topReq.status === 'ok' || topReq.status === 'success') ? '200' : String(topReq.status || 200);
         const proxyName = topReq.proxy || 'Direct';
+        const clientIdentity = topReq.clientIdentity || '--';
+        const clientIP = topReq.clientIp || '--';
+        const apiKeyRef = topReq.apiKeyId ? `key ${topReq.apiKeyId}` : '';
         const tr = document.createElement('tr');
         tr.dataset.requestKey = requestKey;
         tr.className = `live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
@@ -10399,6 +10402,7 @@ startStream('/api/usage/stream', (payload) => {
           <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(topReq.model || '--')}</code></td>
           <td><div style="line-height:1.25;"><strong style="color:var(--text-bright); font-size:11px;">${escapeHtml(topReq.provider || '--')}</strong><small style="display:block; font-size:8.5px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">${escapeHtml(topReq.account || topReq.connectionId || '--')}</small></div></td>
           <td><div style="line-height:1.25;"><span class="table-badge ${proxyName !== 'Direct' && proxyName !== '--' ? 'purple' : ''}" style="font-size:8px; padding:1px 5px;">${escapeHtml(proxyName)}</span>${topReq.strategy ? `<small style="display:block; font-size:7.5px; font-family:var(--mono); color:#71717a; text-transform:uppercase; margin-top:2px;">${escapeHtml(topReq.strategy)}</small>` : ''}</div></td>
+          <td><div style="line-height:1.25; max-width:190px;"><strong style="display:block; color:var(--text-bright); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(clientIdentity)}">${escapeHtml(clientIdentity)}</strong><small style="display:block; font-size:8px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(`${clientIP}${apiKeyRef ? ` · ${apiKeyRef}` : ''}`)}">${escapeHtml(clientIP)}${apiKeyRef ? ` · ${escapeHtml(apiKeyRef)}` : ''}</small></div></td>
           <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
           <td style="text-align:right;"><span class="table-badge ${isErr ? 'inactive' : 'active'} live-badge-ping" style="font-size:7.5px;">${escapeHtml(displayStatus)}</span></td>
         `;
