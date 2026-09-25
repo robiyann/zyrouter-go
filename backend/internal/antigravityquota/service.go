@@ -356,10 +356,7 @@ func parseAccountTier(body []byte) (tierID, tierName, accountType string, err er
 		return "", "", "", err
 	}
 
-	tierID = firstString(root, "tierId", "tier_id", "planId", "plan_id")
-	tierName = firstString(root, "tierName", "tier_name", "planName", "plan_name", "displayName")
-	accountType = firstString(root, "accountType", "account_type", "subscriptionType", "subscription_type", "plan")
-
+	hasEffectiveTier := false
 	if allowed, ok := root["allowedTiers"].([]interface{}); ok {
 		var fallback map[string]interface{}
 		for _, raw := range allowed {
@@ -376,16 +373,23 @@ func parseAccountTier(body []byte) (tierID, tierName, accountType string, err er
 			}
 		}
 		if fallback != nil {
-			if tierID == "" {
-				tierID = firstString(fallback, "id", "tierId", "tier_id")
-			}
-			if tierName == "" {
-				tierName = firstString(fallback, "displayName", "display_name", "name", "label")
-			}
-			if accountType == "" {
-				accountType = firstString(fallback, "accountType", "account_type", "plan", "type")
-			}
+			hasEffectiveTier = true
+			// allowedTiers is the authoritative AG response. Prefer its
+			// default tier over generic/root fields, which can describe the
+			// product rather than the account's effective plan.
+			tierID = firstString(fallback, "id", "tierId", "tier_id")
+			tierName = firstString(fallback, "displayName", "display_name", "name", "label")
+			accountType = firstString(fallback, "accountType", "account_type", "plan", "type")
 		}
+	}
+	if tierID == "" {
+		tierID = firstString(root, "tierId", "tier_id", "planId", "plan_id")
+	}
+	if tierName == "" {
+		tierName = firstString(root, "tierName", "tier_name", "planName", "plan_name", "displayName")
+	}
+	if accountType == "" && !hasEffectiveTier {
+		accountType = firstString(root, "accountType", "account_type", "subscriptionType", "subscription_type", "plan")
 	}
 	if accountType == "" {
 		accountType = classifyAccountType(strings.Join([]string{tierID, tierName}, " "))
@@ -403,7 +407,7 @@ func classifyAccountType(value string) string {
 	case strings.Contains(value, "free"), strings.Contains(value, "trial"):
 		return "Free"
 	case strings.Contains(value, "standard"):
-		return "Standard"
+		return "Pro"
 	default:
 		return "Unknown"
 	}

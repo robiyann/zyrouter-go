@@ -36,6 +36,22 @@ func TestParseSummaryIncludesWeeklyAndFiveHourBuckets(t *testing.T) {
 	}
 }
 
+func TestParseAccountTierPrefersEffectiveAllowedTier(t *testing.T) {
+	tierID, tierName, accountType, err := parseAccountTier([]byte(`{
+        "accountType":"free",
+        "allowedTiers":[
+            {"id":"free-tier","name":"Antigravity"},
+            {"id":"standard-tier","name":"Antigravity","isDefault":true}
+        ]
+    }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tierID != "standard-tier" || tierName != "Antigravity" || accountType != "Pro" {
+		t.Fatalf("unexpected effective tier: id=%q name=%q type=%q", tierID, tierName, accountType)
+	}
+}
+
 func TestSnapshotReadsDatabaseAndFormatsSummaryWindows(t *testing.T) {
 	file, err := os.CreateTemp("", "ag-quota-*.sqlite")
 	if err != nil {
