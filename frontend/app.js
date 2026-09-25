@@ -5494,6 +5494,12 @@ function renderQuotaWindowBar(w) {
   `;
 }
 
+function isQuotaViewActive() {
+  const generic = document.querySelector('#view-generic');
+  const breadcrumb = document.querySelector('#breadcrumb');
+  return Boolean(generic && !generic.classList.contains('hidden') && breadcrumb && breadcrumb.textContent.includes('QUOTA'));
+}
+
 function bindQuotaView() {
   if (quotaPollingTimer) {
     clearInterval(quotaPollingTimer);
@@ -5558,7 +5564,7 @@ function bindQuotaView() {
         const payload = await request('/api/admin/quota?refresh=true').catch(() => request('/api/quota?refresh=true'));
         cachedQuotaPayload = payload;
         const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-        if (content) {
+        if (content && isQuotaViewActive()) {
           content.innerHTML = renderQuota(cachedQuotaPayload);
           bindQuotaView();
         }
@@ -5612,9 +5618,7 @@ function setupClientQuotaPolling(intervalSec) {
   if (intervalSec <= 0) return;
 
   quotaPollingTimer = setInterval(async () => {
-    const generic = document.querySelector('#view-generic');
-    const breadcrumb = document.querySelector('#breadcrumb');
-    if (!generic || generic.classList.contains('hidden') || !breadcrumb || !breadcrumb.textContent.includes('QUOTA')) {
+    if (!isQuotaViewActive()) {
       clearInterval(quotaPollingTimer);
       quotaPollingTimer = null;
       return;
@@ -5623,6 +5627,7 @@ function setupClientQuotaPolling(intervalSec) {
     try {
       const payload = await request('/api/admin/quota').catch(() => request('/api/quota'));
       cachedQuotaPayload = payload;
+      if (!isQuotaViewActive()) return;
       const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
       const activeElement = document.activeElement;
       const isSearching = activeElement && activeElement.id === 'quota-search-input';
@@ -6864,6 +6869,7 @@ async function renderView(name) {
         },
         settings: () => request('/api/settings')
       }[name] || (() => Promise.resolve(null)))();
+    if (name === 'quota' && !isQuotaViewActive()) return;
     content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'account-types' ? renderAccountTypes(payload) : name === 'usage' ? renderUsage(payload) : name === 'quota' ? renderQuota(payload) : name === 'logs' ? renderLogs(payload) : name === 'authlogs' ? renderAuthLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
     
     if (name === 'quota') bindQuotaView();
@@ -6889,6 +6895,7 @@ async function renderView(name) {
     if (name === 'authlogs') bindAuthLogs();
     if (name === 'aliases') bindAliasDeckActions();
   } catch (error) {
+    if (name === 'quota' && !isQuotaViewActive()) return;
     const isAuthErr = error.status === 401 ||
       (error.message && (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized') || error.message.toLowerCase().includes('token') || error.message.toLowerCase().includes('expired'))) ||
       !hasDashboardAccess();
@@ -10044,6 +10051,11 @@ function openPayloadInspectorDrawer(reqData = {}) {
 }
 
 function setView(name) {
+  window.location.hash = name;
+  if (name !== 'quota' && quotaPollingTimer) {
+    clearInterval(quotaPollingTimer);
+    quotaPollingTimer = null;
+  }
   const baseName = name.startsWith('provider/') ? 'providers' : name;
   const data = views[baseName] || views.overview;
   document.querySelectorAll('.dock-item').forEach((item) => item.classList.toggle('active', item.dataset.view === baseName));
@@ -10058,7 +10070,6 @@ function setView(name) {
   } else {
     loadOverview();
   }
-  window.location.hash = name;
 }
 let isLoadingOverview = false;
 let meshProviderSignature = '';
