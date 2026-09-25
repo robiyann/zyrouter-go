@@ -3807,6 +3807,23 @@ body.glass-enabled .mesh-node.active {
   background: linear-gradient(135deg, rgba(200, 255, 99, 0.14), rgba(var(--glass-surface-rgb), var(--glass-surface-alpha)));
 }
 
+/* Usage Ledger surfaces: these used their own opaque backgrounds instead of
+   inheriting the shared glass surface token. */
+body.glass-enabled .filter-bar,
+body.glass-enabled .usage-metric-card,
+body.glass-enabled .usage-layout .table-card {
+  background: rgba(var(--glass-surface-rgb), var(--glass-surface-alpha));
+  border-color: var(--line);
+  backdrop-filter: blur(var(--glass-surface-blur)) saturate(130%);
+  -webkit-backdrop-filter: blur(var(--glass-surface-blur)) saturate(130%);
+}
+
+body.glass-enabled .filter-bar input,
+body.glass-enabled .filter-bar select {
+  background: rgba(var(--glass-surface-rgb), calc(var(--glass-surface-alpha) * 0.8));
+  border-color: var(--line);
+}
+
 .aliases-pagination-controls {
   display: flex;
   align-items: center;
