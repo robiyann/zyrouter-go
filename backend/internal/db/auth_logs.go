@@ -67,8 +67,10 @@ func (r *Repo) insertAuthLogsTx(entries []AuthLogEntry) error {
 }
 
 func (r *Repo) ListAuthLogs(limit, offset int) ([]map[string]any, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 200
+	if limit <= 0 {
+		limit = 10
+	} else if limit > 500 {
+		limit = 500
 	}
 	if offset < 0 {
 		offset = 0

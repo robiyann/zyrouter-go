@@ -6034,7 +6034,7 @@ let poolPageSize = 15;
 let cachedPoolsPayload = { proxyPools: [] };
 
 let authLogsCurrentPage = 1;
-const authLogsPageSize = 50;
+const authLogsPageSize = 10;
 
 function renderAuthLogs(payload = {}) {
   const logs = Array.isArray(payload.logs) ? payload.logs : [];
