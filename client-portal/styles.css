@@ -2527,3 +2527,238 @@ pre code {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   ZYROUTER SIGNAL ROOM THEME OVERRIDES
+   Shared visual language with the admin dashboard: deep navy, lime signal,
+   emerald health states, violet secondary accents, and restrained glass.
+   ========================================================================== */
+
+:root {
+  --heroui-bg: #09090b;
+  --heroui-surface: #121216;
+  --heroui-surface-hover: #18181b;
+  --heroui-surface-active: #27272a;
+  --heroui-border: rgba(255, 255, 255, 0.1);
+  --heroui-border-focus: #c8ff63;
+  --heroui-primary: #c8ff63;
+  --heroui-primary-hover: #d8ff85;
+  --heroui-primary-flat: rgba(200, 255, 99, 0.12);
+  --heroui-success: #10b981;
+  --heroui-success-flat: rgba(16, 185, 129, 0.14);
+  --heroui-secondary: #8b5cf6;
+  --heroui-secondary-flat: rgba(139, 92, 246, 0.14);
+  --text-foreground: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-subtle: #71717a;
+  --portal-glass-rgb: 18, 18, 22;
+  --portal-glass-alpha: 0.46;
+  --portal-glass-blur: 16px;
+  --portal-glass-border: rgba(255, 255, 255, 0.1);
+  --portal-lime: #c8ff63;
+  --portal-emerald: #10b981;
+  --portal-violet: #8b5cf6;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: #09090b;
+}
+
+body {
+  color: var(--text-foreground);
+  background:
+    radial-gradient(ellipse at 84% -12%, rgba(30, 48, 64, 0.36), transparent 48%),
+    radial-gradient(ellipse at 12% 110%, rgba(139, 92, 246, 0.16), transparent 42%),
+    #09090b;
+}
+
+body::before {
+  z-index: 0;
+  opacity: 0.2;
+  background-image: radial-gradient(rgba(200, 255, 99, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(200, 255, 99, 0.08), transparent 22%),
+    radial-gradient(circle at 18% 82%, rgba(16, 185, 129, 0.08), transparent 26%);
+}
+
+.app-container {
+  z-index: 1;
+  max-width: 1440px;
+  padding: 0 28px;
+}
+
+.topbar {
+  background: rgba(9, 12, 18, 0.76);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+
+.brand-hexagon {
+  background: linear-gradient(135deg, rgba(200, 255, 99, 0.22), rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(200, 255, 99, 0.48);
+  box-shadow: 0 0 18px rgba(200, 255, 99, 0.14);
+}
+
+.brand-letter { color: var(--portal-lime); }
+.brand-badge { color: var(--portal-lime); }
+
+.gateway-beacon {
+  background: var(--heroui-success-flat);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.auth-card,
+.card,
+.banner-card,
+.metric-card,
+.support-card,
+.api-key-card,
+.table-card,
+.nav-tabs-bar,
+.guide-errors-card,
+.guide-info-card,
+.macos-window-card,
+.stream-feed-list,
+.endpoint-display-box {
+  background: rgba(var(--portal-glass-rgb), var(--portal-glass-alpha));
+  border-color: var(--portal-glass-border);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18), inset 0 1px rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(var(--portal-glass-blur)) saturate(132%);
+  -webkit-backdrop-filter: blur(var(--portal-glass-blur)) saturate(132%);
+}
+
+.auth-card { box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35), inset 0 1px rgba(255, 255, 255, 0.05); }
+.auth-icon-badge { background: var(--heroui-primary-flat); border-color: rgba(200, 255, 99, 0.3); color: var(--portal-lime); }
+.auth-tag, .auth-title strong, .banner-eyebrow, .section-title, .card-eyebrow { color: var(--portal-lime); }
+
+.auth-modes,
+.nav-tabs-bar {
+  background: rgba(9, 12, 18, 0.42);
+  border-color: var(--portal-glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.mode-tab, .nav-tab { color: var(--text-muted); }
+
+.mode-tab.active,
+.nav-tab.active {
+  color: #0b0f07;
+  background: var(--portal-lime);
+  border-color: var(--portal-lime);
+  box-shadow: 0 0 18px rgba(200, 255, 99, 0.18);
+}
+
+.nav-tab.active .tab-icon { color: #0b0f07; }
+
+.btn-cyber-primary {
+  background: var(--portal-lime);
+  border-color: var(--portal-lime);
+  color: #0b0f07;
+  box-shadow: 0 0 18px rgba(200, 255, 99, 0.15);
+}
+
+.btn-cyber-primary:hover:not(:disabled) { background: #d8ff85; border-color: #d8ff85; }
+
+.btn-cyber-secondary,
+.btn-cyber-outline,
+.tg-contact-btn,
+.session-user-badge,
+.logout-btn {
+  background: rgba(var(--portal-glass-rgb), 0.38);
+  border-color: var(--portal-glass-border);
+  color: var(--text-muted);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.btn-cyber-secondary:hover,
+.btn-cyber-outline:hover:not(:disabled) {
+  background: var(--heroui-primary-flat);
+  border-color: rgba(200, 255, 99, 0.38);
+  color: var(--portal-lime);
+}
+
+.cyber-input,
+.cyber-input-sm,
+.search-input-wrap input,
+.input-wrap,
+.code-snippet-panel,
+.secret-box,
+.endpoint-row,
+.key-display-area {
+  background: rgba(9, 12, 18, 0.42);
+  border-color: var(--portal-glass-border);
+  color: var(--text-foreground);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.cyber-input:focus, .cyber-input-sm:focus { border-color: var(--portal-lime); box-shadow: 0 0 0 2px rgba(200, 255, 99, 0.1); }
+
+.metric-card,
+.model-alias-card,
+.api-key-card,
+.table-card { transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease; }
+
+.metric-card:hover,
+.model-alias-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(200, 255, 99, 0.26);
+  background: rgba(var(--portal-glass-rgb), 0.58);
+}
+
+.metric-icon-wrap.cyan { background: rgba(6, 182, 212, 0.14); color: #67e8f9; }
+.metric-icon-wrap.violet { background: rgba(139, 92, 246, 0.14); color: #c4b5fd; }
+.metric-icon-wrap.emerald { background: rgba(16, 185, 129, 0.14); color: #34d399; }
+.metric-icon-wrap.amber { background: rgba(245, 158, 11, 0.14); color: #fbbf24; }
+
+.status-badge.live, .status-pill.live, .status-cell-tag.success, .method-tag.post {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.32);
+  color: #34d399;
+}
+
+.status-badge.tier, .status-pill.paused, .method-tag.header {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.32);
+  color: #c4b5fd;
+}
+
+.status-badge.key-status { background: var(--heroui-primary-flat); border-color: rgba(200, 255, 99, 0.28); color: var(--portal-lime); }
+
+.cyber-table th { background: rgba(255, 255, 255, 0.035); color: var(--text-muted); }
+.cyber-table td { border-bottom-color: rgba(255, 255, 255, 0.06); }
+.cyber-table tbody tr:hover td { background: rgba(200, 255, 99, 0.035); }
+
+.pagination-bar,
+.scroll-hint-bar,
+.stream-control-bar {
+  background: rgba(var(--portal-glass-rgb), 0.38);
+  border-color: var(--portal-glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.stream-row:hover { background: rgba(200, 255, 99, 0.035); }
+.app-footer { border-top-color: var(--portal-glass-border); color: var(--text-subtle); }
+
+@media (max-width: 760px) {
+  .app-container { padding: 0 14px; }
+  .topbar { min-height: 58px; }
+  .gateway-beacon .beacon-label, .tg-contact-btn .tg-handle { display: none; }
+  .auth-card { padding: 24px 18px; }
+}
