@@ -82,7 +82,7 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
-				handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Authentication required. Provide API key or connect via local loopback.")
+				handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 

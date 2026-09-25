@@ -223,15 +223,8 @@ func HandleAuthStatus(repo *db.Repo) http.HandlerFunc {
 		token := middleware.ExtractAuthToken(r)
 		isAuthenticated := auth.ValidateSession(token)
 
-		var hasCustomPassword bool
-		if settings, err := repo.GetSettings(); err == nil && settings != nil && settings.Password != nil {
-			hasCustomPassword = *settings.Password != ""
-		}
-
 		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-			"authenticated":     isAuthenticated,
-			"hasCustomPassword": hasCustomPassword,
-			"authMode":          "password",
+			"authenticated": isAuthenticated,
 		})
 	}
 }
