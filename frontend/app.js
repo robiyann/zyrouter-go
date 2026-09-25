@@ -435,7 +435,7 @@ function showConfirmModal({ title = 'Confirm Action', kicker = 'CONFIRMATION', m
 // ─────────────────────────────────────────────────────────────
 // COMPREHENSIVE 9ROUTER PROVIDER CATALOG DEFINITIONS
 // ─────────────────────────────────────────────────────────────
-const KNOWN_PROVIDER_CATALOG = [
+const BUILTIN_PROVIDER_CATALOG = [
   {
     "id": "custom-openai-compatible",
     "name": "OpenAI Compatible",
@@ -1710,6 +1710,18 @@ const KNOWN_PROVIDER_CATALOG = [
   }
 ];
 
+// Keep the catalog focused on the providers enabled for this deployment.
+// Custom provider nodes remain available through the provider-node workflow.
+const ENABLED_PROVIDER_IDS = new Set([
+  'custom-openai-compatible',
+  'custom-anthropic-compatible',
+  'custom-embedding',
+  'antigravity',
+  'codex',
+  'opencode'
+]);
+const KNOWN_PROVIDER_CATALOG = BUILTIN_PROVIDER_CATALOG.filter((provider) => ENABLED_PROVIDER_IDS.has(provider.id));
+
 function renderProviderIcon(providerId, fallbackEmoji = '🔌') {
   let iconName = (providerId || '').toLowerCase();
   const aliasMap = {
@@ -2873,7 +2885,7 @@ function bindProviderDetailActions(provId, conns, meta, activePrefix = '', accou
 // ─────────────────────────────────────────────────────────────
 // 4. PROVIDER-NATIVE CONNECTION MODALS (100% 9router Parity)
 // ─────────────────────────────────────────────────────────────
-function providerConnectionModal(presetProviderId = 'openai', customNodeMeta = null) {
+function providerConnectionModal(presetProviderId = 'antigravity', customNodeMeta = null) {
   let meta = customNodeMeta || KNOWN_PROVIDER_CATALOG.find((p) => p.id === presetProviderId);
   const isCustomNode = presetProviderId.startsWith('openai-compatible') || presetProviderId.startsWith('anthropic-compatible') || (meta && meta.category === 'custom');
   if (!meta) {
@@ -3380,7 +3392,7 @@ function providerConnectionModal(presetProviderId = 'openai', customNodeMeta = n
   `;
 }
 
-async function openProviderModal(provId = 'openai') {
+async function openProviderModal(provId = 'antigravity') {
   const existing = document.querySelector('#provider-account-form');
   if (existing) existing.remove();
 
@@ -4110,7 +4122,7 @@ async function openProviderModal(provId = 'openai') {
 
 function bindProviderGroupActions() {
   const mainAddBtn = document.querySelector('#btn-open-add-provider');
-  if (mainAddBtn) mainAddBtn.onclick = () => openProviderModal('openai');
+  if (mainAddBtn) mainAddBtn.onclick = () => openProviderModal('antigravity');
 
   const addOpenAINodeBtn = document.querySelector('#btn-add-openai-node');
   if (addOpenAINodeBtn) {
@@ -7417,7 +7429,7 @@ function bindCreateForm(name) {
       return;
     }
     if (name === 'providers') {
-      openProviderModal('openai');
+      openProviderModal('antigravity');
       return;
     }
     if (name === 'aliases') {
