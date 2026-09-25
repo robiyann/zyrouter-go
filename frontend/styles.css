@@ -133,11 +133,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   flex-direction: column;
   background: rgba(9, 12, 18, 0.95);
   backdrop-filter: blur(12px);
-  width: 230px;
   height: 100vh;
   box-sizing: border-box;
-  position: fixed;
-  inset: 0 auto 0 0;
+  position: sticky;
+  top: 0;
   z-index: 10;
   overflow: hidden;
 }
