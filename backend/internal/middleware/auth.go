@@ -20,6 +20,12 @@ type ContextKey string
 // ApiKeyContextKey is the context key for the authenticated API key object.
 const ApiKeyContextKey ContextKey = "apiKey"
 
+// ClientIPContextKey stores the client address captured at the authentication
+// boundary. Downstream handlers often only receive a context, so keeping the
+// normalized address here prevents them from guessing which proxy header to
+// trust again.
+const ClientIPContextKey ContextKey = "clientIP"
+
 func isLoopbackHost(hostOrIP string) bool {
 	if hostOrIP == "" {
 		return false
@@ -79,6 +85,7 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 						IsActive: 1,
 					}
 					ctx := context.WithValue(r.Context(), ApiKeyContextKey, localKey)
+					ctx = context.WithValue(ctx, ClientIPContextKey, requestClientIP(r))
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
@@ -96,6 +103,7 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 					IsActive: 1,
 				}
 				ctx := context.WithValue(r.Context(), ApiKeyContextKey, adminKey)
+				ctx = context.WithValue(ctx, ClientIPContextKey, requestClientIP(r))
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -136,6 +144,7 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 
 			// Inject API Key info into the request context for downstream handlers/logging
 			ctx := context.WithValue(r.Context(), ApiKeyContextKey, apiKeyObj)
+			ctx = context.WithValue(ctx, ClientIPContextKey, requestClientIP(r))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -230,6 +239,14 @@ func GetAuthenticatedApiKeyFromContext(ctx context.Context) *models.APIKey {
 		return nil
 	}
 	return keyObj
+}
+
+// GetClientIPFromContext returns the client address captured by RequireApiKey.
+// It intentionally does not inspect arbitrary context values or headers after
+// authentication, keeping the audit source consistent for every request.
+func GetClientIPFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(ClientIPContextKey).(string)
+	return strings.TrimSpace(value)
 }
 func ExtractAuthToken(r *http.Request) string {
 	// 1. Try Authorization header

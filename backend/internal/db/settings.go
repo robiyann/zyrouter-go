@@ -18,49 +18,47 @@ type ProviderStrategy struct {
 
 // SettingsData represents token saver and general settings stored in the settings table.
 type SettingsData struct {
-	RTKEnabled               bool                        `json:"rtkEnabled"`
-	CavemanEnabled           bool                        `json:"cavemanEnabled"`
-	CavemanLevel             string                      `json:"cavemanLevel"`
-	PonytailEnabled          bool                        `json:"ponytailEnabled"`
-	PonytailLevel            string                      `json:"ponytailLevel"`
-	HeadroomUrl              string                      `json:"headroomUrl"`
-	HeadroomCodeAware        bool                        `json:"headroomCodeAware"`
-	HeadroomKompress         bool                        `json:"headroomKompress"`
-	QuotaAutoRefreshInterval int                         `json:"quotaAutoRefreshInterval"`
-	ProviderStrategies       map[string]ProviderStrategy `json:"providerStrategies,omitempty"`
-	BackgroundImage          string                      `json:"backgroundImage,omitempty"`
-	BackgroundOpacity        float64                     `json:"backgroundOpacity"`
-	BackgroundBlur           int                         `json:"backgroundBlur"`
-	GlassEnabled             bool                        `json:"glassEnabled"`
-	GlassDepth               string                      `json:"glassDepth"`
-	GlassSurfaceColor        string                      `json:"glassSurfaceColor"`
-	GlassSurfaceOpacity      float64                     `json:"glassSurfaceOpacity"`
-	BrandName                string                      `json:"brandName"`
-	BrandSubtitle            string                      `json:"brandSubtitle"`
-	BrandIcon                string                      `json:"brandIcon,omitempty"`
-	Favicon                  string                      `json:"favicon,omitempty"`
-	Password                 *string                     `json:"password,omitempty"`
-	RequireLogin             *bool                       `json:"requireLogin,omitempty"`
+	RTKEnabled          bool                        `json:"rtkEnabled"`
+	CavemanEnabled      bool                        `json:"cavemanEnabled"`
+	CavemanLevel        string                      `json:"cavemanLevel"`
+	PonytailEnabled     bool                        `json:"ponytailEnabled"`
+	PonytailLevel       string                      `json:"ponytailLevel"`
+	HeadroomUrl         string                      `json:"headroomUrl"`
+	HeadroomCodeAware   bool                        `json:"headroomCodeAware"`
+	HeadroomKompress    bool                        `json:"headroomKompress"`
+	ProviderStrategies  map[string]ProviderStrategy `json:"providerStrategies,omitempty"`
+	BackgroundImage     string                      `json:"backgroundImage,omitempty"`
+	BackgroundOpacity   float64                     `json:"backgroundOpacity"`
+	BackgroundBlur      int                         `json:"backgroundBlur"`
+	GlassEnabled        bool                        `json:"glassEnabled"`
+	GlassDepth          string                      `json:"glassDepth"`
+	GlassSurfaceColor   string                      `json:"glassSurfaceColor"`
+	GlassSurfaceOpacity float64                     `json:"glassSurfaceOpacity"`
+	BrandName           string                      `json:"brandName"`
+	BrandSubtitle       string                      `json:"brandSubtitle"`
+	BrandIcon           string                      `json:"brandIcon,omitempty"`
+	Favicon             string                      `json:"favicon,omitempty"`
+	Password            *string                     `json:"password,omitempty"`
+	RequireLogin        *bool                       `json:"requireLogin,omitempty"`
 }
 
 // DefaultSettings returns fallback settings.
 func DefaultSettings() *SettingsData {
 	return &SettingsData{
-		RTKEnabled:               true,
-		CavemanEnabled:           false,
-		CavemanLevel:             "full",
-		PonytailEnabled:          false,
-		PonytailLevel:            "full",
-		HeadroomUrl:              "http://localhost:8787",
-		HeadroomKompress:         true,
-		QuotaAutoRefreshInterval: 60,
-		BackgroundOpacity:        0.28,
-		BackgroundBlur:           8,
-		GlassEnabled:             true,
-		GlassDepth:               "subtle",
-		GlassSurfaceColor:        "#121216",
-		BrandName:                "Zyrouter",
-		BrandSubtitle:            "AI Routing Gateway",
+		RTKEnabled:        true,
+		CavemanEnabled:    false,
+		CavemanLevel:      "full",
+		PonytailEnabled:   false,
+		PonytailLevel:     "full",
+		HeadroomUrl:       "http://localhost:8787",
+		HeadroomKompress:  true,
+		BackgroundOpacity: 0.28,
+		BackgroundBlur:    8,
+		GlassEnabled:      true,
+		GlassDepth:        "subtle",
+		GlassSurfaceColor: "#121216",
+		BrandName:         "Zyrouter",
+		BrandSubtitle:     "AI Routing Gateway",
 	}
 }
 
@@ -101,9 +99,6 @@ func (r *Repo) GetSettings() (*SettingsData, error) {
 	}
 	if v, ok := raw["headroomKompress"].(bool); ok {
 		s.HeadroomKompress = v
-	}
-	if v, ok := raw["quotaAutoRefreshInterval"].(float64); ok {
-		s.QuotaAutoRefreshInterval = int(v)
 	}
 	if v := getBoundedString(raw, "backgroundImage", 4<<20); v != "" {
 		s.BackgroundImage = v

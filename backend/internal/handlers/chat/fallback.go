@@ -407,6 +407,11 @@ func (h *ChatHandler) tryForwardWithConnection(
 			PublicModel:  publicModelFromContext(ctx),
 			RequestID:    middleware.GetRequestIDFromContext(ctx),
 		}
+		auditMetadata := auditMetadataFromContext(ctx)
+		logInfo.ClientAPIKey = auditMetadata.ClientAPIKey
+		logInfo.APIKeyID = auditMetadata.APIKeyID
+		logInfo.ClientIdentity = auditMetadata.ClientIdentity
+		logInfo.ClientIP = auditMetadata.ClientIP
 		if reservation, ok := ctx.Value(quotaReservationContextKey{}).(*quotaReservation); ok {
 			logInfo.UserID = reservation.UserID
 			logInfo.ReservedTokens = reservation.Tokens
@@ -452,6 +457,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 
 		// Also record failed request in usagetracker so recent log reflects error immediately
 		now := time.Now()
+		auditMetadata := auditMetadataFromContext(ctx)
 		reqID := fmt.Sprintf("%d-%s", now.UnixMilli(), model)
 		if middleware.GetRequestIDFromContext(ctx) != "" {
 			reqID = middleware.GetRequestIDFromContext(ctx)
@@ -471,6 +477,9 @@ func (h *ChatHandler) tryForwardWithConnection(
 			Status:           fmt.Sprintf("%d", statusCode),
 			PublicModel:      publicModelFromContext(ctx),
 			ErrorMessage:     fwdErr.Error(),
+			ClientIdentity:   auditMetadata.ClientIdentity,
+			ClientIP:         auditMetadata.ClientIP,
+			APIKeyID:         auditMetadata.APIKeyID,
 		}, h.Repo)
 
 		// Record in SQLite requestDetails
@@ -480,8 +489,13 @@ func (h *ChatHandler) tryForwardWithConnection(
 			"proxy": proxyLabel, "strategy": stratLabel, "status": "error",
 			"statusCode": statusCode,
 			"timestamp":  now.Format("2006-01-02T15:04:05.000Z"),
-			"latency":    map[string]int64{"total": latencyMs},
-			"error":      fwdErr.Error(),
+			"client": map[string]string{
+				"identity": auditMetadata.ClientIdentity,
+				"ip":       auditMetadata.ClientIP,
+				"apiKeyId": auditMetadata.APIKeyID,
+			},
+			"latency":      map[string]int64{"total": latencyMs},
+			"error":        fwdErr.Error(),
 			"errorMessage": fwdErr.Error(),
 		})
 		_ = h.Repo.InsertRequestDetail(reqID, provider, model, connectionID, "error", string(reqData))
@@ -500,16 +514,20 @@ func (h *ChatHandler) tryForwardWithConnection(
 			DurationMs: latencyMs, ErrorCode: "upstream_request_failed",
 		})
 		auditlog.Get().Log(&auditlog.AuditEntry{
-			ID:           reqID,
-			Timestamp:    now.Format(time.RFC3339Nano),
-			Endpoint:     endpoint,
-			Provider:     provider,
-			Model:        model,
-			ConnectionID: connectionID,
-			APIKey:       apiKey,
-			Status:       "error",
-			StatusCode:   statusCode,
-			DurationMs:   latencyMs,
+			ID:             reqID,
+			Timestamp:      now.Format(time.RFC3339Nano),
+			Endpoint:       endpoint,
+			Provider:       provider,
+			Model:          model,
+			ConnectionID:   connectionID,
+			APIKey:         apiKey,
+			ClientAPIKey:   auditMetadata.ClientAPIKey,
+			APIKeyID:       auditMetadata.APIKeyID,
+			ClientIdentity: auditMetadata.ClientIdentity,
+			ClientIP:       auditMetadata.ClientIP,
+			Status:         "error",
+			StatusCode:     statusCode,
+			DurationMs:     latencyMs,
 			ClientRequest: auditlog.HTTPPayload{
 				Method: "POST",
 				URL:    endpoint,

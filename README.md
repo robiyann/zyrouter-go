@@ -246,8 +246,6 @@ Environment variables can be supplied via `.env` or systemd / PM2:
 | `DB_PATH` | Path to SQLite database | `./data/zyrouter.sqlite` |
 | `FRONTEND_DIR` | Directory holding static dashboard assets | `./frontend` |
 | `CF_EDGE_SHARED_SECRET` | Shared secret header for Cloudflare Edge Worker | `""` |
-| `TELEGRAM_QUOTA_BOT_TOKEN`| Bot token for Telegram Quota & User Verification | `""` |
-| `TELEGRAM_QUOTA_ALLOWED_USER_IDS` | Admin Telegram IDs authorized for quota actions | `""` |
 
 ---
 

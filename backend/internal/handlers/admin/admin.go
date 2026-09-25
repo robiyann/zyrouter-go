@@ -19,7 +19,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"zyrouter/backend/internal/antigravityquota"
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/db"
@@ -34,13 +33,12 @@ type ChatTester interface {
 }
 
 type AdminHandler struct {
-	repo         *db.Repo
-	chatTester   ChatTester
-	quotaService *antigravityquota.Service
+	repo       *db.Repo
+	chatTester ChatTester
 }
 
 func NewAdminHandler(repo *db.Repo) *AdminHandler {
-	return &AdminHandler{repo: repo, quotaService: antigravityquota.NewService(repo)}
+	return &AdminHandler{repo: repo}
 }
 
 func (h *AdminHandler) SetChatTester(tester ChatTester) {

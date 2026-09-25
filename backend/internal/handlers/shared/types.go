@@ -35,14 +35,20 @@ type ConnectionData struct {
 
 // UsageLogInfo holds request context needed to log a usage record.
 type UsageLogInfo struct {
-	Provider       string
-	Model          string
-	PublicModel    string
-	RequestID      string
-	ClientID       string
-	ConnectionID   string
-	ProxyPoolID    string
-	APIKey         string
+	Provider     string
+	Model        string
+	PublicModel  string
+	RequestID    string
+	ClientID     string
+	ConnectionID string
+	ProxyPoolID  string
+	APIKey       string
+	// ClientAPIKey is the inbound Zyrouter key, distinct from APIKey which is
+	// the selected upstream provider credential.
+	ClientAPIKey   string
+	APIKeyID       string
+	ClientIdentity string
+	ClientIP       string
 	Endpoint       string
 	UserID         string
 	ReservedTokens int64

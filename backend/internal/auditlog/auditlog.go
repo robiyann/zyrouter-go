@@ -25,7 +25,8 @@ const (
 )
 
 // AuditEntry is the internal transaction shape supplied by the router.
-// writeEntry deliberately serializes only the request/response training data.
+// Client identity fields describe the inbound caller; APIKey is the selected
+// upstream provider credential and is retained separately for compatibility.
 type AuditEntry struct {
 	ID               string         `json:"id"`
 	Timestamp        string         `json:"timestamp"`
@@ -34,6 +35,10 @@ type AuditEntry struct {
 	Model            string         `json:"model"`
 	ConnectionID     string         `json:"connectionId"`
 	APIKey           string         `json:"apiKey"`
+	ClientAPIKey     string         `json:"clientApiKey,omitempty"`
+	APIKeyID         string         `json:"apiKeyId,omitempty"`
+	ClientIdentity   string         `json:"clientIdentity,omitempty"`
+	ClientIP         string         `json:"clientIp,omitempty"`
 	Status           string         `json:"status"`
 	StatusCode       int            `json:"statusCode"`
 	DurationMs       int64          `json:"durationMs"`
@@ -160,19 +165,24 @@ func (l *Logger) writeEntry(entry *AuditEntry) {
 	}
 }
 
-// compactAuditRecord is the persisted training-oriented format. Credentials,
-// connection IDs, headers, URLs, timing data, and duplicate response fields
-// are intentionally excluded to keep storage small and avoid secret leakage.
+// compactAuditRecord is the persisted training-oriented format. Upstream
+// credentials remain masked. The inbound client key is also masked, while the
+// admin-only clientIdentity field follows the configured identity priority and
+// contains the full inbound key only when no Telegram identity exists.
 type compactAuditRecord struct {
-	ID         string `json:"id"`
-	Timestamp  string `json:"timestamp"`
-	APIKey     string `json:"apiKey,omitempty"`
-	Provider   string `json:"provider,omitempty"`
-	Model      string `json:"model,omitempty"`
-	Status     string `json:"status,omitempty"`
-	StatusCode int    `json:"statusCode,omitempty"`
-	Request    string `json:"request,omitempty"`
-	Response   string `json:"response,omitempty"`
+	ID             string `json:"id"`
+	Timestamp      string `json:"timestamp"`
+	APIKey         string `json:"apiKey,omitempty"`
+	ClientAPIKey   string `json:"clientApiKey,omitempty"`
+	APIKeyID       string `json:"apiKeyId,omitempty"`
+	ClientIdentity string `json:"clientIdentity,omitempty"`
+	ClientIP       string `json:"clientIp,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	Model          string `json:"model,omitempty"`
+	Status         string `json:"status,omitempty"`
+	StatusCode     int    `json:"statusCode,omitempty"`
+	Request        string `json:"request,omitempty"`
+	Response       string `json:"response,omitempty"`
 }
 
 func compactRecord(entry *AuditEntry) compactAuditRecord {
@@ -185,15 +195,19 @@ func compactRecord(entry *AuditEntry) compactAuditRecord {
 		response = entry.ClientResponse.Body
 	}
 	return compactAuditRecord{
-		ID:         entry.ID,
-		Timestamp:  entry.Timestamp,
-		APIKey:     maskAPIKey(entry.APIKey),
-		Provider:   entry.Provider,
-		Model:      entry.Model,
-		Status:     entry.Status,
-		StatusCode: entry.StatusCode,
-		Request:    truncatePayload(redactPayload(request)),
-		Response:   truncatePayload(redactPayload(response)),
+		ID:             entry.ID,
+		Timestamp:      entry.Timestamp,
+		APIKey:         maskAPIKey(entry.APIKey),
+		ClientAPIKey:   maskAPIKey(entry.ClientAPIKey),
+		APIKeyID:       entry.APIKeyID,
+		ClientIdentity: entry.ClientIdentity,
+		ClientIP:       entry.ClientIP,
+		Provider:       entry.Provider,
+		Model:          entry.Model,
+		Status:         entry.Status,
+		StatusCode:     entry.StatusCode,
+		Request:        truncatePayload(redactPayload(request)),
+		Response:       truncatePayload(redactPayload(response)),
 	}
 }
 

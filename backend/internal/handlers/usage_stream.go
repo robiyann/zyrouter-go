@@ -225,14 +225,16 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 	recentQuery := `SELECT timestamp, provider, model, 
 		CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END,
 		CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
-		status FROM usageHistory ORDER BY id DESC LIMIT 50`
+		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
+		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
+		FROM usageHistory ORDER BY id DESC LIMIT 50`
 	recentRows, err := repo.RawDB().Query(recentQuery)
 	if err == nil {
 		defer recentRows.Close()
 		for recentRows.Next() {
-			var ts, prov, mod, status string
+			var ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 			var prompt, completion int
-			if err := recentRows.Scan(&ts, &prov, &mod, &prompt, &completion, &status); err == nil {
+			if err := recentRows.Scan(&ts, &prov, &mod, &prompt, &completion, &status, &clientIdentity, &clientIP, &apiKeyID); err == nil {
 				if status == "success" || status == "ok" {
 					status = "200"
 				}
@@ -245,6 +247,9 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 					PromptTokens:     prompt,
 					CompletionTokens: completion,
 					Status:           status,
+					ClientIdentity:   clientIdentity,
+					ClientIP:         clientIP,
+					APIKeyID:         apiKeyID,
 				})
 			}
 		}

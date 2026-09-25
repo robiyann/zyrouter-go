@@ -25,12 +25,16 @@ func TestAuditLogger_RotationAndZeroDeletion(t *testing.T) {
 	}
 
 	entry := &AuditEntry{
-		ID:       "req-1",
-		Endpoint: "/v1/chat/completions",
-		Provider: "openai",
-		Model:    "gpt-4o",
-		Status:   "ok",
-		APIKey:   "sk-test-1234567890",
+		ID:             "req-1",
+		Endpoint:       "/v1/chat/completions",
+		Provider:       "openai",
+		Model:          "gpt-4o",
+		Status:         "ok",
+		APIKey:         "sk-test-1234567890",
+		ClientAPIKey:   "zy-client-1234567890",
+		APIKeyID:       "key-1",
+		ClientIdentity: "@alice",
+		ClientIP:       "203.0.113.10",
 		ClientRequest: HTTPPayload{
 			Method: "POST",
 			URL:    "/v1/chat/completions",
@@ -69,6 +73,9 @@ func TestAuditLogger_RotationAndZeroDeletion(t *testing.T) {
 	}
 	if persisted["apiKey"] != "sk-test...7890" {
 		t.Fatalf("expected masked API key, got %v", persisted["apiKey"])
+	}
+	if persisted["clientApiKey"] != "zy-clie...7890" || persisted["apiKeyId"] != "key-1" || persisted["clientIdentity"] != "@alice" || persisted["clientIp"] != "203.0.113.10" {
+		t.Fatalf("unexpected client audit metadata: %v", persisted)
 	}
 	if persisted["api"] != nil {
 		t.Fatalf("unexpected endpoint field, got %v", persisted["api"])

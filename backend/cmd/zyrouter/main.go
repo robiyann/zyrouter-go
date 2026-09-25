@@ -18,8 +18,6 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/urfave/cli/v2"
 
-	"zyrouter/backend/internal/antigravitybot"
-	"zyrouter/backend/internal/antigravityquota"
 	"zyrouter/backend/internal/auditlog"
 	"zyrouter/backend/internal/auth"
 	"zyrouter/backend/internal/authlog"
@@ -209,25 +207,6 @@ func runServer(cCtx *cli.Context) error {
 	if cfg.TelegramBotToken != "" && cfg.TelegramPollingEnabled {
 		tgBot := telegram.NewBotService(repo, cfg.TelegramBotToken, cfg.TelegramBotUsername)
 		go tgBot.Start(botCtx)
-	}
-
-	if cfg.TelegramQuotaBotToken != "" {
-		allowedIDs := cfg.TelegramQuotaAllowedUserIDs
-		if allowedIDs == "" {
-			allowedIDs = "6276972957"
-		}
-		if allowedUsers, err := antigravitybot.ParseAllowedUserIDs(allowedIDs); err == nil {
-			quotaService := antigravityquota.NewService(repo)
-			qBot := antigravitybot.New(cfg.TelegramQuotaBotToken, allowedUsers, quotaService)
-			log.Printf("[antigravity] starting embedded quota bot...")
-			go func() {
-				if err := qBot.Run(botCtx); err != nil && botCtx.Err() == nil {
-					log.Printf("[antigravity] quota bot error: %v", err)
-				}
-			}()
-		} else {
-			log.Printf("[antigravity] warning: invalid TELEGRAM_QUOTA_ALLOWED_USER_IDS: %v", err)
-		}
 	}
 
 	<-signals // first signal → begin graceful shutdown

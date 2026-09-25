@@ -5,7 +5,6 @@ const views = {
   keys: ['KEYS', 'API key governance', 'Control gateway access with public aliases and provider restrictions.', 'Create API key'],
   'account-types': ['TIERS', 'Account Types & Users', 'Manage access tiers, model permissions per tier, and verified users.', 'Create Account Type'],
   usage: ['LEDGER', 'Usage ledger', 'Inspect token volume and cost from the SQLite rollup.', 'Export ledger'],
-  quota: ['QUOTA', 'Quota Tracker', 'Real-time multi-account OAuth burst limits (5-hour) and weekly allocations for Google Antigravity IDE.', 'Refresh live quota'],
   logs: ['TRACE', 'Stream inspector', 'Observe translator events and request traces as they happen.', 'Connect stream'],
   authlogs: ['SECURITY', 'Auth log', 'Review dashboard login attempts and rejected admin access.', 'Refresh auth log'],
   pools: ['POOLS', 'Proxy pools', 'Review deployable proxy pools and their test state.', 'Add pool'],
@@ -5173,477 +5172,6 @@ function bindAccountTypeActions(payload) {
 }
 
 
-let cachedQuotaPayload = null;
-let currentQuotaFilter = 'all';
-let currentQuotaSearch = '';
-let quotaPollingTimer = null;
-let quotaCurrentPage = 1;
-const quotaPageSize = 6;
-
-function formatResetCountdown(resetAt) {
-  if (!resetAt) return '--';
-  const target = new Date(resetAt);
-  if (Number.isNaN(target.getTime())) return escapeHtml(resetAt);
-  const now = new Date();
-  const diffMs = target - now;
-  if (diffMs <= 0) return 'Reset ready / Now';
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const hours = Math.floor(diffMins / 60);
-  const mins = diffMins % 60;
-  const days = Math.floor(hours / 24);
-  if (days > 0) {
-    return `${days}d ${hours % 24}h (${formatWIBDate(resetAt)})`;
-  }
-  if (hours > 0) {
-    return `${hours}h ${mins}m (${formatWIBTime(resetAt)} WIB)`;
-  }
-  return `${mins}m (${formatWIBTime(resetAt)} WIB)`;
-}
-
-function getQuotaProgressColor(pct) {
-  if (pct > 50) return 'var(--lime, #c8ff63)';
-  if (pct > 20) return '#f59e0b';
-  return '#ef4444';
-}
-
-function getQuotaStatusBadge(account) {
-  if (account.error) {
-    return '<span class="table-badge" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#ef4444;"><span class="pulse-dot red" style="display:inline-block; width:6px; height:6px; margin-right:4px;"></span> ERROR</span>';
-  }
-  const windows = Array.isArray(account.windows) ? account.windows : [];
-  const minPct = windows.length > 0 ? Math.min(...windows.map(w => Number(w.remainingPercentage) || 0)) : 100;
-  if (minPct <= 0) {
-    return '<span class="table-badge" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#ef4444;">DEPLETED (0%)</span>';
-  }
-  if (minPct <= 20) {
-    return '<span class="table-badge" style="background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:#f59e0b;"><span class="pulse-dot amber" style="display:inline-block; width:6px; height:6px; margin-right:4px;"></span> LOW QUOTA</span>';
-  }
-  return '<span class="table-badge active" style="font-size:8px; padding:2px 6px;"><span class="pulse-dot emerald" style="display:inline-block; width:6px; height:6px; margin-right:4px;"></span> HEALTHY</span>';
-}
-
-function renderQuota(payload) {
-  if (payload) {
-    cachedQuotaPayload = payload;
-  }
-  const data = cachedQuotaPayload || {};
-  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
-  const fetchedAt = data.fetchedAt ? formatWIBTimestamp(data.fetchedAt) : '--';
-  const autoRefreshSec = Number(data.autoRefreshInterval ?? 60);
-
-  let totalAccounts = accounts.length;
-  let healthyAccounts = 0;
-  let lowQuotaAccounts = 0;
-  let errorAccounts = 0;
-
-  accounts.forEach(acc => {
-    if (acc.error) {
-      errorAccounts++;
-    } else {
-      const windows = Array.isArray(acc.windows) ? acc.windows : [];
-      const minPct = windows.length > 0 ? Math.min(...windows.map(w => Number(w.remainingPercentage) || 0)) : 100;
-      if (minPct <= 20) {
-        lowQuotaAccounts++;
-      } else {
-        healthyAccounts++;
-      }
-    }
-  });
-
-  const search = currentQuotaSearch.toLowerCase().trim();
-  const filteredAccounts = accounts.filter(acc => {
-    if (search) {
-      const email = String(acc.email || '').toLowerCase();
-      const name = String(acc.name || '').toLowerCase();
-      const connId = String(acc.connectionId || '').toLowerCase();
-      if (!email.includes(search) && !name.includes(search) && !connId.includes(search)) {
-        return false;
-      }
-    }
-    if (currentQuotaFilter === 'healthy') {
-      if (acc.error) return false;
-      const windows = Array.isArray(acc.windows) ? acc.windows : [];
-      const minPct = windows.length > 0 ? Math.min(...windows.map(w => Number(w.remainingPercentage) || 0)) : 100;
-      return minPct > 20;
-    }
-    if (currentQuotaFilter === 'low') {
-      if (acc.error) return false;
-      const windows = Array.isArray(acc.windows) ? acc.windows : [];
-      const minPct = windows.length > 0 ? Math.min(...windows.map(w => Number(w.remainingPercentage) || 0)) : 100;
-      return minPct <= 20;
-    }
-    if (currentQuotaFilter === 'error') {
-      return Boolean(acc.error);
-    }
-    return true;
-  });
-
-  // Calculate pagination
-  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / quotaPageSize));
-  if (quotaCurrentPage > totalPages) quotaCurrentPage = totalPages;
-  if (quotaCurrentPage < 1) quotaCurrentPage = 1;
-
-  const startIdx = (quotaCurrentPage - 1) * quotaPageSize;
-  const endIdx = Math.min(startIdx + quotaPageSize, filteredAccounts.length);
-  const pagedAccounts = filteredAccounts.slice(startIdx, endIdx);
-
-  return `
-    <div class="card" style="padding:16px; margin-bottom:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="kicker">OBSERVABILITY / OAUTH QUOTA GOVERNANCE</span>
-            <span class="table-badge active" style="font-size:7.5px;">GOOGLE ANTIGRAVITY IDE</span>
-          </div>
-          <h2 style="font-size:18px; margin-top:2px; font-weight:700;">Quota Tracker</h2>
-          <p style="color:var(--muted); font-size:11px; margin-top:2px;">Background-synchronized OAuth burst limits (5-hour) &amp; weekly allocations without frontend blocking latency.</p>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <div style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); padding:4px 8px; border-radius:6px;">
-            <span class="material-symbols-outlined" style="font-size:14px; color:var(--muted);">schedule</span>
-            <label for="quota-autorefresh-select" style="font-size:9.5px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">Sync Interval:</label>
-            <select id="quota-autorefresh-select" style="height:24px; padding:0 6px; border:1px solid #303846; border-radius:4px; background:#080b10; color:#e7edf5; font:600 10.5px var(--mono); outline:none; cursor:pointer;">
-              <option value="0" ${autoRefreshSec === 0 ? 'selected' : ''}>Manual Only (Off)</option>
-              <option value="30" ${autoRefreshSec === 30 ? 'selected' : ''}>Every 30s</option>
-              <option value="60" ${autoRefreshSec === 60 ? 'selected' : ''}>Every 60s (Default)</option>
-              <option value="120" ${autoRefreshSec === 120 ? 'selected' : ''}>Every 2m</option>
-              <option value="300" ${autoRefreshSec === 300 ? 'selected' : ''}>Every 5m</option>
-              <option value="600" ${autoRefreshSec === 600 ? 'selected' : ''}>Every 10m</option>
-            </select>
-          </div>
-          <button type="button" class="btn primary-btn" id="btn-refresh-quota" style="height:32px; padding:0 14px; font-size:11px; font-family:var(--mono);">
-            <span class="material-symbols-outlined" style="font-size:15px; margin-right:4px;">sync</span> Force Refresh
-          </button>
-        </div>
-      </div>
-
-      <!-- Quick Metrics Grid -->
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-top:14px;">
-        <div class="card" style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:9px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">Total Antigravity Accounts</div>
-          <div style="font-size:22px; font-weight:700; font-family:var(--mono); color:var(--text); margin-top:4px;">${totalAccounts}</div>
-          <div style="font-size:9.5px; color:var(--muted); margin-top:2px;">In SQLite active pool</div>
-        </div>
-        <div class="card" style="padding:12px; background:rgba(200,255,99,0.03); border:1px solid rgba(200,255,99,0.15);">
-          <div style="font-size:9px; font-family:var(--mono); color:var(--lime); text-transform:uppercase;">Healthy (>20%)</div>
-          <div style="font-size:22px; font-weight:700; font-family:var(--mono); color:var(--lime); margin-top:4px;">${healthyAccounts}</div>
-          <div style="font-size:9.5px; color:var(--muted); margin-top:2px;">Full burst capacity</div>
-        </div>
-        <div class="card" style="padding:12px; background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.15);">
-          <div style="font-size:9px; font-family:var(--mono); color:#f59e0b; text-transform:uppercase;">Low Quota (≤20%)</div>
-          <div style="font-size:22px; font-weight:700; font-family:var(--mono); color:#f59e0b; margin-top:4px;">${lowQuotaAccounts}</div>
-          <div style="font-size:9.5px; color:var(--muted); margin-top:2px;">Approaching limit</div>
-        </div>
-        <div class="card" style="padding:12px; background:rgba(239,68,68,0.03); border:1px solid rgba(239,68,68,0.15);">
-          <div style="font-size:9px; font-family:var(--mono); color:#ef4444; text-transform:uppercase;">Token / Upstream Errors</div>
-          <div style="font-size:22px; font-weight:700; font-family:var(--mono); color:#ef4444; margin-top:4px;">${errorAccounts}</div>
-          <div style="font-size:9.5px; color:var(--muted); margin-top:2px;">Needs re-auth or refresh</div>
-        </div>
-        <div class="card" style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:9px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">Latest Engine Snapshot</div>
-          <div style="font-size:12px; font-weight:600; font-family:var(--mono); color:var(--text); margin-top:6px;" id="quota-last-fetched-label">${fetchedAt}</div>
-          <div style="font-size:9.5px; color:var(--muted); margin-top:4px;"><span class="pulse-dot emerald" style="display:inline-block; width:5px; height:5px; margin-right:3px;"></span> Hot in RAM (${autoRefreshSec > 0 ? `Auto ${autoRefreshSec}s` : 'Manual'})</div>
-        </div>
-      </div>
-
-      <!-- Filter / Search Toolbar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:14px; flex-wrap:wrap;">
-        <div style="display:flex; gap:6px; align-items:center;">
-          <button type="button" class="btn filter-pill ${currentQuotaFilter === 'all' ? 'active' : ''}" data-quota-filter="all" style="height:28px; padding:0 10px; font-size:10px; font-family:var(--mono);">All (${totalAccounts})</button>
-          <button type="button" class="btn filter-pill ${currentQuotaFilter === 'healthy' ? 'active' : ''}" data-quota-filter="healthy" style="height:28px; padding:0 10px; font-size:10px; font-family:var(--mono);">Healthy (${healthyAccounts})</button>
-          <button type="button" class="btn filter-pill ${currentQuotaFilter === 'low' ? 'active' : ''}" data-quota-filter="low" style="height:28px; padding:0 10px; font-size:10px; font-family:var(--mono);">Low (${lowQuotaAccounts})</button>
-          <button type="button" class="btn filter-pill ${currentQuotaFilter === 'error' ? 'active' : ''}" data-quota-filter="error" style="height:28px; padding:0 10px; font-size:10px; font-family:var(--mono);">Errors (${errorAccounts})</button>
-        </div>
-        <div style="min-width:240px; flex:1; max-width:360px;">
-          <input type="text" id="quota-search-input" value="${escapeHtml(currentQuotaSearch)}" placeholder="Search email, name, or connection ID..." style="width:100%; height:28px; padding:0 10px; border:1px solid #303846; border-radius:6px; background:#080b10; color:#e7edf5; font:500 11px var(--mono); outline:none;" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Accounts Quota Cards Grid (Paged Max 6) -->
-    ${filteredAccounts.length === 0 ? `
-      <div class="card generic-empty" style="padding:32px 20px;">
-        <span class="material-symbols-outlined" style="font-size:36px; color:var(--muted);">speed</span>
-        <h3 style="margin-top:8px;">No matching Antigravity accounts found</h3>
-        <p style="color:var(--muted); font-size:11px; max-width:420px; margin:4px auto 0;">${accounts.length === 0 ? 'No Antigravity OAuth connections exist in the database. Go to Providers &gt; Antigravity to add one.' : 'Try changing your search query or filter selection.'}</p>
-      </div>
-    ` : `
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:12px;" id="quota-cards-grid">
-        ${pagedAccounts.map((account, idx) => {
-          const actualIndex = startIdx + idx;
-          const windows = Array.isArray(account.windows) ? account.windows : [];
-          const geminiWindows = windows.filter(w => (w.group || '').toLowerCase().includes('gemini') || (w.id || '').includes('gemini'));
-          const thirdPartyWindows = windows.filter(w => (w.group || '').toLowerCase().includes('claude') || (w.group || '').toLowerCase().includes('gpt') || (w.id || '').includes('3p'));
-          const otherWindows = windows.filter(w => !geminiWindows.includes(w) && !thirdPartyWindows.includes(w));
-
-          const accountLabel = account.email || account.name || `Account #${actualIndex + 1}`;
-          const connId = account.connectionId ? (account.connectionId.length > 16 ? `${account.connectionId.slice(0, 10)}...${account.connectionId.slice(-4)}` : account.connectionId) : '--';
-          const accountType = account.accountType || account.tierName || account.tierId || 'Unknown';
-
-          return `
-            <div class="card" style="padding:14px; border:1px solid rgba(255,255,255,0.08); background:linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(8,10,15,0.85) 100%);">
-              <!-- Account Card Header -->
-              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:12px;">
-                <div style="min-width:0;">
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="font-weight:700; font-size:13px; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" title="${escapeHtml(accountLabel)}">${escapeHtml(accountLabel)}</span>
-                  </div>
-                  <div style="display:flex; align-items:center; gap:6px; margin-top:3px;">
-                    <span class="table-badge" style="font-size:8px; padding:1px 5px; color:var(--muted); font-family:var(--mono);">${escapeHtml(connId)}</span>
-                    ${account.name && account.name !== account.email ? `<span style="font-size:10px; color:var(--muted);">${escapeHtml(account.name)}</span>` : ''}
-                  </div>
-                </div>
-                <div>
-                  <span class="table-badge purple" style="font-size:8px; padding:2px 6px; display:block; margin-bottom:5px;" title="Tier from Antigravity loadCodeAssist">${escapeHtml(accountType)}</span>
-                  ${getQuotaStatusBadge(account)}
-                </div>
-              </div>
-
-              <!-- Error Alert Banner -->
-              ${account.error ? `
-                <div style="padding:10px 12px; border-radius:6px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); color:#ef4444; font-size:11px; font-family:var(--mono); margin-bottom:10px; display:flex; align-items:flex-start; gap:6px;">
-                  <span class="material-symbols-outlined" style="font-size:16px;">error</span>
-                  <div>
-                    <div style="font-weight:600;">Quota Fetch Failed</div>
-                    <div style="font-size:10px; margin-top:2px; opacity:0.9;">${escapeHtml(account.error)}</div>
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Gemini Models Quota Section -->
-              ${geminiWindows.length > 0 ? `
-                <div style="margin-bottom:12px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <span style="font-size:9.5px; font-family:var(--mono); color:#60a5fa; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;">Gemini Models</span>
-                    <span style="font-size:9px; color:var(--muted); font-family:var(--mono);">Flash / Pro / Ultra</span>
-                  </div>
-                  <div style="display:flex; flex-direction:column; gap:8px;">
-                    ${geminiWindows.map(w => renderQuotaWindowBar(w)).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Claude / GPT (3P) Models Quota Section -->
-              ${thirdPartyWindows.length > 0 ? `
-                <div style="margin-bottom:10px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <span style="font-size:9.5px; font-family:var(--mono); color:#f59e0b; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;">Claude &amp; GPT Models (3P)</span>
-                    <span style="font-size:9px; color:var(--muted); font-family:var(--mono);">Sonnet / Opus / GPT-5</span>
-                  </div>
-                  <div style="display:flex; flex-direction:column; gap:8px;">
-                    ${thirdPartyWindows.map(w => renderQuotaWindowBar(w)).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Other Windows if any -->
-              ${otherWindows.length > 0 ? `
-                <div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <span style="font-size:9.5px; font-family:var(--mono); color:var(--text); font-weight:700; letter-spacing:0.04em; text-transform:uppercase;">Other Allocations</span>
-                  </div>
-                  <div style="display:flex; flex-direction:column; gap:8px;">
-                    ${otherWindows.map(w => renderQuotaWindowBar(w)).join('')}
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-          `;
-        }).join('')}
-      </div>
-
-      <!-- Pagination Footer Bar (Max 6 per page) -->
-      ${totalPages > 1 ? `
-        <div style="margin-top:14px; padding:10px 14px; background:rgba(8,10,15,0.7); border:1px solid rgba(255,255,255,0.06); border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <div style="font-size:11px; font-family:var(--mono); color:var(--muted);">
-            Showing <strong>${startIdx + 1}&ndash;${endIdx}</strong> of <strong>${filteredAccounts.length}</strong> accounts (Max 6 per page)
-          </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <button type="button" class="btn filter-pill" id="btn-quota-prev" ${quotaCurrentPage <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} style="height:28px; padding:0 12px; font-size:11px; font-family:var(--mono);">&larr; Prev</button>
-            <span style="font-size:11px; font-family:var(--mono); padding:0 4px; color:var(--text);">Page <strong>${quotaCurrentPage}</strong> / ${totalPages}</span>
-            <button type="button" class="btn filter-pill" id="btn-quota-next" ${quotaCurrentPage >= totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} style="height:28px; padding:0 12px; font-size:11px; font-family:var(--mono);">Next &rarr;</button>
-          </div>
-        </div>
-      ` : ''}
-    `}
-  `;
-}
-
-function renderQuotaWindowBar(w) {
-  const pct = Math.max(0, Math.min(100, Number(w.remainingPercentage) || 0));
-  const color = getQuotaProgressColor(pct);
-  const countdown = formatResetCountdown(w.resetAt);
-  const isWeekly = (w.id || '').includes('weekly') || (w.label || '').toLowerCase().includes('weekly');
-
-  return `
-    <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:7px 9px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--mono); font-size:10px; margin-bottom:4px;">
-        <span style="color:var(--text); font-weight:600;">
-          ${escapeHtml(w.label || (isWeekly ? 'Weekly Limit' : '5-Hour Burst Limit'))}
-        </span>
-        <span style="color:${color}; font-weight:700;">
-          ${pct.toFixed(1)}%
-        </span>
-      </div>
-      <!-- Progress Bar Track -->
-      <div style="width:100%; height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; position:relative;">
-        <div style="height:100%; width:${pct}%; background:${color}; border-radius:3px; transition:width 0.3s ease;"></div>
-      </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--mono); font-size:8.5px; color:var(--muted); margin-top:3px;">
-        <span>Reset: ${escapeHtml(countdown)}</span>
-        <span style="opacity:0.6;">${escapeHtml(w.id || '--')}</span>
-      </div>
-    </div>
-  `;
-}
-
-function isQuotaViewActive() {
-  const generic = document.querySelector('#view-generic');
-  const breadcrumb = document.querySelector('#breadcrumb');
-  return Boolean(generic && !generic.classList.contains('hidden') && breadcrumb && breadcrumb.textContent.includes('QUOTA'));
-}
-
-function bindQuotaView() {
-  if (quotaPollingTimer) {
-    clearInterval(quotaPollingTimer);
-    quotaPollingTimer = null;
-  }
-
-  const prevBtn = document.querySelector('#btn-quota-prev');
-  if (prevBtn && quotaCurrentPage > 1) {
-    prevBtn.onclick = () => {
-      quotaCurrentPage--;
-      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-      if (content && cachedQuotaPayload) {
-        content.innerHTML = renderQuota(cachedQuotaPayload);
-        bindQuotaView();
-      }
-    };
-  }
-
-  const nextBtn = document.querySelector('#btn-quota-next');
-  if (nextBtn) {
-    nextBtn.onclick = () => {
-      quotaCurrentPage++;
-      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-      if (content && cachedQuotaPayload) {
-        content.innerHTML = renderQuota(cachedQuotaPayload);
-        bindQuotaView();
-      }
-    };
-  }
-
-  const select = document.querySelector('#quota-autorefresh-select');
-  if (select) {
-    select.onchange = async (e) => {
-      const intervalSec = Number(e.target.value) || 0;
-      try {
-        await fetch(`${apiBase}/api/admin/quota/settings`, {
-          method: 'POST',
-          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autoRefreshInterval: intervalSec })
-        }).catch(() => fetch(`${apiBase}/api/quota/settings`, {
-          method: 'POST',
-          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autoRefreshInterval: intervalSec })
-        }));
-        if (cachedQuotaPayload) {
-          cachedQuotaPayload.autoRefreshInterval = intervalSec;
-        }
-        setupClientQuotaPolling(intervalSec);
-        showToast(intervalSec > 0 ? `Auto-refresh set to ${intervalSec}s` : 'Auto-refresh disabled', 'success');
-      } catch (err) {
-        alert('Failed to save auto-refresh settings: ' + err.message);
-      }
-    };
-  }
-
-  const refreshBtn = document.querySelector('#btn-refresh-quota');
-  if (refreshBtn) {
-    refreshBtn.onclick = async () => {
-      refreshBtn.disabled = true;
-      refreshBtn.innerHTML = '<span class="loading-line" style="display:inline-block; width:12px; height:12px; margin-right:4px;"></span> Refreshing...';
-      try {
-        const payload = await request('/api/admin/quota?refresh=true').catch(() => request('/api/quota?refresh=true'));
-        cachedQuotaPayload = payload;
-        const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-        if (content && isQuotaViewActive()) {
-          content.innerHTML = renderQuota(cachedQuotaPayload);
-          bindQuotaView();
-        }
-      } catch (err) {
-        alert('Failed to refresh quota: ' + err.message);
-        refreshBtn.disabled = false;
-        refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px; margin-right:4px;">sync</span> Force Refresh';
-      }
-    };
-  }
-
-  document.querySelectorAll('[data-quota-filter]').forEach(btn => {
-    btn.onclick = () => {
-      currentQuotaFilter = btn.dataset.quotaFilter;
-      quotaCurrentPage = 1;
-      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-      if (content && cachedQuotaPayload) {
-        content.innerHTML = renderQuota(cachedQuotaPayload);
-        bindQuotaView();
-      }
-    };
-  });
-
-  const searchInput = document.querySelector('#quota-search-input');
-  if (searchInput) {
-    searchInput.oninput = (e) => {
-      currentQuotaSearch = e.target.value;
-      quotaCurrentPage = 1;
-      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-      if (content && cachedQuotaPayload) {
-        content.innerHTML = renderQuota(cachedQuotaPayload);
-        bindQuotaView();
-        const newSearchInput = document.querySelector('#quota-search-input');
-        if (newSearchInput) {
-          newSearchInput.focus();
-          newSearchInput.setSelectionRange(newSearchInput.value.length, newSearchInput.value.length);
-        }
-      }
-    };
-  }
-
-  const intervalSec = Number(cachedQuotaPayload?.autoRefreshInterval ?? 60);
-  setupClientQuotaPolling(intervalSec);
-}
-
-function setupClientQuotaPolling(intervalSec) {
-  if (quotaPollingTimer) {
-    clearInterval(quotaPollingTimer);
-    quotaPollingTimer = null;
-  }
-  if (intervalSec <= 0) return;
-
-  quotaPollingTimer = setInterval(async () => {
-    if (!isQuotaViewActive()) {
-      clearInterval(quotaPollingTimer);
-      quotaPollingTimer = null;
-      return;
-    }
-
-    try {
-      const payload = await request('/api/admin/quota').catch(() => request('/api/quota'));
-      cachedQuotaPayload = payload;
-      if (!isQuotaViewActive()) return;
-      const content = document.querySelector('#view-generic .view-content') || document.querySelector('#view-generic');
-      const activeElement = document.activeElement;
-      const isSearching = activeElement && activeElement.id === 'quota-search-input';
-      if (content && !isSearching) {
-        content.innerHTML = renderQuota(cachedQuotaPayload);
-        bindQuotaView();
-      } else if (payload?.fetchedAt) {
-        const timeLabel = document.querySelector('#quota-last-fetched-label');
-        if (timeLabel) timeLabel.textContent = formatWIBTimestamp(payload.fetchedAt);
-      }
-    } catch {}
-  }, Math.max(10, intervalSec) * 1000);
-}
-
 function renderSettings(payload) {
   if (!payload) return emptySurface('No settings loaded');
   const source = JSON.stringify(payload, null, 2);
@@ -6264,6 +5792,7 @@ function renderUsage(payload) {
               <th>Model</th>
               <th>Provider &amp; Account</th>
               <th>Outbound Proxy</th>
+              <th>Client / Source</th>
               <th style="width:80px;">Tokens</th>
               <th style="text-align: right; width:70px;">Status</th>
             </tr>
@@ -6279,6 +5808,9 @@ function renderUsage(payload) {
                 const accName = item.account || item.connectionId || '--';
                 const proxyName = item.proxy || 'Direct';
                 const isRelay = proxyName !== 'Direct' && proxyName !== '--';
+                const clientIdentity = item.clientIdentity || '--';
+                const clientIP = item.clientIp || '--';
+                const apiKeyRef = item.apiKeyId ? `key ${item.apiKeyId}` : '';
                 return `
                   <tr data-request-key="${escapeHtml(item.id || `${item.timestamp}|${item.provider}|${item.model}|${item.account || ''}`)}">
                     <td>
@@ -6300,11 +5832,17 @@ function renderUsage(payload) {
                         ${item.strategy ? `<small style="display:block; font-size:7.5px; font-family:var(--mono); color:#71717a; text-transform:uppercase; margin-top:2px;">${escapeHtml(item.strategy)}</small>` : ''}
                       </div>
                     </td>
+                    <td>
+                      <div style="line-height:1.25; max-width:190px;">
+                        <strong style="display:block; color:var(--text-bright); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(clientIdentity)}">${escapeHtml(clientIdentity)}</strong>
+                        <small style="display:block; font-size:8px; font-family:var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(`${clientIP}${apiKeyRef ? ` · ${apiKeyRef}` : ''}`)}">${escapeHtml(clientIP)}${apiKeyRef ? ` · ${escapeHtml(apiKeyRef)}` : ''}</small>
+                      </div>
+                    </td>
                     <td><span class="table-cell-mono" style="font-size:10px; color:var(--text);">${toks > 0 ? `${toks.toLocaleString()}t` : '--'}</span></td>
                     <td style="text-align: right;"><span class="table-badge ${isErr ? 'inactive' : 'active'}" style="font-size:7.5px;">${escapeHtml(displayStatus)}</span></td>
                   </tr>
                 `;
-              }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--dim); padding:20px;">No requests recorded yet.</td></tr>'}
+              }).join('') : '<tr><td colspan="7" style="text-align:center; color:var(--dim); padding:20px;">No requests recorded yet.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -6849,7 +6387,6 @@ async function renderView(name) {
           };
         },
         usage: () => request('/api/usage/stats?period=all&days=all'),
-        quota: () => request('/api/admin/quota').catch(() => request('/api/quota')),
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: async () => {
           const [logs, securitySummary] = await Promise.all([
@@ -6871,10 +6408,8 @@ async function renderView(name) {
         },
         settings: () => request('/api/settings')
       }[name] || (() => Promise.resolve(null)))();
-    if (name === 'quota' && !isQuotaViewActive()) return;
-    content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'account-types' ? renderAccountTypes(payload) : name === 'usage' ? renderUsage(payload) : name === 'quota' ? renderQuota(payload) : name === 'logs' ? renderLogs(payload) : name === 'authlogs' ? renderAuthLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
+    content.innerHTML = name === 'providers' ? renderProviders(payload) : name === 'orchestrator' ? renderCombos(payload) : name === 'keys' ? renderKeys(payload) : name === 'account-types' ? renderAccountTypes(payload) : name === 'usage' ? renderUsage(payload) : name === 'logs' ? renderLogs(payload) : name === 'authlogs' ? renderAuthLogs(payload) : name === 'pools' ? renderPools(payload) : name === 'aliases' ? renderAliases(payload) : renderSettings(payload);
     
-    if (name === 'quota') bindQuotaView();
     if (name === 'settings') bindSettings();
     if (name === 'pools') bindDeployButtons();
     if (name === 'usage') bindUsageFilters();
@@ -6897,7 +6432,6 @@ async function renderView(name) {
     if (name === 'authlogs') bindAuthLogs();
     if (name === 'aliases') bindAliasDeckActions();
   } catch (error) {
-    if (name === 'quota' && !isQuotaViewActive()) return;
     const isAuthErr = error.status === 401 ||
       (error.message && (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized') || error.message.toLowerCase().includes('token') || error.message.toLowerCase().includes('expired'))) ||
       !hasDashboardAccess();
@@ -10054,10 +9588,6 @@ function openPayloadInspectorDrawer(reqData = {}) {
 
 function setView(name) {
   window.location.hash = name;
-  if (name !== 'quota' && quotaPollingTimer) {
-    clearInterval(quotaPollingTimer);
-    quotaPollingTimer = null;
-  }
   const baseName = name.startsWith('provider/') ? 'providers' : name;
   const data = views[baseName] || views.overview;
   document.querySelectorAll('.dock-item').forEach((item) => item.classList.toggle('active', item.dataset.view === baseName));

@@ -41,6 +41,9 @@ type RecentRequest struct {
 	Status           string  `json:"status"`
 	PublicModel      string  `json:"publicModel,omitempty"`
 	ErrorMessage     string  `json:"errorMessage,omitempty"`
+	ClientIdentity   string  `json:"clientIdentity,omitempty"`
+	ClientIP         string  `json:"clientIp,omitempty"`
+	APIKeyID         string  `json:"apiKeyId,omitempty"`
 }
 
 // StreamPayload represents the payload sent over SSE on /api/usage/stream.
@@ -240,13 +243,15 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 		q := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model,
 			CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END,
 			CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
-			status FROM usageHistory ORDER BY id DESC LIMIT ?`
+			status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
+			COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
+			FROM usageHistory ORDER BY id DESC LIMIT ?`
 		if rows, err := repo.RawDB().Query(q, limit); err == nil {
 			defer rows.Close()
 			for rows.Next() {
-				var id, ts, prov, mod, status string
+				var id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 				var prompt, completion int
-				if err := rows.Scan(&id, &ts, &prov, &mod, &prompt, &completion, &status); err == nil {
+				if err := rows.Scan(&id, &ts, &prov, &mod, &prompt, &completion, &status, &clientIdentity, &clientIP, &apiKeyID); err == nil {
 					if status == "success" || status == "ok" {
 						status = "200"
 					}
@@ -263,6 +268,9 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 							PromptTokens:     prompt,
 							CompletionTokens: completion,
 							Status:           status,
+							ClientIdentity:   clientIdentity,
+							ClientIP:         clientIP,
+							APIKeyID:         apiKeyID,
 						})
 					}
 				}

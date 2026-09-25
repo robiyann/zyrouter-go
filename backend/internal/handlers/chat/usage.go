@@ -67,6 +67,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	metaBytes, _ := json.Marshal(map[string]any{
 		"provider": info.Provider, "model": info.Model, "connectionId": info.ConnectionID,
 		"publicModel": publicModel, "requestId": clientRequestID, "clientId": info.ClientID, "latencyMs": latencyMs,
+		"clientIdentity": info.ClientIdentity, "clientIp": info.ClientIP, "apiKeyId": info.APIKeyID,
 	})
 	metaJSON := string(metaBytes)
 	providerLabel := h.displayProviderLabel(info.Provider)
@@ -134,7 +135,12 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		"connectionId": info.ConnectionID, "account": accountLabel,
 		"proxy": proxyLabel, "strategy": stratLabel, "status": "200",
 		"timestamp": now.Format("2006-01-02T15:04:05.000Z"),
-		"latency":   map[string]int64{"ttft": ttftMs, "total": latencyMs},
+		"client": map[string]string{
+			"identity": info.ClientIdentity,
+			"ip":       info.ClientIP,
+			"apiKeyId": info.APIKeyID,
+		},
+		"latency": map[string]int64{"ttft": ttftMs, "total": latencyMs},
 		"tokens": map[string]int{
 			"prompt_tokens": usage.PromptTokens, "completion_tokens": usage.CompletionTokens,
 			"cached_tokens": cachedTokens, "cache_creation_input_tokens": cacheCreationTokens,
@@ -154,17 +160,21 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	h.upsertDailyUsage(info.Provider, info.Model, info.Endpoint, info.ConnectionID, info.APIKey, usage.PromptTokens, usage.CompletionTokens, cachedTokens, cost)
 	// Record complete unredacted audit log to rotating 50MB log files
 	auditlog.Get().Log(&auditlog.AuditEntry{
-		ID:           reqID,
-		Timestamp:    now.Format(time.RFC3339Nano),
-		Endpoint:     info.Endpoint,
-		Provider:     info.Provider,
-		Model:        info.Model,
-		ConnectionID: info.ConnectionID,
-		APIKey:       info.APIKey,
-		Status:       "ok",
-		StatusCode:   200,
-		DurationMs:   latencyMs,
-		TTFTMs:       ttftMs,
+		ID:             reqID,
+		Timestamp:      now.Format(time.RFC3339Nano),
+		Endpoint:       info.Endpoint,
+		Provider:       info.Provider,
+		Model:          info.Model,
+		ConnectionID:   info.ConnectionID,
+		APIKey:         info.APIKey,
+		ClientAPIKey:   info.ClientAPIKey,
+		APIKeyID:       info.APIKeyID,
+		ClientIdentity: info.ClientIdentity,
+		ClientIP:       info.ClientIP,
+		Status:         "ok",
+		StatusCode:     200,
+		DurationMs:     latencyMs,
+		TTFTMs:         ttftMs,
 		ClientRequest: auditlog.HTTPPayload{
 			Method: "POST",
 			URL:    info.Endpoint,
@@ -198,6 +208,9 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 		Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 		Status:           "200",
 		PublicModel:      publicModel,
+		ClientIdentity:   info.ClientIdentity,
+		ClientIP:         info.ClientIP,
+		APIKeyID:         info.APIKeyID,
 	}, h.Repo)
 	clientstream.Get().Publish(clientStreamSubject(info.UserID, info.ClientID), clientstream.Event{
 		ID: clientRequestID + ":completed", Type: "request.completed", Timestamp: now.Format(time.RFC3339Nano),

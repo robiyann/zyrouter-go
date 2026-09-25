@@ -45,10 +45,11 @@ func (r *Repo) ValidateApiKey(key string) (bool, error) {
 func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var userID, typeID, keyHash sql.NullString
+	var telegramUserID, telegramUsername, telegramDisplayName sql.NullString
 	err := r.db.QueryRow(
-		"SELECT id, key, keyHash, name, machineId, isActive, restrictions, createdAt, clientId, policyId, userId, accountTypeId FROM apiKeys WHERE (keyHash IS NOT NULL AND keyHash = ?) OR (keyHash IS NULL AND key = ?) LIMIT 1",
+		"SELECT a.id, a.key, a.keyHash, a.name, a.machineId, a.isActive, a.restrictions, a.createdAt, a.clientId, a.policyId, a.userId, a.accountTypeId, u.telegramUserId, u.telegramUsername, u.displayName FROM apiKeys a LEFT JOIN users u ON u.id = a.userId WHERE (a.keyHash IS NOT NULL AND a.keyHash = ?) OR (a.keyHash IS NULL AND a.key = ?) LIMIT 1",
 		HashUserSecret(key), key,
-	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID)
+	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID, &telegramUserID, &telegramUsername, &telegramDisplayName)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -64,6 +65,15 @@ func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 	}
 	if typeID.Valid {
 		apiKey.AccountTypeID = &typeID.String
+	}
+	if telegramUserID.Valid {
+		apiKey.TelegramUserID = &telegramUserID.String
+	}
+	if telegramUsername.Valid {
+		apiKey.TelegramUsername = &telegramUsername.String
+	}
+	if telegramDisplayName.Valid {
+		apiKey.TelegramDisplayName = &telegramDisplayName.String
 	}
 	return &apiKey, nil
 }
@@ -949,7 +959,6 @@ func parseJSONString(raw string) string {
 	}
 	return raw
 }
-
 
 // GetProviderConnectionsPaginated retrieves provider connections with pagination and optional summary mode.
 func (r *Repo) GetProviderConnectionsPaginated(provider string, activeOnly bool, summaryOnly bool, limit int, offset int) ([]*models.ProviderConnection, int, error) {
