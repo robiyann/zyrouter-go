@@ -901,6 +901,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .mlab-compare-dialog { width: min(760px, 92vw); max-height: 84vh; padding: 16px; overflow-y: auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(18, 20, 27, 0.98); box-shadow: 0 20px 70px rgba(0, 0, 0, 0.55); }
 .mlab-compare-description { margin: 6px 0 12px; color: var(--muted); font-size: 11px; }
+.mlab-compare-model-field { display: grid; gap: 5px; margin-bottom: 10px; color: var(--muted); font: 700 9px var(--mono); text-transform: uppercase; }
+.mlab-compare-model-field select { width: 100%; box-sizing: border-box; padding: 9px 10px; color: var(--text); border: 1px solid var(--line); border-radius: 8px; outline: 0; background: rgba(5, 7, 12, 0.72); font: 11px var(--mono); color-scheme: dark; }
 .mlab-compare-prompt, .mlab-compare-columns textarea { width: 100%; box-sizing: border-box; padding: 9px 10px; color: var(--text); border: 1px solid var(--line); border-radius: 8px; outline: 0; background: rgba(5, 7, 12, 0.72); font: 11px/1.5 var(--sans); resize: vertical; }
 .mlab-compare-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .mlab-compare-columns label { display: grid; gap: 5px; color: var(--muted); font: 700 9px var(--mono); text-transform: uppercase; }

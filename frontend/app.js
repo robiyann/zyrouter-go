@@ -5625,11 +5625,11 @@ function renderModelLabs(payload = {}) {
     const target = record.provider && record.upstreamModel ? `${record.provider} / ${record.upstreamModel}` : 'Published gateway alias';
     return `<button type="button" class="mlab-model-row" data-labs-model="${escapeHtml(model.id)}" data-labs-provider="${escapeHtml(record.provider || 'gateway')}" data-labs-search="${escapeHtml(`${model.id} ${target}`.toLowerCase())}"><span class="material-symbols-outlined">neurology</span><span><strong>${escapeHtml(model.id)}</strong><small>${escapeHtml(target)}</small></span><span class="material-symbols-outlined mlab-model-check">${model.id === labsSelectedModel ? 'check_circle' : 'radio_button_unchecked'}</span></button>`;
   }).join('');
+  const compareModelOptions = models.map((model) => `<option value="${escapeHtml(model.id)}"${model.id === labsSelectedModel ? ' selected' : ''}>${escapeHtml(model.id)}</option>`).join('');
   return `
     <div class="mlab-page">
       <section class="mlab-surface card">
         <div class="mlab-transcript" id="labs-transcript">${modelLabsWelcomeMarkup()}</div>
-        <div class="mlab-compare-results" id="labs-compare-results" hidden></div>
         <form id="labs-prompt-form" class="mlab-composer">
           <div class="mlab-composer-box">
             <div class="mlab-tune-panel" id="labs-tune-panel" hidden><div class="mlab-tune-header"><div><strong>System prompt</strong><small>Injected before the conversation as role: system.</small></div><button type="button" class="mlab-close-button" id="labs-close-tune" aria-label="Close system prompt"><span class="material-symbols-outlined">close</span></button></div><textarea id="labs-system-prompt" rows="4" placeholder="You are a concise, reliable assistant…"></textarea><div class="mlab-tune-footer"><span>Only this playground session uses the prompt.</span><button type="button" class="mlab-picker-back" id="labs-reset-system-prompt">Reset</button></div></div>
@@ -5642,7 +5642,7 @@ function renderModelLabs(payload = {}) {
         </form>
       </section>
       <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3 id="labs-picker-title">Select provider</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search providers…" /></div><div class="mlab-picker-step" id="labs-provider-step"><div class="mlab-step-caption">1 · Choose an upstream provider</div><div class="mlab-provider-grid" id="labs-provider-results">${providerRows || '<div class="mlab-picker-empty">No providers with published models found.</div>'}</div></div><div class="mlab-picker-step" id="labs-model-step" hidden><div class="mlab-model-step-bar"><button type="button" class="mlab-picker-back" id="labs-picker-back"><span class="material-symbols-outlined">arrow_back</span> Providers</button><div class="mlab-step-caption" id="labs-selected-provider">2 · Choose a model</div></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div></div>
-      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden><div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts"><div class="mlab-picker-header"><div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div><button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button></div><p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p><textarea id="labs-compare-input" class="mlab-compare-prompt" rows="3" placeholder="User prompt to compare…"></textarea><div class="mlab-compare-columns"><label><span>Variant A · baseline</span><textarea id="labs-compare-a" rows="5" placeholder="Leave empty for no system prompt"></textarea></label><label><span>Variant B · injected</span><textarea id="labs-compare-b" rows="5" placeholder="You are a concise, reliable assistant…"></textarea></label></div><div class="mlab-compare-actions"><button type="button" class="mlab-picker-back" id="labs-cancel-compare">Cancel</button><button type="button" class="mlab-compare-run" id="labs-run-compare"><span class="material-symbols-outlined">compare</span> Run comparison</button></div></div></div>
+      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden><div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts"><div class="mlab-picker-header"><div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div><button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button></div><p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p><label class="mlab-compare-model-field"><span>Model</span><select id="labs-compare-model">${compareModelOptions || '<option value="">No published models</option>'}</select></label><textarea id="labs-compare-input" class="mlab-compare-prompt" rows="3" placeholder="User prompt to compare…"></textarea><div class="mlab-compare-columns"><label><span>Variant A · baseline</span><textarea id="labs-compare-a" rows="5" placeholder="Leave empty for no system prompt"></textarea></label><label><span>Variant B · injected</span><textarea id="labs-compare-b" rows="5" placeholder="You are a concise, reliable assistant…"></textarea></label></div><div class="mlab-compare-results" id="labs-compare-results" hidden></div><div class="mlab-compare-actions"><button type="button" class="mlab-picker-back" id="labs-cancel-compare">Cancel</button><button type="button" class="mlab-compare-run" id="labs-run-compare"><span class="material-symbols-outlined">compare</span> Run comparison</button></div></div></div>
     </div>`;
 }
 
@@ -5665,6 +5665,7 @@ function bindModelLabs(payload = {}) {
   const compareInput = document.querySelector('#labs-compare-input');
   const compareA = document.querySelector('#labs-compare-a');
   const compareB = document.querySelector('#labs-compare-b');
+  const compareModelSelect = document.querySelector('#labs-compare-model');
   const compareResults = document.querySelector('#labs-compare-results');
   let activeProvider = '';
   let conversation = [];
@@ -5711,6 +5712,7 @@ function bindModelLabs(payload = {}) {
   document.querySelector('#labs-reset-system-prompt')?.addEventListener('click', () => { if (systemPromptInput) systemPromptInput.value = ''; });
   const openCompare = () => {
     if (!labsSelectedModel) { openPicker(); return; }
+    if (compareModelSelect) compareModelSelect.value = labsSelectedModel;
     if (compareInput) compareInput.value = input?.value || '';
     if (compareB && systemPromptInput?.value) compareB.value = systemPromptInput.value;
     if (compareModal) compareModal.hidden = false;
@@ -5751,8 +5753,8 @@ function bindModelLabs(payload = {}) {
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
     return body;
   };
-  const streamCompletion = async (messages, onDelta, signal) => {
-    const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', signal, body: JSON.stringify({ model: labsSelectedModel, messages, stream: true, max_tokens: 1024 }) });
+  const streamCompletion = async (messages, onDelta, signal, modelID = labsSelectedModel) => {
+    const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', signal, body: JSON.stringify({ model: modelID, messages, stream: true, max_tokens: 1024 }) });
     if (!response.ok) {
       const text = await response.text();
       let message = text;
@@ -5833,24 +5835,25 @@ function bindModelLabs(payload = {}) {
   };
   const runCompare = async () => {
     const prompt = String(compareInput?.value || input?.value || '').trim();
-    if (!prompt || !labsSelectedModel) { if (!labsSelectedModel) openPicker(); return; }
+    const compareModel = String(compareModelSelect?.value || labsSelectedModel || '').trim();
+    if (!prompt || !compareModel) { if (!compareModel) openPicker(); return; }
     const systemA = String(compareA?.value || '').trim();
     const systemB = String(compareB?.value || '').trim();
     if (compareResults) {
       compareResults.hidden = false;
-      compareResults.innerHTML = `<div class="mlab-compare-header"><div><span class="kicker">PROMPT BENCH</span><strong>Comparing ${escapeHtml(labsSelectedModel)}</strong></div><span class="mlab-compare-status">Streaming both variants…</span></div><div class="mlab-compare-grid"><article class="mlab-compare-card"><header><strong>Variant A</strong><small>${systemA ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-a"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article><article class="mlab-compare-card"><header><strong>Variant B</strong><small>${systemB ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-b"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article></div>`;
+      compareResults.innerHTML = `<div class="mlab-compare-header"><div><span class="kicker">PROMPT BENCH</span><strong>Comparing ${escapeHtml(compareModel)}</strong></div><span class="mlab-compare-status">Streaming both variants…</span></div><div class="mlab-compare-grid"><article class="mlab-compare-card"><header><strong>Variant A</strong><small>${systemA ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-a"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article><article class="mlab-compare-card"><header><strong>Variant B</strong><small>${systemB ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-b"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article></div>`;
       compareResults.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
     const compareButton = document.querySelector('#labs-run-compare');
     if (compareButton) compareButton.disabled = true;
-    if (status) status.textContent = `Comparing ${labsSelectedModel}…`;
+    if (status) status.textContent = `Comparing ${compareModel}…`;
     const bodyA = document.querySelector('#labs-compare-body-a');
     const bodyB = document.querySelector('#labs-compare-body-b');
     activeAbortController = new AbortController();
     try {
       const [answerA, answerB] = await Promise.all([
-        streamCompletion(buildMessages(conversation, prompt, systemA), (text) => { if (bodyA) bodyA.textContent = text; }, activeAbortController.signal),
-        streamCompletion(buildMessages(conversation, prompt, systemB), (text) => { if (bodyB) bodyB.textContent = text; }, activeAbortController.signal),
+        streamCompletion(buildMessages(conversation, prompt, systemA), (text) => { if (bodyA) bodyA.textContent = text; }, activeAbortController.signal, compareModel),
+        streamCompletion(buildMessages(conversation, prompt, systemB), (text) => { if (bodyB) bodyB.textContent = text; }, activeAbortController.signal, compareModel),
       ]);
       if (bodyA) bodyA.textContent = answerA;
       if (bodyB) bodyB.textContent = answerB;
