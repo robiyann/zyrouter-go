@@ -972,6 +972,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: rgba(10, 12, 18, 0.62);
 }
 
+.mlab-picker-step[hidden] { display: none; }
+.mlab-step-caption { color: var(--muted); font: 700 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.mlab-provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 8px; min-height: 320px; max-height: 420px; padding: 12px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: rgba(10, 12, 18, 0.62); }
+.mlab-provider-card { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 14px 12px; color: var(--text); border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, 0.035); cursor: pointer; text-align: left; }
+.mlab-provider-card:hover { color: var(--lime); border-color: rgba(200, 255, 99, 0.65); background: rgba(200, 255, 99, 0.08); }
+.mlab-provider-card > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.mlab-provider-card strong { color: var(--text-bright); font: 700 12px var(--mono); text-transform: uppercase; }
+.mlab-provider-card small { color: var(--muted); font-size: 9.5px; }
+.mlab-provider-icon { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; color: var(--lime); border-radius: 8px; background: rgba(200, 255, 99, 0.1); font-size: 17px; }
+.mlab-model-step-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.mlab-picker-back { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; color: var(--muted); border: 1px solid var(--line); border-radius: 9999px; background: rgba(255, 255, 255, 0.04); cursor: pointer; font: 600 10px var(--mono); }
+.mlab-picker-back:hover { color: var(--text-bright); border-color: rgba(200, 255, 99, 0.45); }
+
 .mlab-model-row {
   display: flex;
   min-width: 0;

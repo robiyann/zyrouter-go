@@ -5612,10 +5612,18 @@ function renderModelLabs(payload = {}) {
   const aliases = Array.isArray(payload.aliases) ? payload.aliases : [];
   const aliasMap = new Map(aliases.filter((record) => record && record.alias).map((record) => [record.alias, record]));
   if (!models.some((model) => model.id === labsSelectedModel)) labsSelectedModel = '';
+  const providerGroups = new Map();
+  models.forEach((model) => {
+    const record = aliasMap.get(model.id) || {};
+    const provider = String(record.provider || 'gateway').trim() || 'gateway';
+    if (!providerGroups.has(provider)) providerGroups.set(provider, []);
+    providerGroups.get(provider).push(model);
+  });
+  const providerRows = Array.from(providerGroups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([provider, entries]) => `<button type="button" class="mlab-provider-card" data-labs-provider="${escapeHtml(provider)}" data-labs-search="${escapeHtml(provider.toLowerCase())}"><span class="material-symbols-outlined mlab-provider-icon">hub</span><span><strong>${escapeHtml(provider)}</strong><small>${entries.length} published model${entries.length === 1 ? '' : 's'}</small></span><span class="material-symbols-outlined mlab-model-check">arrow_forward</span></button>`).join('');
   const modelRows = models.map((model) => {
     const record = aliasMap.get(model.id) || {};
     const target = record.provider && record.upstreamModel ? `${record.provider} / ${record.upstreamModel}` : 'Published gateway alias';
-    return `<button type="button" class="mlab-model-row" data-labs-model="${escapeHtml(model.id)}" data-labs-search="${escapeHtml(`${model.id} ${target}`.toLowerCase())}"><span class="material-symbols-outlined">neurology</span><span><strong>${escapeHtml(model.id)}</strong><small>${escapeHtml(target)}</small></span><span class="material-symbols-outlined mlab-model-check">${model.id === labsSelectedModel ? 'check_circle' : 'radio_button_unchecked'}</span></button>`;
+    return `<button type="button" class="mlab-model-row" data-labs-model="${escapeHtml(model.id)}" data-labs-provider="${escapeHtml(record.provider || 'gateway')}" data-labs-search="${escapeHtml(`${model.id} ${target}`.toLowerCase())}"><span class="material-symbols-outlined">neurology</span><span><strong>${escapeHtml(model.id)}</strong><small>${escapeHtml(target)}</small></span><span class="material-symbols-outlined mlab-model-check">${model.id === labsSelectedModel ? 'check_circle' : 'radio_button_unchecked'}</span></button>`;
   }).join('');
   return `
     <div class="mlab-page">
@@ -5631,7 +5639,7 @@ function renderModelLabs(payload = {}) {
           </div>
         </form>
       </section>
-      <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3>Select model</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search models or routes…" /></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div>
+      <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3 id="labs-picker-title">Select provider</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search providers…" /></div><div class="mlab-picker-step" id="labs-provider-step"><div class="mlab-step-caption">1 · Choose an upstream provider</div><div class="mlab-provider-grid" id="labs-provider-results">${providerRows || '<div class="mlab-picker-empty">No providers with published models found.</div>'}</div></div><div class="mlab-picker-step" id="labs-model-step" hidden><div class="mlab-model-step-bar"><button type="button" class="mlab-picker-back" id="labs-picker-back"><span class="material-symbols-outlined">arrow_back</span> Providers</button><div class="mlab-step-caption" id="labs-selected-provider">2 · Choose a model</div></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div></div>
     </div>`;
 }
 
@@ -5644,9 +5652,32 @@ function bindModelLabs(payload = {}) {
   const status = document.querySelector('#labs-status');
   const modal = document.querySelector('#labs-model-modal');
   const search = document.querySelector('#labs-model-search');
+  const providerStep = document.querySelector('#labs-provider-step');
+  const modelStep = document.querySelector('#labs-model-step');
+  const pickerTitle = document.querySelector('#labs-picker-title');
+  const selectedProviderLabel = document.querySelector('#labs-selected-provider');
+  let activeProvider = '';
   let conversation = [];
-  const openPicker = () => { if (modal) { modal.hidden = false; search?.focus(); } };
+  const openPicker = () => { if (modal) { showProviders(); modal.hidden = false; search?.focus(); } };
   const closePicker = () => { if (modal) modal.hidden = true; };
+  const showProviders = () => {
+    activeProvider = '';
+    if (providerStep) providerStep.hidden = false;
+    if (modelStep) modelStep.hidden = true;
+    if (pickerTitle) pickerTitle.textContent = 'Select provider';
+    if (search) { search.value = ''; search.placeholder = 'Search providers…'; }
+  };
+  const showProviderModels = (provider) => {
+    activeProvider = String(provider || '').toLowerCase();
+    if (providerStep) providerStep.hidden = true;
+    if (modelStep) modelStep.hidden = false;
+    if (pickerTitle) pickerTitle.textContent = 'Select model';
+    if (selectedProviderLabel) selectedProviderLabel.textContent = `2 · ${provider} models`;
+    if (search) { search.value = ''; search.placeholder = `Search ${provider} models…`; }
+    document.querySelectorAll('[data-labs-model]').forEach((button) => {
+      button.hidden = String(button.dataset.labsProvider || '').toLowerCase() !== activeProvider;
+    });
+  };
   const selectModel = (modelID) => {
     if (!models.some((model) => model.id === modelID)) return;
     labsSelectedModel = modelID;
@@ -5666,13 +5697,22 @@ function bindModelLabs(payload = {}) {
   };
   document.querySelector('#labs-open-picker')?.addEventListener('click', openPicker);
   document.querySelector('#labs-open-picker-inline')?.addEventListener('click', openPicker);
+  transcript?.addEventListener('click', (event) => {
+    if (event.target.closest('#labs-open-picker-inline')) openPicker();
+  });
   document.querySelector('#labs-close-picker')?.addEventListener('click', closePicker);
+  document.querySelector('#labs-picker-back')?.addEventListener('click', showProviders);
   modal?.addEventListener('click', (event) => { if (event.target === modal) closePicker(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePicker(); }, { once: true });
+  document.querySelectorAll('[data-labs-provider]').forEach((button) => button.addEventListener('click', () => showProviderModels(button.dataset.labsProvider)));
   document.querySelectorAll('[data-labs-model]').forEach((button) => button.addEventListener('click', () => selectModel(button.dataset.labsModel)));
   search?.addEventListener('input', () => {
     const query = search.value.trim().toLowerCase();
-    document.querySelectorAll('[data-labs-model]').forEach((button) => { button.hidden = Boolean(query) && !String(button.dataset.labsSearch || '').includes(query); });
+    const selector = activeProvider ? '[data-labs-model]' : '[data-labs-provider]';
+    document.querySelectorAll(selector).forEach((button) => {
+      const matchesProvider = !activeProvider || String(button.dataset.labsProvider || '').toLowerCase() === activeProvider;
+      button.hidden = !matchesProvider || (Boolean(query) && !String(button.dataset.labsSearch || '').includes(query));
+    });
   });
   const addBubble = (role, text = '') => {
     document.querySelector('#labs-welcome')?.remove();
