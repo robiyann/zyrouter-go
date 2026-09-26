@@ -459,58 +459,6 @@ function showToast(message, type = 'info') {
   }, 3200);
 }
 
-function showPromptModal({ title = 'Prompt', kicker = 'INPUT REQUIRED', message = '', label = 'Value', defaultValue = '', placeholder = '', confirmText = 'Save' } = {}) {
-  return new Promise((resolve) => {
-    const backdrop = document.createElement('div');
-    backdrop.className = 'modal-backdrop';
-    backdrop.innerHTML = `
-      <div class="cyber-modal-card">
-        <div class="cyber-modal-head">
-          <div>
-            <span class="kicker" style="font-size:8px;">${escapeHtml(kicker)}</span>
-            <h3>${escapeHtml(title)}</h3>
-          </div>
-          <button type="button" class="cancel-button" id="btn-modal-close" style="padding:2px 6px;">&times;</button>
-        </div>
-        <form id="cyber-prompt-form">
-          <div class="cyber-modal-body">
-            ${message ? `<p>${escapeHtml(message)}</p>` : ''}
-            <label style="display:grid; gap:4px; font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase;">
-              ${escapeHtml(label)}
-              <input name="promptValue" id="cyber-modal-input" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(placeholder)}" required autocomplete="off" />
-            </label>
-            <p class="form-error" style="font-size:10.5px; color:var(--danger); margin:0;"></p>
-          </div>
-          <div class="cyber-modal-actions">
-            <button type="button" class="cancel-button" id="btn-modal-cancel">Cancel</button>
-            <button type="submit" class="solid-button" id="btn-modal-submit">${escapeHtml(confirmText)}</button>
-          </div>
-        </form>
-      </div>
-    `;
-
-    document.body.appendChild(backdrop);
-    const input = backdrop.querySelector('#cyber-modal-input');
-    input.focus();
-    input.select();
-
-    const cleanup = (val) => {
-      backdrop.remove();
-      resolve(val);
-    };
-
-    backdrop.querySelector('#btn-modal-close').onclick = () => cleanup(null);
-    backdrop.querySelector('#btn-modal-cancel').onclick = () => cleanup(null);
-    backdrop.onclick = (e) => { if (e.target === backdrop) cleanup(null); };
-
-    backdrop.querySelector('#cyber-prompt-form').onsubmit = (e) => {
-      e.preventDefault();
-      const val = input.value.trim();
-      cleanup(val);
-    };
-  });
-}
-
 function showOneTimeKeyModal(key) {
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
@@ -6664,162 +6612,7 @@ function parseRestrictionsObject(raw) {
     return { allowedModels: [], allowedPrefixes: [], allowedProviders: [], blockedModels: [], rateLimit: { requestsPerMinute: 0, tokensPerDay: 0 } };
   }
 }
-function getActiveProviderModels(allConnections = [], allBackendModels = [], providerNodes = [], customModels = []) {
-  const activeConns = (allConnections || []).filter(isItemActive);
-  const activeProviderMap = new Map();
-  const allActiveModels = [];
-  const suggestedPrefixes = new Set();
-  const nodeMap = new Map((providerNodes || []).map((node) => [String(node.id || '').toLowerCase(), node]));
 
-  const ensureProviderGroup = (provId) => {
-    if (!provId) return null;
-    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
-    const canonicalId = cat?.id || provId;
-    if (activeProviderMap.has(canonicalId)) return activeProviderMap.get(canonicalId);
-    const node = nodeMap.get(canonicalId) || nodeMap.get(provId);
-    // Public/no-auth providers have no providerConnections row, but they are
-    // still active routing targets and must appear in policy restrictions.
-    if (!cat || (cat.category !== 'free' && cat.authType !== 'noauth')) return null;
-    const defaultPrefix = cat?.alias || canonicalId;
-    const entry = {
-      provId: canonicalId,
-      providerName: node?.name || cat?.name || canonicalId.toUpperCase(),
-      conns: [],
-      modelSet: new Set(cat?.defaultModels || []),
-      routePrefix: node?.prefix || defaultPrefix
-    };
-    activeProviderMap.set(canonicalId, entry);
-    return entry;
-  };
-
-  // 1. Group active connections by unique Provider Type
-  activeConns.forEach((conn) => {
-    const rawProv = (conn.provider || '').toLowerCase();
-    if (!rawProv) return;
-    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === rawProv || (p.alias && p.alias === rawProv));
-    const provId = cat?.id || rawProv;
-
-    if (!activeProviderMap.has(provId)) {
-      const node = nodeMap.get(provId) || nodeMap.get(rawProv);
-      const defaultPrefix = cat?.alias || provId;
-      activeProviderMap.set(provId, {
-        provId,
-        providerName: node?.name || cat?.name || provId.toUpperCase(),
-        conns: [],
-        modelSet: new Set(cat?.defaultModels || []),
-        routePrefix: node?.prefix || defaultPrefix
-      });
-    }
-
-    const entry = activeProviderMap.get(provId);
-    entry.conns.push(conn);
-
-    // Add custom models from connection data
-    try {
-      const d = typeof conn.data === 'string' ? JSON.parse(conn.data) : (conn.data || {});
-      const connectionPrefix = String(d.prefix || d.providerSpecificData?.prefix || '').trim().toLowerCase();
-      if (connectionPrefix) entry.routePrefix = connectionPrefix;
-      if (d.defaultModel) entry.modelSet.add(d.defaultModel);
-      if (Array.isArray(d.customModels)) d.customModels.forEach((cm) => entry.modelSet.add(cm));
-    } catch {}
-  });
-
-  // Include models manually registered in the provider detail view. These are
-  // not guaranteed to be returned by the live /models endpoint.
-  (customModels || []).forEach((model) => {
-    const provider = String(model.provider || model.providerId || '').toLowerCase();
-    const alias = String(model.providerAlias || '').toLowerCase();
-    const entry = activeProviderMap.get(provider) || Array.from(activeProviderMap.values()).find((candidate) => {
-      const node = nodeMap.get(candidate.provId);
-      const candidateAliases = [
-        candidate.provId,
-        candidate.routePrefix,
-        node?.prefix,
-        node?.providerAlias,
-        node?.name
-      ].map((value) => String(value || '').toLowerCase()).filter(Boolean);
-      return candidateAliases.includes(provider) || candidateAliases.includes(alias);
-    });
-    if (!entry || !model.id) return;
-    entry.modelSet.add(String(model.id).trim());
-  });
-
-  // 2. Add backend /models matching active providers
-  (allBackendModels || []).forEach((m) => {
-    const mid = typeof m === 'string' ? m : m.id;
-    const owner = typeof m === 'object' ? (m.owned_by || '').toLowerCase() : '';
-    if (owner) {
-      const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === owner || (p.alias && p.alias === owner));
-      const canonicalOwner = cat?.id || owner;
-      const entry = activeProviderMap.get(canonicalOwner) || ensureProviderGroup(canonicalOwner);
-      if (entry) entry.modelSet.add(mid);
-    }
-  });
-
-  // 3. Build distinct provider groups and suggested prefixes
-  const groups = [];
-  activeProviderMap.forEach((entry, provId) => {
-    const rawModels = Array.from(entry.modelSet)
-      .map((model) => {
-        const normalized = String(model || '').trim();
-        if (!normalized) return '';
-        const prefix = entry.routePrefix || provId;
-        if (normalized.includes('/')) {
-          const parts = normalized.split('/');
-          const curPrefix = parts[0];
-          const curModel = parts[1];
-          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
-          if (curPrefix.toLowerCase() === prefix.toLowerCase() ||
-              (cat && (curPrefix.toLowerCase() === cat.id.toLowerCase() || (cat.alias && curPrefix.toLowerCase() === cat.alias.toLowerCase())))) {
-            return `${prefix}/${curModel}`;
-          }
-          return normalized;
-        }
-        return `${prefix}/${normalized}`;
-      })
-      .filter(Boolean);
-    rawModels.forEach((m) => allActiveModels.push(m));
-
-    // Suggested wildcard prefixes for this active provider
-    suggestedPrefixes.add(`${provId}/*`);
-    if (provId.includes('openai')) {
-      suggestedPrefixes.add('gpt-*');
-      suggestedPrefixes.add('o1-*');
-    }
-    if (provId.includes('anthropic') || provId.includes('claude')) {
-      suggestedPrefixes.add('claude-*');
-    }
-    if (provId.includes('gemini') || provId.includes('google')) {
-      suggestedPrefixes.add('gemini-*');
-    }
-    if (provId.includes('deepseek')) {
-      suggestedPrefixes.add('deepseek-*');
-    }
-    if (provId.includes('groq')) {
-      suggestedPrefixes.add('llama-*');
-    }
-    if (provId.includes('mistral')) {
-      suggestedPrefixes.add('mistral-*');
-    }
-    if (provId.includes('xai') || provId.includes('grok')) {
-      suggestedPrefixes.add('grok-*');
-    }
-
-    groups.push({
-      provider: provId,
-      providerName: entry.providerName,
-      accountCount: entry.conns.length,
-      models: Array.from(new Set(rawModels))
-    });
-  });
-
-  return {
-    activeConnections: activeConns,
-    groups,
-    allActiveModels: Array.from(new Set(allActiveModels)),
-    suggestedPrefixes: Array.from(suggestedPrefixes)
-  };
-}
 function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = [], accountTypes = []) {
   const current = parseRestrictionsObject(item.restrictions);
   // Model & provider routing restrictions are governed at the system & tier level.
@@ -10073,7 +9866,6 @@ function drawMeshLines() {
   svg.innerHTML = pathsHtml;
 }
 
-let meshFlashResetTimer;
 function updateMeshRealtimeState(activeRequests = []) {
   const statusBadge = document.querySelector('#mesh-live-status');
   const latencyBadge = document.querySelector('#mesh-core-latency');
@@ -10113,7 +9905,9 @@ function updateMeshRealtimeState(activeRequests = []) {
     else if (clientHeader.includes('cline') || clientHeader.includes('roo') || model.includes('cline') || model.includes('roo') || prov === 'cline') activeClientIds.add('cline');
     else if (clientHeader.includes('opencode') || model.includes('opencode') || prov === 'opencode' || prov === 'opencode-go' || prov.startsWith('oc')) activeClientIds.add('opencode');
     else if (clientHeader.includes('copilot') || model.includes('copilot') || prov === 'copilot' || prov === 'github' || prov === 'codex') activeClientIds.add('copilot');
-    else activeClientIds.add('opencode');
+    // Do not guess a client from the upstream provider/model. ActiveRequest
+    // currently carries no reliable client header, so an unknown request must
+    // leave all client nodes idle instead of falsely lighting OpenCode.
   });
 
   clients.forEach((c) => c.classList.toggle('active', activeClientIds.has(c.dataset.clientId)));
@@ -10126,24 +9920,6 @@ function updateMeshRealtimeState(activeRequests = []) {
   drawMeshLines();
 }
 
-function flashMeshOnLog(line) {
-  const text = String(line || '').toLowerCase();
-  if (!text.includes('/chat/completions') && !text.includes('/messages') && !text.includes('[request]')) return;
-
-  const providers = Array.from(document.querySelectorAll('.mesh-providers-col .mesh-node'));
-  const matched = providers.find((p) => text.includes(p.dataset.providerId));
-  if (matched) {
-    matched.classList.add('active');
-    const client = document.querySelector('.mesh-clients-col .mesh-node');
-    if (client) client.classList.add('active');
-    drawMeshLines();
-
-    clearTimeout(meshFlashResetTimer);
-    meshFlashResetTimer = setTimeout(() => {
-      updateMeshRealtimeState([]);
-    }, 1600);
-  }
-}
 let meshZoom = 1.0;
 let isPanningMesh = false;
 let panStartX = 0;
