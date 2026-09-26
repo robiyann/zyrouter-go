@@ -88,9 +88,11 @@ func ForwardGemini(ctx context.Context, client *http.Client, cfg *providers.Prov
 	}
 
 	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + apiKey,
-		"User-Agent":    "antigravity/ide/2.11.0 darwin/arm64",
+		"Content-Type":      "application/json",
+		"Authorization":     "Bearer " + apiKey,
+		"User-Agent":        "antigravity/ide/2.11.0 darwin/arm64",
+		"X-Goog-Api-Client": "gl-node/18.18.2 gccl/0.1.0-antigravity",
+		"X-Client-Version":  "0.1.28",
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", requestURL, bytes.NewReader(sendBody))
