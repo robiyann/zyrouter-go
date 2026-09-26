@@ -5598,31 +5598,40 @@ function renderSparkline(points = [], color = '#c8ff63') {
 
 let labsSelectedModel = '';
 
+function modelLabsWelcomeMarkup() {
+  return `<div class="mlab-welcome" id="labs-welcome"><span class="material-symbols-outlined mlab-welcome-icon">science</span><h2>Model Lab</h2><p><button type="button" class="mlab-inline-picker" id="labs-open-picker-inline">${escapeHtml(labsSelectedModel || 'Pick a model below')}</button> — answers stream live through your gateway.</p><div class="mlab-suggestions">${[
+    ['Test tool calling: use printf to print hello', 'build'],
+    ['Think step by step through a tricky logic puzzle', 'psychology'],
+    ['Explain how TCP retransmission works, briefly', 'public'],
+    ['Write a haiku about packet loss', 'auto_awesome'],
+  ].map(([label, icon]) => `<button type="button" class="mlab-suggestion" data-labs-suggestion="${escapeHtml(label)}"><span class="material-symbols-outlined">${icon}</span>${escapeHtml(label)}</button>`).join('')}</div></div>`;
+}
+
 function renderModelLabs(payload = {}) {
   const models = Array.isArray(payload.models) ? payload.models.filter((model) => model && model.id) : [];
   const aliases = Array.isArray(payload.aliases) ? payload.aliases : [];
   const aliasMap = new Map(aliases.filter((record) => record && record.alias).map((record) => [record.alias, record]));
-  if (!models.some((model) => model.id === labsSelectedModel)) labsSelectedModel = models[0]?.id || '';
-  if (models.length === 0) return `<div class="card" style="padding:24px;"><span class="kicker">MODEL LABS</span><h2 style="margin:4px 0 6px;">No published models</h2><p style="color:var(--muted); font-size:12px;">Publish a Model Alias first, then return here to test it through the gateway.</p></div>`;
-
+  if (!models.some((model) => model.id === labsSelectedModel)) labsSelectedModel = '';
+  const modelRows = models.map((model) => {
+    const record = aliasMap.get(model.id) || {};
+    const target = record.provider && record.upstreamModel ? `${record.provider} / ${record.upstreamModel}` : 'Published gateway alias';
+    return `<button type="button" class="mlab-model-row" data-labs-model="${escapeHtml(model.id)}" data-labs-search="${escapeHtml(`${model.id} ${target}`.toLowerCase())}"><span class="material-symbols-outlined">neurology</span><span><strong>${escapeHtml(model.id)}</strong><small>${escapeHtml(target)}</small></span><span class="material-symbols-outlined mlab-model-check">${model.id === labsSelectedModel ? 'check_circle' : 'radio_button_unchecked'}</span></button>`;
+  }).join('');
   return `
-    <div class="model-labs-intro card">
-      <div><span class="kicker">MODEL LABS / GATEWAY PLAYGROUND</span><h2>Pick a model below — answers stream live through your gateway.</h2><p>Requests use the same public aliases, policies, routing, audit log, and upstream failover as real clients.</p></div>
-      <span class="table-badge active"><span class="pulse-dot emerald" style="display:inline-block; width:6px; height:6px; margin-right:4px;"></span> LIVE STREAM</span>
-    </div>
-    <div class="model-labs-layout">
-      <section class="card model-labs-picker"><div class="card-top"><div><span class="kicker">AVAILABLE MODELS</span><h3>Choose a route</h3></div><span class="table-badge purple">${models.length} MODELS</span></div>
-        <div class="model-labs-model-list">${models.map((model) => {
-          const record = aliasMap.get(model.id) || {};
-          const selected = model.id === labsSelectedModel;
-          const target = record.provider && record.upstreamModel ? `${record.provider} / ${record.upstreamModel}` : 'Published gateway alias';
-          return `<button type="button" class="model-labs-model-option${selected ? ' selected' : ''}" data-labs-model="${escapeHtml(model.id)}"><span class="model-labs-model-icon material-symbols-outlined">neurology</span><span class="model-labs-model-copy"><strong>${escapeHtml(model.id)}</strong><small>${escapeHtml(target)}</small></span><span class="material-symbols-outlined model-labs-check">${selected ? 'radio_button_checked' : 'radio_button_unchecked'}</span></button>`;
-        }).join('')}</div>
+    <div class="mlab-page">
+      <section class="mlab-surface card">
+        <div class="mlab-transcript" id="labs-transcript">${modelLabsWelcomeMarkup()}</div>
+        <form id="labs-prompt-form" class="mlab-composer">
+          <div class="mlab-composer-box">
+            <textarea id="labs-prompt-input" rows="1" placeholder="${labsSelectedModel ? `Message ${escapeHtml(labsSelectedModel)}…` : 'Pick a model, then ask anything…'}" required></textarea>
+            <div class="mlab-composer-footer">
+              <button type="button" class="mlab-tool-button" id="labs-open-picker" title="Select model"><span class="material-symbols-outlined">route</span><span id="labs-selected-model">${escapeHtml(labsSelectedModel || 'Select model')}</span><span class="material-symbols-outlined">expand_more</span></button>
+              <div class="mlab-composer-actions"><span id="labs-status">Ready · stream through gateway</span><button type="button" class="mlab-tool-button" id="btn-labs-clear" title="New session"><span class="material-symbols-outlined">add</span> New</button><button type="submit" class="mlab-send-button" id="btn-labs-run" title="Send"><span class="material-symbols-outlined">arrow_upward</span></button></div>
+            </div>
+          </div>
+        </form>
       </section>
-      <section class="card model-labs-chat"><div class="card-top"><div><span class="kicker">PLAYGROUND SESSION</span><h3 id="labs-selected-model">${escapeHtml(labsSelectedModel || 'Select a model')}</h3></div><button type="button" class="secondary-button" id="btn-labs-clear" style="font-size:10px; padding:5px 9px;">Clear</button></div>
-        <div class="model-labs-transcript" id="labs-transcript"><div class="model-labs-empty"><span class="material-symbols-outlined">forum</span><p>Send a prompt to start a live gateway session.</p></div></div>
-        <form id="labs-prompt-form" class="model-labs-composer"><textarea id="labs-prompt-input" rows="3" placeholder="Ask the selected model anything..." required></textarea><div class="model-labs-composer-footer"><span id="labs-status">Ready · responses stream token by token</span><button type="submit" class="solid-button" id="btn-labs-run"><span class="material-symbols-outlined" style="font-size:14px;">send</span> Run prompt</button></div></form>
-      </section>
+      <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3>Select model</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search models or routes…" /></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div>
     </div>`;
 }
 
@@ -5633,92 +5642,76 @@ function bindModelLabs(payload = {}) {
   const input = document.querySelector('#labs-prompt-input');
   const runButton = document.querySelector('#btn-labs-run');
   const status = document.querySelector('#labs-status');
-  const selectedModelLabel = document.querySelector('#labs-selected-model');
+  const modal = document.querySelector('#labs-model-modal');
+  const search = document.querySelector('#labs-model-search');
   let conversation = [];
+  const openPicker = () => { if (modal) { modal.hidden = false; search?.focus(); } };
+  const closePicker = () => { if (modal) modal.hidden = true; };
   const selectModel = (modelID) => {
     if (!models.some((model) => model.id === modelID)) return;
     labsSelectedModel = modelID;
     document.querySelectorAll('[data-labs-model]').forEach((button) => {
       const selected = button.dataset.labsModel === modelID;
       button.classList.toggle('selected', selected);
-      const check = button.querySelector('.model-labs-check');
-      if (check) check.textContent = selected ? 'radio_button_checked' : 'radio_button_unchecked';
+      const check = button.querySelector('.mlab-model-check');
+      if (check) check.textContent = selected ? 'check_circle' : 'radio_button_unchecked';
     });
-    if (selectedModelLabel) selectedModelLabel.textContent = modelID;
+    const label = document.querySelector('#labs-selected-model');
+    if (label) label.textContent = modelID;
+    const inline = document.querySelector('#labs-open-picker-inline');
+    if (inline) inline.textContent = modelID;
+    if (input) input.placeholder = `Message ${modelID}…`;
+    if (status) status.textContent = 'Ready · stream through gateway';
+    closePicker();
   };
+  document.querySelector('#labs-open-picker')?.addEventListener('click', openPicker);
+  document.querySelector('#labs-open-picker-inline')?.addEventListener('click', openPicker);
+  document.querySelector('#labs-close-picker')?.addEventListener('click', closePicker);
+  modal?.addEventListener('click', (event) => { if (event.target === modal) closePicker(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePicker(); }, { once: true });
   document.querySelectorAll('[data-labs-model]').forEach((button) => button.addEventListener('click', () => selectModel(button.dataset.labsModel)));
-
+  search?.addEventListener('input', () => {
+    const query = search.value.trim().toLowerCase();
+    document.querySelectorAll('[data-labs-model]').forEach((button) => { button.hidden = Boolean(query) && !String(button.dataset.labsSearch || '').includes(query); });
+  });
   const addBubble = (role, text = '') => {
-    const empty = transcript?.querySelector('.model-labs-empty');
-    if (empty) empty.remove();
+    document.querySelector('#labs-welcome')?.remove();
     const bubble = document.createElement('div');
-    bubble.className = `model-labs-message ${role}`;
-    bubble.innerHTML = `<span class="model-labs-message-role">${role === 'user' ? 'YOU' : 'MODEL'}</span><div class="model-labs-message-body"></div>`;
-    const body = bubble.querySelector('.model-labs-message-body');
+    bubble.className = `mlab-message ${role}`;
+    bubble.innerHTML = role === 'user' ? `<div class="mlab-message-meta">You</div><div class="mlab-user-bubble"></div>` : `<div class="mlab-message-meta">${escapeHtml(labsSelectedModel || 'assistant')}</div><div class="mlab-assistant-body"></div>`;
+    const body = bubble.querySelector(role === 'user' ? '.mlab-user-bubble' : '.mlab-assistant-body');
     body.textContent = text;
     transcript?.appendChild(bubble);
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
     return body;
   };
-  document.querySelector('#btn-labs-clear')?.addEventListener('click', () => {
-    conversation = [];
-    if (transcript) transcript.innerHTML = '<div class="model-labs-empty"><span class="material-symbols-outlined">forum</span><p>Send a prompt to start a live gateway session.</p></div>';
-    if (status) status.textContent = 'Ready · responses stream token by token';
-  });
-  form?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const prompt = String(input?.value || '').trim();
-    if (!prompt || !labsSelectedModel || !runButton) return;
+  document.querySelector('#btn-labs-clear')?.addEventListener('click', () => { conversation = []; if (transcript) transcript.innerHTML = modelLabsWelcomeMarkup(); if (status) status.textContent = 'Ready · stream through gateway'; });
+  const runPrompt = async (rawPrompt) => {
+    const prompt = String(rawPrompt || '').trim();
+    if (!prompt || !labsSelectedModel || !runButton) { if (!labsSelectedModel) openPicker(); return; }
     const messages = [...conversation, { role: 'user', content: prompt }];
     addBubble('user', prompt);
     if (input) input.value = '';
     const responseBody = addBubble('assistant', '');
     runButton.disabled = true;
-    if (status) status.textContent = `Streaming ${labsSelectedModel}...`;
+    if (status) status.textContent = `Streaming ${labsSelectedModel}…`;
     let answer = '';
     try {
-      const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', body: JSON.stringify({ model: labsSelectedModel, messages, stream: true }) });
-      if (!response.ok) {
-        const text = await response.text();
-        let message = text;
-        try { message = JSON.parse(text)?.error?.message || text; } catch {}
-        throw new Error(message || `Gateway returned HTTP ${response.status}`);
-      }
+      const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', body: JSON.stringify({ model: labsSelectedModel, messages, stream: true, max_tokens: 1024 }) });
+      if (!response.ok) { const text = await response.text(); let message = text; try { message = JSON.parse(text)?.error?.message || text; } catch {} throw new Error(message || `Gateway returned HTTP ${response.status}`); }
       const reader = response.body?.getReader();
       if (!reader) throw new Error('Streaming is unavailable in this browser');
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const consume = (eventText) => eventText.split('\n').filter((line) => line.startsWith('data:')).forEach((line) => {
-        const raw = line.slice(5).trim();
-        if (!raw || raw === '[DONE]') return;
-        try {
-          const chunk = JSON.parse(raw);
-          const delta = chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? '';
-          if (typeof delta === 'string' && delta) { answer += delta; responseBody.textContent = answer; if (transcript) transcript.scrollTop = transcript.scrollHeight; }
-        } catch {}
-      });
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
-        events.forEach(consume);
-      }
+      const decoder = new TextDecoder(); let buffer = '';
+      const consume = (eventText) => eventText.split('\n').filter((line) => line.startsWith('data:')).forEach((line) => { const raw = line.slice(5).trim(); if (!raw || raw === '[DONE]') return; try { const chunk = JSON.parse(raw); const delta = chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? ''; if (typeof delta === 'string' && delta) { answer += delta; responseBody.textContent = answer; if (transcript) transcript.scrollTop = transcript.scrollHeight; } } catch {} });
+      while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const events = buffer.split('\n\n'); buffer = events.pop() || ''; events.forEach(consume); }
       if (buffer) consume(buffer);
       if (!answer) answer = '(The gateway returned an empty response.)';
-      responseBody.textContent = answer;
-      conversation = [...messages, { role: 'assistant', content: answer }];
-      if (status) status.textContent = 'Complete · request recorded in Usage Ledger';
-    } catch (error) {
-      responseBody.textContent = `Gateway error: ${error.message}`;
-      responseBody.parentElement.classList.add('error');
-      if (status) status.textContent = 'Request failed · check Console Stream for details';
-    } finally {
-      runButton.disabled = false;
-      input?.focus();
-    }
-  });
+      responseBody.textContent = answer; conversation = [...messages, { role: 'assistant', content: answer }]; if (status) status.textContent = 'Complete · request recorded in Usage Ledger';
+    } catch (error) { responseBody.textContent = `Gateway error: ${error.message}`; responseBody.parentElement.classList.add('error'); if (status) status.textContent = 'Request failed · check Console Stream for details'; }
+    finally { runButton.disabled = false; input?.focus(); }
+  };
+  document.querySelectorAll('[data-labs-suggestion]').forEach((button) => button.addEventListener('click', () => runPrompt(button.dataset.labsSuggestion)));
+  form?.addEventListener('submit', (event) => { event.preventDefault(); runPrompt(input?.value); });
 }
 
 function renderUsage(payload) {
@@ -9503,6 +9496,7 @@ function setView(name) {
   document.querySelectorAll('.dock-item').forEach((item) => item.classList.toggle('active', item.dataset.view === baseName));
   overview.classList.toggle('hidden', name !== 'overview');
   generic.classList.toggle('hidden', name === 'overview');
+  generic.classList.toggle('labs-mode', name === 'labs');
   breadcrumb.textContent = name.startsWith('provider/') ? `PROVIDER / ${name.split('/')[1].toUpperCase()}` : data[0];
   if (name !== 'overview') {
     document.querySelector('#generic-title').innerHTML = `${data[1]}<em>_</em>`;
