@@ -5629,17 +5629,20 @@ function renderModelLabs(payload = {}) {
     <div class="mlab-page">
       <section class="mlab-surface card">
         <div class="mlab-transcript" id="labs-transcript">${modelLabsWelcomeMarkup()}</div>
+        <div class="mlab-compare-results" id="labs-compare-results" hidden></div>
         <form id="labs-prompt-form" class="mlab-composer">
           <div class="mlab-composer-box">
+            <div class="mlab-tune-panel" id="labs-tune-panel" hidden><div class="mlab-tune-header"><div><strong>System prompt</strong><small>Injected before the conversation as role: system.</small></div><button type="button" class="mlab-close-button" id="labs-close-tune" aria-label="Close system prompt"><span class="material-symbols-outlined">close</span></button></div><textarea id="labs-system-prompt" rows="4" placeholder="You are a concise, reliable assistant…"></textarea><div class="mlab-tune-footer"><span>Only this playground session uses the prompt.</span><button type="button" class="mlab-picker-back" id="labs-reset-system-prompt">Reset</button></div></div>
             <textarea id="labs-prompt-input" rows="1" placeholder="${labsSelectedModel ? `Message ${escapeHtml(labsSelectedModel)}…` : 'Pick a model, then ask anything…'}" required></textarea>
             <div class="mlab-composer-footer">
               <button type="button" class="mlab-tool-button" id="labs-open-picker" title="Select model"><span class="material-symbols-outlined">route</span><span id="labs-selected-model">${escapeHtml(labsSelectedModel || 'Select model')}</span><span class="material-symbols-outlined">expand_more</span></button>
-              <div class="mlab-composer-actions"><span id="labs-status">Ready · stream through gateway</span><span class="mlab-enter-hint">Enter to send · Shift+Enter for new line</span><button type="button" class="mlab-tool-button" id="btn-labs-clear" title="New session"><span class="material-symbols-outlined">add</span> New</button><button type="submit" class="mlab-send-button" id="btn-labs-run" title="Send"><span class="material-symbols-outlined">arrow_upward</span></button></div>
+              <div class="mlab-composer-actions"><button type="button" class="mlab-tool-button" id="labs-open-tune" title="Inject a system prompt"><span class="material-symbols-outlined">tune</span> System prompt</button><button type="button" class="mlab-tool-button" id="labs-open-compare" title="Compare system prompts"><span class="material-symbols-outlined">compare</span> Compare</button><span id="labs-status">Ready · stream through gateway</span><span class="mlab-enter-hint">Enter to send · Shift+Enter for new line</span><button type="button" class="mlab-tool-button" id="btn-labs-clear" title="New session"><span class="material-symbols-outlined">add</span> New</button><button type="submit" class="mlab-send-button" id="btn-labs-run" title="Send"><span class="material-symbols-outlined">arrow_upward</span></button></div>
             </div>
           </div>
         </form>
       </section>
       <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3 id="labs-picker-title">Select provider</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search providers…" /></div><div class="mlab-picker-step" id="labs-provider-step"><div class="mlab-step-caption">1 · Choose an upstream provider</div><div class="mlab-provider-grid" id="labs-provider-results">${providerRows || '<div class="mlab-picker-empty">No providers with published models found.</div>'}</div></div><div class="mlab-picker-step" id="labs-model-step" hidden><div class="mlab-model-step-bar"><button type="button" class="mlab-picker-back" id="labs-picker-back"><span class="material-symbols-outlined">arrow_back</span> Providers</button><div class="mlab-step-caption" id="labs-selected-provider">2 · Choose a model</div></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div></div>
+      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden><div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts"><div class="mlab-picker-header"><div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div><button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button></div><p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p><textarea id="labs-compare-input" class="mlab-compare-prompt" rows="3" placeholder="User prompt to compare…"></textarea><div class="mlab-compare-columns"><label><span>Variant A · baseline</span><textarea id="labs-compare-a" rows="5" placeholder="Leave empty for no system prompt"></textarea></label><label><span>Variant B · injected</span><textarea id="labs-compare-b" rows="5" placeholder="You are a concise, reliable assistant…"></textarea></label></div><div class="mlab-compare-actions"><button type="button" class="mlab-picker-back" id="labs-cancel-compare">Cancel</button><button type="button" class="mlab-compare-run" id="labs-run-compare"><span class="material-symbols-outlined">compare</span> Run comparison</button></div></div></div>
     </div>`;
 }
 
@@ -5656,6 +5659,13 @@ function bindModelLabs(payload = {}) {
   const modelStep = document.querySelector('#labs-model-step');
   const pickerTitle = document.querySelector('#labs-picker-title');
   const selectedProviderLabel = document.querySelector('#labs-selected-provider');
+  const systemPromptInput = document.querySelector('#labs-system-prompt');
+  const tunePanel = document.querySelector('#labs-tune-panel');
+  const compareModal = document.querySelector('#labs-compare-modal');
+  const compareInput = document.querySelector('#labs-compare-input');
+  const compareA = document.querySelector('#labs-compare-a');
+  const compareB = document.querySelector('#labs-compare-b');
+  const compareResults = document.querySelector('#labs-compare-results');
   let activeProvider = '';
   let conversation = [];
   let activeAbortController = null;
@@ -5696,6 +5706,21 @@ function bindModelLabs(payload = {}) {
     if (status) status.textContent = 'Ready · stream through gateway';
     closePicker();
   };
+  document.querySelector('#labs-open-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = !tunePanel.hidden; });
+  document.querySelector('#labs-close-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = true; });
+  document.querySelector('#labs-reset-system-prompt')?.addEventListener('click', () => { if (systemPromptInput) systemPromptInput.value = ''; });
+  const openCompare = () => {
+    if (!labsSelectedModel) { openPicker(); return; }
+    if (compareInput) compareInput.value = input?.value || '';
+    if (compareB && systemPromptInput?.value) compareB.value = systemPromptInput.value;
+    if (compareModal) compareModal.hidden = false;
+    compareInput?.focus();
+  };
+  const closeCompare = () => { if (compareModal) compareModal.hidden = true; };
+  document.querySelector('#labs-open-compare')?.addEventListener('click', openCompare);
+  document.querySelector('#labs-close-compare')?.addEventListener('click', closeCompare);
+  document.querySelector('#labs-cancel-compare')?.addEventListener('click', closeCompare);
+  compareModal?.addEventListener('click', (event) => { if (event.target === compareModal) closeCompare(); });
   document.querySelector('#labs-open-picker')?.addEventListener('click', openPicker);
   document.querySelector('#labs-open-picker-inline')?.addEventListener('click', openPicker);
   transcript?.addEventListener('click', (event) => {
@@ -5726,42 +5751,125 @@ function bindModelLabs(payload = {}) {
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
     return body;
   };
+  const streamCompletion = async (messages, onDelta, signal) => {
+    const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', signal, body: JSON.stringify({ model: labsSelectedModel, messages, stream: true, max_tokens: 1024 }) });
+    if (!response.ok) {
+      const text = await response.text();
+      let message = text;
+      try { message = JSON.parse(text)?.error?.message || text; } catch {}
+      throw new Error(message || `Gateway returned HTTP ${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Streaming is unavailable in this browser');
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let answer = '';
+    const consume = (eventText) => eventText.split(/\r?\n/).filter((line) => line.startsWith('data:')).forEach((line) => {
+      const raw = line.slice(5).trim();
+      if (!raw || raw === '[DONE]') return;
+      try {
+        const chunk = JSON.parse(raw);
+        const delta = chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? '';
+        if (typeof delta === 'string' && delta) { answer += delta; onDelta(answer); }
+      } catch {}
+    });
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() || '';
+      events.forEach(consume);
+    }
+    if (buffer) consume(buffer);
+    return answer || '(The gateway returned an empty response.)';
+  };
   document.querySelector('#btn-labs-clear')?.addEventListener('click', () => {
     activeAbortController?.abort();
     activeAbortController = null;
     conversation = [];
     if (transcript) transcript.innerHTML = modelLabsWelcomeMarkup();
+    if (compareResults) { compareResults.hidden = true; compareResults.innerHTML = ''; }
+    if (tunePanel) tunePanel.hidden = true;
     if (runButton) runButton.disabled = false;
     if (status) status.textContent = 'Ready · stream through gateway';
     input?.focus();
   });
+  const buildMessages = (history, prompt, systemPrompt = '') => [
+    ...(String(systemPrompt || '').trim() ? [{ role: 'system', content: String(systemPrompt).trim() }] : []),
+    ...history,
+    { role: 'user', content: prompt },
+  ];
   const runPrompt = async (rawPrompt) => {
     const prompt = String(rawPrompt || '').trim();
     if (!prompt || !labsSelectedModel || !runButton) { if (!labsSelectedModel) openPicker(); return; }
-    const messages = [...conversation, { role: 'user', content: prompt }];
+    const messages = buildMessages(conversation, prompt, systemPromptInput?.value);
     addBubble('user', prompt);
     if (input) input.value = '';
     const responseBody = addBubble('assistant', '');
     responseBody.innerHTML = '<span class="mlab-thinking" role="status">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span>';
     runButton.disabled = true;
     if (status) status.textContent = `Streaming ${labsSelectedModel}…`;
-    let answer = '';
     try {
       activeAbortController = new AbortController();
-      const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', signal: activeAbortController.signal, body: JSON.stringify({ model: labsSelectedModel, messages, stream: true, max_tokens: 1024 }) });
-      if (!response.ok) { const text = await response.text(); let message = text; try { message = JSON.parse(text)?.error?.message || text; } catch {} throw new Error(message || `Gateway returned HTTP ${response.status}`); }
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Streaming is unavailable in this browser');
-      const decoder = new TextDecoder(); let buffer = '';
-      const consume = (eventText) => eventText.split(/\r?\n/).filter((line) => line.startsWith('data:')).forEach((line) => { const raw = line.slice(5).trim(); if (!raw || raw === '[DONE]') return; try { const chunk = JSON.parse(raw); const delta = chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? ''; if (typeof delta === 'string' && delta) { answer += delta; responseBody.textContent = answer; if (transcript) transcript.scrollTop = transcript.scrollHeight; } } catch {} });
-      while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const events = buffer.split(/\r?\n\r?\n/); buffer = events.pop() || ''; events.forEach(consume); }
-      if (buffer) consume(buffer);
-      if (!answer) answer = '(The gateway returned an empty response.)';
-      responseBody.textContent = answer; conversation = [...messages, { role: 'assistant', content: answer }]; if (status) status.textContent = 'Complete · request recorded in Usage Ledger';
-    } catch (error) { if (error?.name !== 'AbortError') { responseBody.textContent = `Gateway error: ${error.message}`; responseBody.parentElement.classList.add('error'); if (status) status.textContent = 'Request failed · check Console Stream for details'; } }
-    finally { activeAbortController = null; runButton.disabled = false; input?.focus(); }
+      const answer = await streamCompletion(messages, (text) => {
+        responseBody.textContent = text;
+        if (transcript) transcript.scrollTop = transcript.scrollHeight;
+      }, activeAbortController.signal);
+      responseBody.textContent = answer;
+      conversation = [...conversation, { role: 'user', content: prompt }, { role: 'assistant', content: answer }];
+      if (status) status.textContent = 'Complete · request recorded in Usage Ledger';
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        responseBody.textContent = `Gateway error: ${error.message}`;
+        responseBody.parentElement.classList.add('error');
+        if (status) status.textContent = 'Request failed · check Console Stream for details';
+      }
+    } finally {
+      activeAbortController = null;
+      runButton.disabled = false;
+      input?.focus();
+    }
+  };
+  const runCompare = async () => {
+    const prompt = String(compareInput?.value || input?.value || '').trim();
+    if (!prompt || !labsSelectedModel) { if (!labsSelectedModel) openPicker(); return; }
+    const systemA = String(compareA?.value || '').trim();
+    const systemB = String(compareB?.value || '').trim();
+    if (compareResults) {
+      compareResults.hidden = false;
+      compareResults.innerHTML = `<div class="mlab-compare-header"><div><span class="kicker">PROMPT BENCH</span><strong>Comparing ${escapeHtml(labsSelectedModel)}</strong></div><span class="mlab-compare-status">Streaming both variants…</span></div><div class="mlab-compare-grid"><article class="mlab-compare-card"><header><strong>Variant A</strong><small>${systemA ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-a"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article><article class="mlab-compare-card"><header><strong>Variant B</strong><small>${systemB ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-b"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article></div>`;
+      compareResults.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    const compareButton = document.querySelector('#labs-run-compare');
+    if (compareButton) compareButton.disabled = true;
+    if (status) status.textContent = `Comparing ${labsSelectedModel}…`;
+    const bodyA = document.querySelector('#labs-compare-body-a');
+    const bodyB = document.querySelector('#labs-compare-body-b');
+    activeAbortController = new AbortController();
+    try {
+      const [answerA, answerB] = await Promise.all([
+        streamCompletion(buildMessages(conversation, prompt, systemA), (text) => { if (bodyA) bodyA.textContent = text; }, activeAbortController.signal),
+        streamCompletion(buildMessages(conversation, prompt, systemB), (text) => { if (bodyB) bodyB.textContent = text; }, activeAbortController.signal),
+      ]);
+      if (bodyA) bodyA.textContent = answerA;
+      if (bodyB) bodyB.textContent = answerB;
+      const compareStatus = compareResults?.querySelector('.mlab-compare-status');
+      if (compareStatus) compareStatus.textContent = 'Complete · both requests recorded in Usage Ledger';
+      if (status) status.textContent = 'Comparison complete';
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        const compareStatus = compareResults?.querySelector('.mlab-compare-status');
+        if (compareStatus) compareStatus.textContent = `Comparison failed · ${error.message}`;
+        if (status) status.textContent = 'Comparison failed';
+      }
+    } finally {
+      activeAbortController = null;
+      if (compareButton) compareButton.disabled = false;
+    }
   };
   document.querySelectorAll('[data-labs-suggestion]').forEach((button) => button.addEventListener('click', () => runPrompt(button.dataset.labsSuggestion)));
+  document.querySelector('#labs-run-compare')?.addEventListener('click', runCompare);
   input?.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form?.requestSubmit(); } });
   form?.addEventListener('submit', (event) => { event.preventDefault(); runPrompt(input?.value); });
 }
