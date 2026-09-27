@@ -5670,8 +5670,9 @@ function bindModelLabs(payload = {}) {
   let activeProvider = '';
   let conversation = [];
   let activeAbortController = null;
+  let pendingPickerAction = '';
   const openPicker = () => { if (modal) { showProviders(); modal.hidden = false; search?.focus(); } };
-  const closePicker = () => { if (modal) modal.hidden = true; };
+  const closePicker = () => { pendingPickerAction = ''; if (modal) modal.hidden = true; };
   const showProviders = () => {
     activeProvider = '';
     if (providerStep) providerStep.hidden = false;
@@ -5705,13 +5706,16 @@ function bindModelLabs(payload = {}) {
     if (inline) inline.textContent = modelID;
     if (input) input.placeholder = `Message ${modelID}…`;
     if (status) status.textContent = 'Ready · stream through gateway';
+    const nextAction = pendingPickerAction;
+    pendingPickerAction = '';
     closePicker();
+    if (nextAction === 'compare') setTimeout(openCompare, 0);
   };
   document.querySelector('#labs-open-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = !tunePanel.hidden; });
   document.querySelector('#labs-close-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = true; });
   document.querySelector('#labs-reset-system-prompt')?.addEventListener('click', () => { if (systemPromptInput) systemPromptInput.value = ''; });
   const openCompare = () => {
-    if (!labsSelectedModel) { openPicker(); return; }
+    if (!labsSelectedModel) { pendingPickerAction = 'compare'; openPicker(); return; }
     if (compareModelSelect) compareModelSelect.value = labsSelectedModel;
     if (compareInput) compareInput.value = input?.value || '';
     if (compareB && systemPromptInput?.value) compareB.value = systemPromptInput.value;
