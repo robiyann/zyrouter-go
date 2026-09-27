@@ -5632,7 +5632,7 @@ function renderModelLabs(payload = {}) {
         <div class="mlab-transcript" id="labs-transcript">${modelLabsWelcomeMarkup()}</div>
         <form id="labs-prompt-form" class="mlab-composer">
           <div class="mlab-composer-box">
-            <div class="mlab-tune-panel" id="labs-tune-panel" hidden><div class="mlab-tune-header"><div><strong>System prompt</strong><small>Injected before the conversation as role: system.</small></div><button type="button" class="mlab-close-button" id="labs-close-tune" aria-label="Close system prompt"><span class="material-symbols-outlined">close</span></button></div><textarea id="labs-system-prompt" rows="4" placeholder="You are a concise, reliable assistant…"></textarea><div class="mlab-tune-footer"><span>Only this playground session uses the prompt.</span><button type="button" class="mlab-picker-back" id="labs-reset-system-prompt">Reset</button></div></div>
+            <div class="mlab-tune-panel" id="labs-tune-panel" hidden><div class="mlab-tune-header"><div><strong>System prompt</strong><small>Injected before the conversation as role: system.</small></div><div class="mlab-tune-actions"><button type="button" class="mlab-paste-button" data-labs-paste="#labs-system-prompt">Paste</button><button type="button" class="mlab-close-button" id="labs-close-tune" aria-label="Close system prompt"><span class="material-symbols-outlined">close</span></button></div></div><textarea id="labs-system-prompt" rows="4" placeholder="You are a concise, reliable assistant…"></textarea><div class="mlab-tune-footer"><span>Only this playground session uses the prompt.</span><button type="button" class="mlab-picker-back" id="labs-reset-system-prompt">Reset</button></div></div>
             <textarea id="labs-prompt-input" rows="1" placeholder="${labsSelectedModel ? `Message ${escapeHtml(labsSelectedModel)}…` : 'Pick a model, then ask anything…'}" required></textarea>
             <div class="mlab-composer-footer">
               <button type="button" class="mlab-tool-button" id="labs-open-picker" title="Select model"><span class="material-symbols-outlined">route</span><span id="labs-selected-model">${escapeHtml(labsSelectedModel || 'Select model')}</span><span class="material-symbols-outlined">expand_more</span></button>
@@ -5642,7 +5642,7 @@ function renderModelLabs(payload = {}) {
         </form>
       </section>
       <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3 id="labs-picker-title">Select provider</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search providers…" /></div><div class="mlab-picker-step" id="labs-provider-step"><div class="mlab-step-caption">1 · Choose an upstream provider</div><div class="mlab-provider-grid" id="labs-provider-results">${providerRows || '<div class="mlab-picker-empty">No providers with published models found.</div>'}</div></div><div class="mlab-picker-step" id="labs-model-step" hidden><div class="mlab-model-step-bar"><button type="button" class="mlab-picker-back" id="labs-picker-back"><span class="material-symbols-outlined">arrow_back</span> Providers</button><div class="mlab-step-caption" id="labs-selected-provider">2 · Choose a model</div></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div></div>
-      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden><div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts"><div class="mlab-picker-header"><div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div><button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button></div><p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p><label class="mlab-compare-model-field"><span>Model</span><select id="labs-compare-model">${compareModelOptions || '<option value="">No published models</option>'}</select></label><textarea id="labs-compare-input" class="mlab-compare-prompt" rows="3" placeholder="User prompt to compare…"></textarea><div class="mlab-compare-columns"><label><span>Variant A · baseline</span><textarea id="labs-compare-a" rows="5" placeholder="Leave empty for no system prompt"></textarea></label><label><span>Variant B · injected</span><textarea id="labs-compare-b" rows="5" placeholder="You are a concise, reliable assistant…"></textarea></label></div><div class="mlab-compare-results" id="labs-compare-results" hidden></div><div class="mlab-compare-actions"><button type="button" class="mlab-picker-back" id="labs-cancel-compare">Cancel</button><button type="button" class="mlab-compare-run" id="labs-run-compare"><span class="material-symbols-outlined">compare</span> Run comparison</button></div></div></div>
+      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden><div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts"><div class="mlab-picker-header"><div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div><button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button></div><p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p><label class="mlab-compare-model-field"><span>Model</span><select id="labs-compare-model">${compareModelOptions || '<option value="">No published models</option>'}</select></label><div class="mlab-compare-prompt-wrap"><div class="mlab-compare-label"><span>User prompt</span><button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-input">Paste</button></div><textarea id="labs-compare-input" class="mlab-compare-prompt" rows="3" placeholder="User prompt to compare…"></textarea></div><div class="mlab-compare-columns"><label><div class="mlab-compare-label"><span>Variant A · baseline</span><button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-a">Paste</button></div><textarea id="labs-compare-a" rows="5" placeholder="Leave empty for no system prompt"></textarea></label><label><div class="mlab-compare-label"><span>Variant B · injected</span><button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-b">Paste</button></div><textarea id="labs-compare-b" rows="5" placeholder="You are a concise, reliable assistant…"></textarea></label></div><div class="mlab-compare-results" id="labs-compare-results" hidden></div><div class="mlab-compare-actions"><button type="button" class="mlab-picker-back" id="labs-cancel-compare">Cancel</button><button type="button" class="mlab-compare-run" id="labs-run-compare"><span class="material-symbols-outlined">compare</span> Run comparison</button></div></div></div>
     </div>`;
 }
 
@@ -5720,6 +5720,26 @@ function bindModelLabs(payload = {}) {
     field.dispatchEvent(new Event('input', { bubbles: true }));
   });
   [systemPromptInput, compareInput, compareA, compareB].forEach(bindPlainTextPaste);
+  const pasteIntoField = async (field) => {
+    if (!field || !navigator.clipboard?.readText) {
+      showToast('Clipboard read is unavailable in this browser', 'error');
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+      const start = field.selectionStart ?? field.value.length;
+      const end = field.selectionEnd ?? start;
+      field.focus();
+      field.setRangeText(text, start, end, 'end');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch {
+      showToast('Clipboard permission was denied. Use Ctrl+V after focusing the field.', 'error');
+    }
+  };
+  document.querySelectorAll('[data-labs-paste]').forEach((button) => button.addEventListener('click', () => {
+    pasteIntoField(document.querySelector(button.dataset.labsPaste));
+  }));
   const openCompare = () => {
     if (compareModelSelect) compareModelSelect.value = labsSelectedModel || models[0]?.id || '';
     if (compareInput) compareInput.value = input?.value || '';
