@@ -5707,9 +5707,19 @@ function bindModelLabs(payload = {}) {
     if (status) status.textContent = 'Ready · stream through gateway';
     closePicker();
   };
-  document.querySelector('#labs-open-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = !tunePanel.hidden; });
+  document.querySelector('#labs-open-tune')?.addEventListener('click', () => { if (tunePanel) { tunePanel.hidden = !tunePanel.hidden; if (!tunePanel.hidden) systemPromptInput?.focus(); } });
   document.querySelector('#labs-close-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = true; });
   document.querySelector('#labs-reset-system-prompt')?.addEventListener('click', () => { if (systemPromptInput) systemPromptInput.value = ''; });
+  const bindPlainTextPaste = (field) => field?.addEventListener('paste', (event) => {
+    const text = event.clipboardData?.getData('text/plain');
+    if (typeof text !== 'string' || text.length === 0) return;
+    event.preventDefault();
+    const start = field.selectionStart ?? field.value.length;
+    const end = field.selectionEnd ?? start;
+    field.setRangeText(text, start, end, 'end');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  [systemPromptInput, compareInput, compareA, compareB].forEach(bindPlainTextPaste);
   const openCompare = () => {
     if (compareModelSelect) compareModelSelect.value = labsSelectedModel || models[0]?.id || '';
     if (compareInput) compareInput.value = input?.value || '';
