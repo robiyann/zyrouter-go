@@ -2,6 +2,7 @@ package usagetracker
 
 import (
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -106,5 +107,31 @@ func TestTracker_HistoryLabelResolutionDoesNotHoldRowsConnection(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("history label resolution blocked while rows cursor was open")
+	}
+}
+
+func TestTracker_ConcurrentLoad(t *testing.T) {
+	tracker := NewTracker()
+	var wg sync.WaitGroup
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			model := "model-" + string(rune('a'+index%26))
+			tracker.TrackPending(model, "provider", "connection", true, false)
+			_ = tracker.GetActiveState(nil)
+			tracker.TrackPending(model, "provider", "connection", false, false)
+		}(i)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("tracker did not drain 1000 concurrent request updates")
 	}
 }
