@@ -3,6 +3,8 @@ package usagetracker
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -274,7 +276,7 @@ func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPa
 			CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 			status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 			COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
-			FROM usageHistory ORDER BY timestamp DESC, id DESC LIMIT ?`
+			FROM usageHistory ORDER BY datetime(timestamp) DESC, id DESC LIMIT ?`
 		type rawHistoryRow struct {
 			id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 			prompt, completion                                            int
@@ -305,6 +307,9 @@ func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPa
 			}
 		}
 	}
+	sort.SliceStable(recent, func(i, j int) bool {
+		return recentTimestampAfter(recent[i].Timestamp, recent[j].Timestamp, recent[i].ID, recent[j].ID)
+	})
 
 	errProv := ""
 	if time.Now().UnixMilli()-snapshot.lastErrorTs < 10000 {
@@ -320,6 +325,24 @@ func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPa
 			ByAccount: snapshot.byAccount,
 		},
 	}
+}
+
+func recentTimestampAfter(left, right, leftID, rightID string) bool {
+	leftTime, leftErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(left))
+	rightTime, rightErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(right))
+	if leftErr == nil && rightErr == nil {
+		if !leftTime.Equal(rightTime) {
+			return leftTime.After(rightTime)
+		}
+	} else if leftErr == nil || rightErr != nil {
+		return true
+	} else if rightErr == nil {
+		return false
+	}
+	if left != right {
+		return left > right
+	}
+	return leftID > rightID
 }
 
 func parseModelKey(key string) (model, provider string) {

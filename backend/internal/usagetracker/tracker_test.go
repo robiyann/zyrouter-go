@@ -77,6 +77,20 @@ func TestTracker_PreservesDistinctRequestsWithSameModelAndTimestamp(t *testing.T
 	}
 }
 
+func TestTracker_OrdersMixedTimezoneTimestampsByInstant(t *testing.T) {
+	tracker := NewTracker()
+	tracker.PushRecent(RecentRequest{ID: "older-local", Timestamp: "2026-09-28T23:25:22+07:00", Model: "older", Provider: "provider"}, nil)
+	tracker.PushRecent(RecentRequest{ID: "newer-utc", Timestamp: "2026-09-28T16:32:46Z", Model: "newer", Provider: "provider"}, nil)
+
+	state := tracker.GetActiveState(nil)
+	if len(state.RecentRequests) < 2 {
+		t.Fatalf("expected two recent requests, got %d", len(state.RecentRequests))
+	}
+	if state.RecentRequests[0].ID != "newer-utc" {
+		t.Fatalf("expected newest absolute timestamp first, got %+v", state.RecentRequests[:2])
+	}
+}
+
 func TestTracker_HistoryLabelResolutionDoesNotHoldRowsConnection(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "tracker-history-*.sqlite")
 	if err != nil {

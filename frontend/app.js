@@ -6426,7 +6426,10 @@ function renderUsage(payload) {
   }
   const p = cachedUsagePayload || {};
   const active = Array.isArray(p.activeRequests) ? p.activeRequests : [];
-  const recent = Array.isArray(p.recentRequests) ? p.recentRequests : [];
+  // The backend can merge live tracker rows and SQLite rows that use
+  // different RFC3339 timezone offsets. Sort by parsed instants here as a
+  // final UI-side guard instead of trusting raw timestamp string order.
+  const recent = sortRecentRequests(Array.isArray(p.recentRequests) ? p.recentRequests : []);
   // Extract prompt & completion tokens from either Go engine or Next.js engine
   const promptTokens = Number(p.promptTokens ?? p.totalPromptTokens ?? 0);
   const completionTokens = Number(p.completionTokens ?? p.totalCompletionTokens ?? 0);

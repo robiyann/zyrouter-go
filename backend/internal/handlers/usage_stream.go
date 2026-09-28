@@ -107,7 +107,7 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 			}
 		}
 		sort.SliceStable(combinedRecent, func(i, j int) bool {
-			return combinedRecent[i].Timestamp > combinedRecent[j].Timestamp
+			return recentTimestampAfter(combinedRecent[i].Timestamp, combinedRecent[j].Timestamp, combinedRecent[i].ID, combinedRecent[j].ID)
 		})
 		if len(combinedRecent) > 50 {
 			combinedRecent = combinedRecent[:50]
@@ -134,6 +134,24 @@ func recentRequestKey(req usagetracker.RecentRequest) string {
 		return req.ID
 	}
 	return fmt.Sprintf("%s|%s|%s|%s", req.Timestamp, req.Provider, req.Model, req.Account)
+}
+
+func recentTimestampAfter(left, right, leftID, rightID string) bool {
+	leftTime, leftErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(left))
+	rightTime, rightErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(right))
+	if leftErr == nil && rightErr == nil {
+		if !leftTime.Equal(rightTime) {
+			return leftTime.After(rightTime)
+		}
+	} else if leftErr == nil || rightErr != nil {
+		return true
+	} else if rightErr == nil {
+		return false
+	}
+	if left != right {
+		return left > right
+	}
+	return leftID > rightID
 }
 
 type usageStats struct {
@@ -238,7 +256,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
-		FROM usageHistory ORDER BY timestamp DESC, id DESC LIMIT 50`
+		FROM usageHistory ORDER BY datetime(timestamp) DESC, id DESC LIMIT 50`
 	type rawRecentRow struct {
 		id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 		prompt, completion                                            int

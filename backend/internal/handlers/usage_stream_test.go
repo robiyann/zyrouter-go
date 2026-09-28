@@ -104,7 +104,7 @@ func TestHandleUsageStatsOrdersRecentByTimestamp(t *testing.T) {
 	defer database.Close()
 	repo := db.NewRepo(database)
 	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, promptTokens, completionTokens, status) VALUES (?, ?, ?, 1, 1, '200'), (?, ?, ?, 1, 1, '200')`,
-		"2026-09-28T12:00:00Z", "provider", "older", "2026-09-28T12:05:00Z", "provider", "newer"); err != nil {
+		"2026-09-28T23:25:22+07:00", "provider", "older", "2026-09-28T16:32:46Z", "provider", "newer"); err != nil {
 		t.Fatalf("insert usage history: %v", err)
 	}
 

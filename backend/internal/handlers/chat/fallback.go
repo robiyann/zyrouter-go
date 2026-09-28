@@ -483,7 +483,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 		}
 
 		// Also record failed request in usagetracker so recent log reflects error immediately
-		now := time.Now()
+		now := time.Now().UTC()
 		auditMetadata := auditMetadataFromContext(ctx)
 		reqID := fmt.Sprintf("%d-%s", now.UnixMilli(), model)
 		if middleware.GetRequestIDFromContext(ctx) != "" {
