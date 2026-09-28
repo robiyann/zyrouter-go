@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	_ "modernc.org/sqlite"
 )
 
 var (
@@ -31,7 +31,7 @@ func OpenDatabase(path string) (*sql.DB, error) {
 		// and its directory private to the owning user.
 		_ = os.Chmod(dbDir, 0700)
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open(%s): %w", path, err)
 	}
@@ -68,12 +68,25 @@ PRAGMA busy_timeout = 5000;
 		}
 	}
 
-	// Configure connection pool limits for SQLite to reduce lock contention
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(5)
+	// SQLite readers can run concurrently in WAL mode. Keep enough connections
+	// for the HTTP/SSE fan-out, while the busy timeout serializes short writes
+	// instead of letting a small pool deadlock behind an open Rows cursor.
+	db.SetMaxOpenConns(16)
+	db.SetMaxIdleConns(8)
 	db.SetConnMaxLifetime(time.Hour)
 
 	return db, nil
+}
+
+// sqliteDSN applies connection-local pragmas to every connection created by
+// database/sql. Executing PRAGMA busy_timeout once through db.Exec only
+// configures the one connection that happened to be selected at that moment.
+func sqliteDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 }
 
 // InitGlobalDatabase initializes the global database connection instance.

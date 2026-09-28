@@ -148,7 +148,7 @@ func (h *ChatHandler) handleAccountFallback(
 		}
 		var ue *upstreamError
 		transportFailure := isRetryableConnectionError(lastErr)
-		if (errors.As(lastErr, &ue) && providers.RetryableStatusCodes[ue.StatusCode]) || transportFailure {
+		if (errors.As(lastErr, &ue) && ue != nil && providers.RetryableStatusCodes[ue.StatusCode]) || transportFailure {
 			// Extract error text from upstream body for classification
 			statusCode := http.StatusBadGateway
 			errorText := ""
@@ -163,7 +163,11 @@ func (h *ChatHandler) handleAccountFallback(
 			cooldownSec := int((classification.CooldownMs + 999) / 1000) // ceil to seconds
 			errMsg := errorText
 			if errMsg == "" {
-				errMsg = fmt.Sprintf("%d upstream error", ue.StatusCode)
+				if ue != nil {
+					errMsg = fmt.Sprintf("%d upstream error", ue.StatusCode)
+				} else {
+					errMsg = fmt.Sprintf("%d transport failure: %v", statusCode, lastErr)
+				}
 			}
 			h.Repo.LockConnectionModel(connObj.ID, model, cooldownSec, classification.NewBackoffLevel)
 			log.Warn("fallback", "account failed, cycling to next connection", "failed_account", c.Name, "email", c.Email, "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "status", statusCode, "transport", transportFailure, "cooldown_s", cooldownSec)
@@ -194,7 +198,7 @@ func isRetryableConnectionError(err error) bool {
 // This is provider-aware at runtime and avoids guessing from a model name.
 func retryUnsupportedParameters(err error, body []byte) ([]byte, bool) {
 	var ue *upstreamError
-	if !errors.As(err, &ue) || ue.StatusCode != http.StatusBadRequest {
+	if !errors.As(err, &ue) || ue == nil || ue.StatusCode != http.StatusBadRequest {
 		return nil, false
 	}
 	errorText := strings.ToLower(string(ue.Body))
@@ -343,7 +347,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 	}
 
 	var ue *upstreamError
-	if errors.As(fwdErr, &ue) && ue.StatusCode == http.StatusUnauthorized && connectionID != "" {
+	if errors.As(fwdErr, &ue) && ue != nil && ue.StatusCode == http.StatusUnauthorized && connectionID != "" {
 		refreshedKey, _, rErr := h.forceRefreshOAuthToken(connectionID)
 		if rErr == nil && refreshedKey != "" && refreshedKey != apiKey {
 			log.Info("fallback", "reactive 401 token refresh success, retrying request", "conn", connectionID)
@@ -386,7 +390,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 	status := "error"
 	if fwdErr == nil {
 		status = "200"
-	} else if ue, ok := fwdErr.(*upstreamError); ok && ue.StatusCode > 0 {
+	} else if ue, ok := fwdErr.(*upstreamError); ok && ue != nil && ue.StatusCode > 0 {
 		status = fmt.Sprintf("%d", ue.StatusCode)
 	}
 	tracing.Record(tracing.Span{
@@ -452,7 +456,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 		var ue *upstreamError
 		statusCode := 0
 		var errBodyStr string
-		if errors.As(fwdErr, &ue) {
+		if errors.As(fwdErr, &ue) && ue != nil {
 			statusCode = ue.StatusCode
 			errBodyStr = string(ue.Body)
 		} else if errors.Is(fwdErr, context.DeadlineExceeded) || strings.Contains(strings.ToLower(fwdErr.Error()), "deadline exceeded") || strings.Contains(strings.ToLower(fwdErr.Error()), "timeout") {

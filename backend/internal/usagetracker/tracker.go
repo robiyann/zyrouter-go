@@ -72,6 +72,14 @@ type Tracker struct {
 	broadcastDebounce *time.Timer
 }
 
+type trackerSnapshot struct {
+	byModel           map[string]int
+	byAccount         map[string]map[string]int
+	lastErrorProvider string
+	lastErrorTs       int64
+	recentRing        []RecentRequest
+}
+
 var globalTracker *Tracker
 var once sync.Once
 
@@ -162,12 +170,33 @@ func (t *Tracker) PushRecent(req RecentRequest, repo *db.Repo) {
 // GetActiveState computes the current active state for SSE streaming.
 func (t *Tracker) GetActiveState(repo *db.Repo) StreamPayload {
 	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	return t.buildPayloadLocked(repo)
+	snapshot := t.snapshotLocked()
+	t.mu.RUnlock()
+	return t.buildPayload(repo, snapshot)
 }
 
-func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
+func (t *Tracker) snapshotLocked() trackerSnapshot {
+	snapshot := trackerSnapshot{
+		byModel:           make(map[string]int, len(t.byModel)),
+		byAccount:         make(map[string]map[string]int, len(t.byAccount)),
+		lastErrorProvider: t.lastErrorProvider,
+		lastErrorTs:       t.lastErrorTs,
+		recentRing:        append([]RecentRequest(nil), t.recentRing...),
+	}
+	for key, value := range t.byModel {
+		snapshot.byModel[key] = value
+	}
+	for account, models := range t.byAccount {
+		inner := make(map[string]int, len(models))
+		for model, count := range models {
+			inner[model] = count
+		}
+		snapshot.byAccount[account] = inner
+	}
+	return snapshot
+}
+
+func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPayload {
 	// Build connection name map
 	connMap := make(map[string]string)
 	if repo != nil {
@@ -185,7 +214,7 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 	}
 
 	var active []ActiveRequest
-	for connID, models := range t.byAccount {
+	for connID, models := range snapshot.byAccount {
 		accName := connMap[connID]
 		if accName == "" {
 			if len(connID) > 8 {
@@ -209,7 +238,7 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 
 	// If byAccount was empty but byModel had items (e.g. no-auth/public requests)
 	if len(active) == 0 {
-		for modelKey, count := range t.byModel {
+		for modelKey, count := range snapshot.byModel {
 			if count > 0 {
 				mName, pName := parseModelKey(modelKey)
 				active = append(active, ActiveRequest{
@@ -224,7 +253,7 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 
 	recent := make([]RecentRequest, 0, ringCap)
 	seen := make(map[string]bool)
-	for _, r := range t.recentRing {
+	for _, r := range snapshot.recentRing {
 		k := r.ID
 		if k == "" {
 			k = fmt.Sprintf("%s|%s|%s|%d|%d", r.Timestamp, r.Provider, r.Model, r.PromptTokens, r.CompletionTokens)
@@ -246,55 +275,40 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 			status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 			COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
 			FROM usageHistory ORDER BY id DESC LIMIT ?`
+		type rawHistoryRow struct {
+			id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
+			prompt, completion                                            int
+		}
+		rawRows := make([]rawHistoryRow, 0, limit)
 		if rows, err := repo.RawDB().Query(q, limit); err == nil {
-			defer rows.Close()
 			for rows.Next() {
-				var id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
-				var prompt, completion int
-				if err := rows.Scan(&id, &ts, &prov, &mod, &prompt, &completion, &status, &clientIdentity, &clientIP, &apiKeyID); err == nil {
-					if status == "success" || status == "ok" {
-						status = "200"
-					}
-					displayProvider := labels.Provider(repo, prov)
-					displayModel := labels.Model(repo, prov, mod)
-					k := id
-					if !seen[k] {
-						seen[k] = true
-						recent = append(recent, RecentRequest{
-							ID:               id,
-							Timestamp:        ts,
-							Provider:         displayProvider,
-							Model:            displayModel,
-							PromptTokens:     prompt,
-							CompletionTokens: completion,
-							Status:           status,
-							ClientIdentity:   clientIdentity,
-							ClientIP:         clientIP,
-							APIKeyID:         apiKeyID,
-						})
-					}
+				var row rawHistoryRow
+				if err := rows.Scan(&row.id, &row.ts, &row.prov, &row.mod, &row.prompt, &row.completion, &row.status, &row.clientIdentity, &row.clientIP, &row.apiKeyID); err == nil {
+					rawRows = append(rawRows, row)
 				}
+			}
+			_ = rows.Close()
+		}
+		for _, row := range rawRows {
+			if row.status == "success" || row.status == "ok" {
+				row.status = "200"
+			}
+			displayProvider := labels.Provider(repo, row.prov)
+			displayModel := labels.Model(repo, row.prov, row.mod)
+			if !seen[row.id] {
+				seen[row.id] = true
+				recent = append(recent, RecentRequest{
+					ID: row.id, Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
+					PromptTokens: row.prompt, CompletionTokens: row.completion, Status: row.status,
+					ClientIdentity: row.clientIdentity, ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
+				})
 			}
 		}
 	}
 
 	errProv := ""
-	if time.Now().UnixMilli()-t.lastErrorTs < 10000 {
-		errProv = t.lastErrorProvider
-	}
-
-	byModelCopy := make(map[string]int, len(t.byModel))
-	for k, v := range t.byModel {
-		byModelCopy[k] = v
-	}
-
-	byAccountCopy := make(map[string]map[string]int, len(t.byAccount))
-	for k, v := range t.byAccount {
-		inner := make(map[string]int, len(v))
-		for ik, iv := range v {
-			inner[ik] = iv
-		}
-		byAccountCopy[k] = inner
+	if time.Now().UnixMilli()-snapshot.lastErrorTs < 10000 {
+		errProv = snapshot.lastErrorProvider
 	}
 
 	return StreamPayload{
@@ -302,8 +316,8 @@ func (t *Tracker) buildPayloadLocked(repo *db.Repo) StreamPayload {
 		RecentRequests: recent,
 		ErrorProvider:  errProv,
 		Pending: PendingState{
-			ByModel:   byModelCopy,
-			ByAccount: byAccountCopy,
+			ByModel:   snapshot.byModel,
+			ByAccount: snapshot.byAccount,
 		},
 	}
 }
@@ -342,17 +356,18 @@ func (t *Tracker) scheduleBroadcastLocked(repo *db.Repo) {
 
 	t.broadcastDebounce = time.AfterFunc(50*time.Millisecond, func() {
 		t.mu.RLock()
-		payload := t.buildPayloadLocked(repo)
-		b, err := json.Marshal(payload)
-		if err != nil {
-			t.mu.RUnlock()
-			return
-		}
+		snapshot := t.snapshotLocked()
 		subs := make([]chan []byte, 0, len(t.subscribers))
 		for ch := range t.subscribers {
 			subs = append(subs, ch)
 		}
 		t.mu.RUnlock()
+
+		payload := t.buildPayload(repo, snapshot)
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return
+		}
 
 		for _, ch := range subs {
 			select {

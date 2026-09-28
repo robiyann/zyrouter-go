@@ -103,7 +103,7 @@ func (h *ChatHandler) forwardGeminiNativeRequest(
 	if err != nil {
 		// If upstream returns 401/403 for Antigravity, trigger automatic OAuth refresh and retry once
 		var ue *proxy.UpstreamError
-		if errors.As(err, &ue) && (ue.StatusCode == 401 || ue.StatusCode == 403) && provider == "antigravity" && connectionID != "" {
+		if errors.As(err, &ue) && ue != nil && (ue.StatusCode == 401 || ue.StatusCode == 403) && provider == "antigravity" && connectionID != "" {
 			log.Info("gemini", "antigravity token expired, triggering automatic reactive OAuth refresh", "conn", connectionID)
 			refreshedKey, pid2, rErr := h.forceRefreshOAuthToken(connectionID)
 			if rErr == nil && refreshedKey != "" {

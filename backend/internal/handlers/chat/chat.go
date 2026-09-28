@@ -152,7 +152,7 @@ func (h *ChatHandler) handleSingleModel(ctx context.Context, w http.ResponseWrit
 			return
 		}
 		var ue *upstreamError
-		if errors.As(result, &ue) {
+		if errors.As(result, &ue) && ue != nil {
 			if ue.StatusCode >= http.StatusInternalServerError {
 				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
 				return
@@ -168,6 +168,7 @@ func (h *ChatHandler) handleSingleModel(ctx context.Context, w http.ResponseWrit
 		handlerutil.WriteJSONError(cw, http.StatusBadGateway, "upstream service unavailable")
 	}
 }
+
 // HandleMessages handles POST /v1/messages (Claude format requests).
 func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -376,7 +377,7 @@ func (h *ChatHandler) handleMessagesSingleModel(ctx context.Context, w http.Resp
 			return
 		}
 		var ue *upstreamError
-		if errors.As(result, &ue) {
+		if errors.As(result, &ue) && ue != nil {
 			if ue.StatusCode >= http.StatusInternalServerError {
 				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
 				return
@@ -818,7 +819,7 @@ func (h *ChatHandler) TestProviderModel(ctx context.Context, provider, pinnedCon
 
 	if err != nil {
 		var ue *upstreamError
-		if errors.As(err, &ue) {
+		if errors.As(err, &ue) && ue != nil {
 			errMsg := fmt.Sprintf("HTTP %d: %s", ue.StatusCode, strings.TrimSpace(string(ue.Body)))
 			return &UpstreamTestResult{
 				Status:     "error",

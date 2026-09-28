@@ -1,8 +1,11 @@
 package usagetracker
 
 import (
+	"os"
 	"testing"
 	"time"
+
+	"zyrouter/backend/internal/db"
 )
 
 func TestTracker_Lifecycle(t *testing.T) {
@@ -70,5 +73,38 @@ func TestTracker_PreservesDistinctRequestsWithSameModelAndTimestamp(t *testing.T
 	state := tracker.GetActiveState(nil)
 	if len(state.RecentRequests) != 3 {
 		t.Fatalf("expected all 3 distinct requests, got %d", len(state.RecentRequests))
+	}
+}
+
+func TestTracker_HistoryLabelResolutionDoesNotHoldRowsConnection(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "tracker-history-*.sqlite")
+	if err != nil {
+		t.Fatalf("create temp database: %v", err)
+	}
+	path := tmpFile.Name()
+	_ = tmpFile.Close()
+	defer os.Remove(path)
+
+	database, err := db.OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+	database.SetMaxOpenConns(1)
+
+	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, promptTokens, completionTokens, status, meta, tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		time.Now().UTC().Format(time.RFC3339), "unknown-provider", "test-model", 1, 1, "200", `{"requestId":"history-1"}`, `{"prompt_tokens":1,"completion_tokens":1}`); err != nil {
+		t.Fatalf("insert history row: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		NewTracker().GetActiveState(db.NewRepo(database))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("history label resolution blocked while rows cursor was open")
 	}
 }

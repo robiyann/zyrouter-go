@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"zyrouter/backend/internal/log"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"zyrouter/backend/internal/handlerutil"
+	"zyrouter/backend/internal/log"
 	"zyrouter/backend/internal/providers"
 )
 
@@ -449,7 +449,7 @@ func (h *ChatHandler) handleComboFallback(ctx context.Context, w http.ResponseWr
 						break
 					}
 					var ue *upstreamError
-					if errors.As(fwdErr, &ue) {
+					if errors.As(fwdErr, &ue) && ue != nil {
 						if providers.RetryableStatusCodes[ue.StatusCode] {
 							h.comboLockRetryable(&excludeIDs, connID, modelInfo.Provider, modelInfo.Model, ue)
 						}
@@ -628,7 +628,7 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 						break
 					}
 					var ue *upstreamError
-					if errors.As(fwdErr, &ue) {
+					if errors.As(fwdErr, &ue) && ue != nil {
 						if providers.RetryableStatusCodes[ue.StatusCode] {
 							h.comboLockRetryable(&excludeIDs, connID, modelInfo.Provider, modelInfo.Model, ue)
 						}

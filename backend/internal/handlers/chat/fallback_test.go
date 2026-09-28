@@ -347,3 +347,22 @@ func TestHandleAccountFallback_NoConnections(t *testing.T) {
 		t.Fatal("expected error when provider has no connections")
 	}
 }
+
+func TestHandleAccountFallback_TransportFailureDoesNotPanic(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	baseURL := srv.URL
+	srv.Close()
+
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	seedConnDB(t, database, "deepseek", "conn-transport-failure", "sk-transport", baseURL)
+
+	h := NewChatHandler(db.NewRepo(database))
+	rec := httptest.NewRecorder()
+	err := h.handleAccountFallback(
+		context.Background(), rec, "deepseek", "deepseek-chat", "", []byte(`{"model":"deepseek-chat","messages":[]}`), false, false, "/v1/chat/completions",
+	)
+	if err == nil {
+		t.Fatal("expected transport failure")
+	}
+}

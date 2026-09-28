@@ -228,31 +228,32 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
 		FROM usageHistory ORDER BY id DESC LIMIT 50`
+	type rawRecentRow struct {
+		ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
+		prompt, completion                                        int
+	}
+	rawRows := make([]rawRecentRow, 0, 50)
 	recentRows, err := repo.RawDB().Query(recentQuery)
 	if err == nil {
-		defer recentRows.Close()
 		for recentRows.Next() {
-			var ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
-			var prompt, completion int
-			if err := recentRows.Scan(&ts, &prov, &mod, &prompt, &completion, &status, &clientIdentity, &clientIP, &apiKeyID); err == nil {
-				if status == "success" || status == "ok" {
-					status = "200"
-				}
-				displayProvider := labels.Provider(repo, prov)
-				displayModel := labels.Model(repo, prov, mod)
-				recent = append(recent, usagetracker.RecentRequest{
-					Timestamp:        ts,
-					Provider:         displayProvider,
-					Model:            displayModel,
-					PromptTokens:     prompt,
-					CompletionTokens: completion,
-					Status:           status,
-					ClientIdentity:   clientIdentity,
-					ClientIP:         clientIP,
-					APIKeyID:         apiKeyID,
-				})
+			var row rawRecentRow
+			if err := recentRows.Scan(&row.ts, &row.prov, &row.mod, &row.prompt, &row.completion, &row.status, &row.clientIdentity, &row.clientIP, &row.apiKeyID); err == nil {
+				rawRows = append(rawRows, row)
 			}
 		}
+		_ = recentRows.Close()
+	}
+	for _, row := range rawRows {
+		if row.status == "success" || row.status == "ok" {
+			row.status = "200"
+		}
+		displayProvider := labels.Provider(repo, row.prov)
+		displayModel := labels.Model(repo, row.prov, row.mod)
+		recent = append(recent, usagetracker.RecentRequest{
+			Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
+			PromptTokens: row.prompt, CompletionTokens: row.completion, Status: row.status,
+			ClientIdentity: row.clientIdentity, ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
+		})
 	}
 
 	return result, recent, nil
