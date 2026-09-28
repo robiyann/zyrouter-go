@@ -6,8 +6,35 @@ import (
 	"testing"
 
 	"zyrouter/backend/internal/constants"
+	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/translator"
+	"zyrouter/backend/internal/usagetracker"
 )
+
+func TestLogUsageSharesStableRequestIDWithHistory(t *testing.T) {
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	const requestID = "cross-stream-request-id"
+	NewChatHandler(repo).LogUsage(&UsageLogInfo{
+		Provider: "deepseek", Model: "deepseek-chat", ConnectionID: "conn-1",
+		APIKey: "test-upstream-key", Endpoint: "/v1/chat/completions", RequestID: requestID,
+	}, &translator.OpenAIUsage{PromptTokens: 1, CompletionTokens: 1}, 1, []byte(`{"messages":[]}`), nil)
+
+	var historyID string
+	if err := database.QueryRow(`SELECT json_extract(meta, '$.requestId') FROM usageHistory ORDER BY id DESC LIMIT 1`).Scan(&historyID); err != nil {
+		t.Fatalf("read history request ID: %v", err)
+	}
+	if historyID != requestID {
+		t.Fatalf("history ID = %q, want %q", historyID, requestID)
+	}
+	for _, recent := range usagetracker.GetTracker().GetActiveState(nil).RecentRequests {
+		if recent.ID == requestID {
+			return
+		}
+	}
+	t.Fatalf("live tracker did not publish request ID %q", requestID)
+}
 
 func TestExtractContent(t *testing.T) {
 	tests := []struct {
@@ -153,8 +180,8 @@ func TestGetJSONFloatComprehensive(t *testing.T) {
 func TestGetJSONMapComprehensive(t *testing.T) {
 	nested := map[string]any{"foo": "bar"}
 	m := map[string]any{
-		"existing":  nested,
-		"notamap":   "stringval",
+		"existing": nested,
+		"notamap":  "stringval",
 	}
 	tests := []struct {
 		name string

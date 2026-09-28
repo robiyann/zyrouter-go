@@ -155,7 +155,7 @@ func (r *Repo) GetRecentUsageByAliases(aliasTargets map[string]string, limit int
 			args = append(args, parts[0], parts[1])
 		}
 	}
-	query := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''), promptTokens, completionTokens, status, json_extract(meta, '$.latencyMs') FROM usageHistory WHERE ` + strings.Join(clauses, " OR ") + ` ORDER BY id DESC LIMIT ?`
+	query := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''), promptTokens, completionTokens, status, json_extract(meta, '$.latencyMs') FROM usageHistory WHERE ` + strings.Join(clauses, " OR ") + ` ORDER BY timestamp DESC, id DESC LIMIT ?`
 	args = append(args, limit)
 	rows, err := r.db.Query(query, args...)
 	if err != nil {

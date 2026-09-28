@@ -855,14 +855,40 @@
   /* ==========================================================================
      GLOBAL TELEMETRY STREAM & PRIVATE LOG STREAM (Blueprint 8 & 9)
      ========================================================================== */
+  function streamEventId(event) {
+    return event.requestId || event.id || `${event.timestamp || ''}|${event.model || ''}|${event.status || ''}|${event.totalTokens ?? (Number(event.promptTokens || 0) + Number(event.completionTokens || 0))}`;
+  }
+
+  function streamEventTime(event) {
+    const parsed = Date.parse(event.timestamp || '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function sortStreamEvents(events) {
+    return [...events].sort((a, b) => streamEventTime(b) - streamEventTime(a));
+  }
+
+  function insertStreamRow(list, row, timestamp, newestOnTie) {
+    const time = streamEventTime({ timestamp });
+    const next = Array.from(list.children).find((existing) => {
+      const existingTime = Number(existing.dataset.streamTime || 0);
+      return existingTime < time || (newestOnTie && existingTime === time);
+    });
+    list.insertBefore(row, next || null);
+  }
+
   function renderStreamEvent(e, highlightNew = true, position = 'prepend') {
     if (isStreamPaused) return;
+    if (e.type === 'request.started') return;
     const list = $('logsList');
     if (!list) return;
 
-    const eventId = e.id || `${e.timestamp || ''}|${e.model || ''}|${e.status || ''}|${e.totalTokens || 0}`;
+    const eventId = streamEventId(e);
     if (renderedGlobalEventIds.has(eventId)) return;
     renderedGlobalEventIds.add(eventId);
+    if (renderedGlobalEventIds.size > 1000) {
+      renderedGlobalEventIds.delete(renderedGlobalEventIds.values().next().value);
+    }
 
     // Remove empty state placeholder if present
     const emptyState = list.querySelector('.stream-empty-state');
@@ -870,6 +896,7 @@
 
     const row = document.createElement('div');
     row.className = highlightNew ? 'stream-row stream-row-new' : 'stream-row';
+    row.dataset.streamTime = String(streamEventTime(e));
 
     const timeStr = new Date(e.timestamp || Date.now()).toLocaleTimeString('id-ID', {
       timeZone: 'Asia/Jakarta',
@@ -887,11 +914,7 @@
       <span class="stream-time">${e.durationMs != null ? `${e.durationMs}ms` : ''}</span>
     `;
 
-    if (position === 'append') {
-      list.appendChild(row);
-    } else {
-      list.prepend(row);
-    }
+    insertStreamRow(list, row, e.timestamp, position === 'prepend');
     if (highlightNew) {
       const badge = $('streamNewBadge');
       if (badge) {
@@ -941,7 +964,7 @@
         if ($('globalTokens')) $('globalTokens').textContent = fmt(data.totalTokens);
         if (Array.isArray(data.recent)) {
           // Explicitly sort descending by timestamp (newest first, oldest last)
-          const sorted = data.recent.slice().sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+          const sorted = sortStreamEvents(data.recent);
           if (!globalSnapshotLoaded) {
             sorted.forEach((event) => renderStreamEvent(event, false, 'append'));
             globalSnapshotLoaded = true;

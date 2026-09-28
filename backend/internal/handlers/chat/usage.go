@@ -193,7 +193,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	})
 
 	usagetracker.GetTracker().PushRecent(usagetracker.RecentRequest{
-		ID:               reqID,
+		ID:               clientRequestID,
 		Timestamp:        now.Format(time.RFC3339),
 		Model:            modelLabel,
 		Provider:         providerLabel,
