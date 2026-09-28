@@ -7248,7 +7248,7 @@ async function renderView(name) {
     }
     if (name === 'keys') {
       bindKeyManagementFilters();
-      bindKeyPolicyEditors();
+      bindKeyPolicyEditors(payload);
     }
     if (name === 'account-types') {
       bindAccountTypeActions(payload);
@@ -7794,19 +7794,18 @@ function bindKeyManagementFilters() {
   });
 }
 
-function bindKeyPolicyEditors() {
+function bindKeyPolicyEditors(currentPayload = {}) {
   document.querySelectorAll('[data-edit-key]').forEach((button) => {
     button.onclick = async () => {
       try {
-        const [keysPayload, provPayload, modelPayload, nodesPayload, customPayload, typesPayload] = await Promise.all([
-          request('/api/keys?page=1&pageSize=100'),
+        const [provPayload, modelPayload, nodesPayload, customPayload, typesPayload] = await Promise.all([
           request('/api/providers?summary=1').catch(() => ({ connections: [] })),
           request('/models').catch(() => ({ data: [] })),
           request('/api/provider-nodes').catch(() => ({ nodes: [] })),
           request('/api/custom-models').catch(() => ({ customModels: [] })),
           request('/api/admin/account-types').catch(() => ({ accountTypes: [] }))
         ]);
-        const item = (keysPayload.keys || []).find((k) => k.id === button.dataset.editKey);
+        const item = (currentPayload.keys || []).find((k) => k.id === button.dataset.editKey);
         if (!item) throw new Error('API key not found');
         const connections = provPayload.connections || [];
         const models = modelPayload.data || [];
