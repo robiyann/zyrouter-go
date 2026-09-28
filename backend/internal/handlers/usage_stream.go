@@ -93,14 +93,14 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 		seen := make(map[string]bool)
 		var combinedRecent []usagetracker.RecentRequest
 		for _, req := range state.RecentRequests {
-			k := fmt.Sprintf("%s|%s|%s", req.Timestamp, req.Provider, req.Model)
+			k := recentRequestKey(req)
 			if !seen[k] {
 				seen[k] = true
 				combinedRecent = append(combinedRecent, req)
 			}
 		}
 		for _, req := range recentReqs {
-			k := fmt.Sprintf("%s|%s|%s", req.Timestamp, req.Provider, req.Model)
+			k := recentRequestKey(req)
 			if !seen[k] {
 				seen[k] = true
 				combinedRecent = append(combinedRecent, req)
@@ -127,6 +127,13 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 		}
 		handlerutil.WriteJSON(w, http.StatusOK, response)
 	}
+}
+
+func recentRequestKey(req usagetracker.RecentRequest) string {
+	if req.ID != "" {
+		return req.ID
+	}
+	return fmt.Sprintf("%s|%s|%s|%s", req.Timestamp, req.Provider, req.Model, req.Account)
 }
 
 type usageStats struct {
@@ -226,22 +233,22 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 	}
 
 	// Read recent requests from SQLite history (last 50 requests)
-	recentQuery := `SELECT timestamp, provider, model, 
+	recentQuery := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, 
 		CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END,
 		CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
 		FROM usageHistory ORDER BY timestamp DESC, id DESC LIMIT 50`
 	type rawRecentRow struct {
-		ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
-		prompt, completion                                        int
+		id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
+		prompt, completion                                            int
 	}
 	rawRows := make([]rawRecentRow, 0, 50)
 	recentRows, err := repo.RawDB().Query(recentQuery)
 	if err == nil {
 		for recentRows.Next() {
 			var row rawRecentRow
-			if err := recentRows.Scan(&row.ts, &row.prov, &row.mod, &row.prompt, &row.completion, &row.status, &row.clientIdentity, &row.clientIP, &row.apiKeyID); err == nil {
+			if err := recentRows.Scan(&row.id, &row.ts, &row.prov, &row.mod, &row.prompt, &row.completion, &row.status, &row.clientIdentity, &row.clientIP, &row.apiKeyID); err == nil {
 				rawRows = append(rawRows, row)
 			}
 		}
@@ -254,7 +261,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		displayProvider := labels.Provider(repo, row.prov)
 		displayModel := labels.Model(repo, row.prov, row.mod)
 		recent = append(recent, usagetracker.RecentRequest{
-			Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
+			ID: row.id, Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
 			PromptTokens: row.prompt, CompletionTokens: row.completion, Status: row.status,
 			ClientIdentity: row.clientIdentity, ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
 		})
