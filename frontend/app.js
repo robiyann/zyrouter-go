@@ -10348,7 +10348,7 @@ function openPayloadInspectorDrawer(reqData = {}) {
             <span class="kicker">RAW EVENT JSON</span>
             <button class="secondary-button" id="btn-copy-raw-json" style="font-size:9.5px; padding:2px 6px;">Copy JSON</button>
           </div>
-          <pre style="background:#05070a; border:1px solid var(--line); padding:10px; border-radius:6px; font-family:var(--mono); font-size:10px; color:#cbd5e1; overflow-x:auto; max-height:240px; margin:0;">${escapeHtml(JSON.stringify(reqData, null, 2))}</pre>
+          <pre style="background:#05070a; border:1px solid var(--line); padding:10px; border-radius:6px; font-family:var(--mono); font-size:10.5px; line-height:1.55; color:#cbd5e1; white-space:pre-wrap; word-break:break-all; overflow-wrap:anywhere; max-height:260px; overflow-y:auto; margin:0;">${escapeHtml(JSON.stringify(reqData, null, 2))}</pre>
         </div>
       </div>
     </div>
@@ -10361,10 +10361,18 @@ function openPayloadInspectorDrawer(reqData = {}) {
   const closeBtn = overlay.querySelector('#btn-close-payload-drawer');
   if (closeBtn) closeBtn.onclick = () => overlay.remove();
 
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      overlay.remove();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+
   const copyBtn = overlay.querySelector('#btn-copy-raw-json');
   if (copyBtn) {
     copyBtn.onclick = async () => {
-            await copyText(JSON.stringify(reqData, null, 2));
+      await copyText(JSON.stringify(reqData, null, 2));
       copyBtn.textContent = 'Copied!';
       setTimeout(() => { copyBtn.textContent = 'Copy JSON'; }, 1500);
     };
