@@ -6661,14 +6661,18 @@ function renderUsage(payload) {
   `;
 }
 
+function sortRecentRequests(items) {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const left = Date.parse(a?.timestamp || '') || 0;
+    const right = Date.parse(b?.timestamp || '') || 0;
+    if (right !== left) return right - left;
+    return String(b?.id || '').localeCompare(String(a?.id || ''));
+  });
+}
+
 function renderLogs(payload = {}) {
-  const recent = Array.isArray(payload.recentRequests)
-    ? [...payload.recentRequests].sort((a, b) => {
-      const left = Date.parse(a?.timestamp || '') || 0;
-      const right = Date.parse(b?.timestamp || '') || 0;
-      return right - left;
-    })
-    : [];
+  const recent = sortRecentRequests(payload.recentRequests);
   const initialCount = recent.length;
 
   return `
@@ -10192,7 +10196,7 @@ function bindLogStream() {
     // 2. Append completed requests to the console table.
     if (!consoleIsPaused && Array.isArray(payload.recentRequests) && payload.recentRequests.length > 0) {
       let addedAny = false;
-      const recent = payload.recentRequests;
+      const recent = sortRecentRequests(payload.recentRequests);
       // Process from oldest to newest so newest ends up at the top
       for (let i = recent.length - 1; i >= 0; i--) {
         const topReq = recent[i];
@@ -11194,7 +11198,7 @@ startStream('/api/usage/stream', (payload) => {
   updateMeshRealtimeState(payload.activeRequests || []);
 
   if (Array.isArray(payload.recentRequests) && payload.recentRequests.length > 0) {
-    const topReq = payload.recentRequests[0];
+    const topReq = sortRecentRequests(payload.recentRequests)[0];
 
     // 1. Update In-Memory Cache for Usage Ledger
     if (cachedUsagePayload) {
