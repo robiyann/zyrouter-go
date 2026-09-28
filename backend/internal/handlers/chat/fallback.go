@@ -455,16 +455,27 @@ func (h *ChatHandler) tryForwardWithConnection(
 		if errors.As(fwdErr, &ue) {
 			statusCode = ue.StatusCode
 			errBodyStr = string(ue.Body)
+		} else if errors.Is(fwdErr, context.DeadlineExceeded) || strings.Contains(strings.ToLower(fwdErr.Error()), "deadline exceeded") || strings.Contains(strings.ToLower(fwdErr.Error()), "timeout") {
+			statusCode = http.StatusGatewayTimeout
+		} else if errors.Is(fwdErr, context.Canceled) || strings.Contains(strings.ToLower(fwdErr.Error()), "context canceled") {
+			statusCode = 499
 		} else if isRetryableConnectionError(fwdErr) {
-			// A transport timeout/refusal has no HTTP status, but it is still a
-			// gateway failure from the client's perspective. Do not expose status 0
-			// in the usage ledger or console stream.
+			statusCode = http.StatusBadGateway
+		} else {
 			statusCode = http.StatusBadGateway
 		}
+
+		detailedErrMsg := fwdErr.Error()
+		if ue != nil && len(ue.Body) > 0 {
+			if msg := extractErrorText(ue.Body); msg != "" {
+				detailedErrMsg = fmt.Sprintf("HTTP %d: %s", ue.StatusCode, msg)
+			}
+		}
+
 		if projectProbeCached(connectionID) {
 			log.Debug("fallback", "upstream skipped (cached no-project)", "provider", provider, "model", model, "conn", connectionID, "error", fwdErr)
 		} else {
-			log.Warn("fallback", "upstream failed", "provider", provider, "model", model, "conn", connectionID, "status", statusCode, "error", fwdErr)
+			log.Warn("fallback", "upstream failed", "provider", provider, "model", model, "conn", connectionID, "status", statusCode, "error", detailedErrMsg)
 		}
 
 		// Also record failed request in usagetracker so recent log reflects error immediately
@@ -488,7 +499,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 			Latency:          fmt.Sprintf("%.2fs", float64(latencyMs)/1000.0),
 			Status:           fmt.Sprintf("%d", statusCode),
 			PublicModel:      publicModelFromContext(ctx),
-			ErrorMessage:     fwdErr.Error(),
+			ErrorMessage:     detailedErrMsg,
 			ClientIdentity:   auditMetadata.ClientIdentity,
 			ClientIP:         auditMetadata.ClientIP,
 			APIKeyID:         auditMetadata.APIKeyID,
@@ -507,8 +518,9 @@ func (h *ChatHandler) tryForwardWithConnection(
 				"apiKeyId": auditMetadata.APIKeyID,
 			},
 			"latency":      map[string]int64{"total": latencyMs},
-			"error":        fwdErr.Error(),
-			"errorMessage": fwdErr.Error(),
+			"error":        detailedErrMsg,
+			"errorMessage": detailedErrMsg,
+			"response":     map[string]any{"error": detailedErrMsg, "raw": errBodyStr},
 		})
 		_ = h.Repo.InsertRequestDetail(reqID, provider, model, connectionID, "error", string(reqData))
 		userID, clientID := "", ""
@@ -665,15 +677,36 @@ func (h *ChatHandler) applyTokenSaversWithFlags(body []byte, rtk, caveman bool, 
 }
 
 // extractErrorText attempts to extract a human-readable error message from an upstream error JSON body.
+// Checks common fields: error.message, error (string), message, detail, msg.
 // Returns "" when the body isn't parseable or has no message field.
 func extractErrorText(body []byte) string {
-	var parsed struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return ""
 	}
-	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
-		return parsed.Error.Message
+	var obj map[string]any
+	if err := json.Unmarshal(trimmed, &obj); err == nil {
+		if errVal, ok := obj["error"]; ok {
+			if errMap, ok := errVal.(map[string]any); ok {
+				if msg, ok := errMap["message"].(string); ok && strings.TrimSpace(msg) != "" {
+					return strings.TrimSpace(msg)
+				}
+			} else if errMsg, ok := errVal.(string); ok && strings.TrimSpace(errMsg) != "" {
+				return strings.TrimSpace(errMsg)
+			}
+		}
+		if msg, ok := obj["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			return strings.TrimSpace(msg)
+		}
+		if detail, ok := obj["detail"].(string); ok && strings.TrimSpace(detail) != "" {
+			return strings.TrimSpace(detail)
+		}
+		if msg, ok := obj["msg"].(string); ok && strings.TrimSpace(msg) != "" {
+			return strings.TrimSpace(msg)
+		}
+	}
+	if len(trimmed) > 0 && len(trimmed) <= 300 && !bytes.HasPrefix(trimmed, []byte("<")) {
+		return string(trimmed)
 	}
 	return ""
 }

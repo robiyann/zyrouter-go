@@ -3,9 +3,11 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // UpstreamError captures a non-200 upstream response.
@@ -15,9 +17,47 @@ type UpstreamError struct {
 }
 
 func (e *UpstreamError) Error() string {
+	if len(e.Body) == 0 {
+		return fmt.Sprintf("upstream returned %d", e.StatusCode)
+	}
+	msg := extractErrorFromBody(e.Body)
+	if msg != "" {
+		return fmt.Sprintf("upstream returned %d: %s", e.StatusCode, msg)
+	}
 	return fmt.Sprintf("upstream returned %d", e.StatusCode)
 }
 
+func extractErrorFromBody(body []byte) string {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	var obj map[string]any
+	if json.Unmarshal(trimmed, &obj) == nil {
+		if errVal, ok := obj["error"]; ok {
+			if errMap, ok := errVal.(map[string]any); ok {
+				if msg, ok := errMap["message"].(string); ok && strings.TrimSpace(msg) != "" {
+					return strings.TrimSpace(msg)
+				}
+			} else if errMsg, ok := errVal.(string); ok && strings.TrimSpace(errMsg) != "" {
+				return strings.TrimSpace(errMsg)
+			}
+		}
+		if msg, ok := obj["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			return strings.TrimSpace(msg)
+		}
+		if detail, ok := obj["detail"].(string); ok && strings.TrimSpace(detail) != "" {
+			return strings.TrimSpace(detail)
+		}
+		if msg, ok := obj["msg"].(string); ok && strings.TrimSpace(msg) != "" {
+			return strings.TrimSpace(msg)
+		}
+	}
+	if len(trimmed) > 0 && len(trimmed) <= 300 && !bytes.HasPrefix(trimmed, []byte("<")) {
+		return string(trimmed)
+	}
+	return ""
+}
 // DoRequest sends an HTTP POST to url with body and auth, returns the raw response.
 // Caller must close resp.Body.
 func DoRequest(ctx context.Context, client *http.Client, method, url string, headers map[string]string, body []byte) (*http.Response, error) {
