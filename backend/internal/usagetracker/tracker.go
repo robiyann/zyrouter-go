@@ -274,7 +274,7 @@ func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPa
 			CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 			status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 			COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
-			FROM usageHistory ORDER BY id DESC LIMIT ?`
+			FROM usageHistory ORDER BY timestamp DESC, id DESC LIMIT ?`
 		type rawHistoryRow struct {
 			id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 			prompt, completion                                            int
