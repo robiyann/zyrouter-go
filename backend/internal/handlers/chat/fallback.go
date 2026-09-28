@@ -711,6 +711,19 @@ func extractErrorText(body []byte) string {
 	return ""
 }
 
+func sanitizeClientErrorMessage(msg string) string {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return "upstream request rejected"
+	}
+	for _, word := range strings.Fields(msg) {
+		if strings.HasPrefix(word, "http://") || strings.HasPrefix(word, "https://") {
+			msg = strings.ReplaceAll(msg, word, "[upstream]")
+		}
+	}
+	return msg
+}
+
 // extractRetryAfter extracts a retryAfter ISO timestamp from an upstream error JSON body.
 // Checks common field names: retryAfter, retry_after, resetsAt, resets_at.
 // Returns "" when not found or not parseable.

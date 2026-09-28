@@ -855,7 +855,7 @@
   /* ==========================================================================
      GLOBAL TELEMETRY STREAM & PRIVATE LOG STREAM (Blueprint 8 & 9)
      ========================================================================== */
-  function renderStreamEvent(e, highlightNew = true) {
+  function renderStreamEvent(e, highlightNew = true, position = 'prepend') {
     if (isStreamPaused) return;
     const list = $('logsList');
     if (!list) return;
@@ -887,8 +887,11 @@
       <span class="stream-time">${e.durationMs != null ? `${e.durationMs}ms` : ''}</span>
     `;
 
-    list.prepend(row);
-
+    if (position === 'append') {
+      list.appendChild(row);
+    } else {
+      list.prepend(row);
+    }
     if (highlightNew) {
       const badge = $('streamNewBadge');
       if (badge) {
@@ -937,15 +940,20 @@
         if ($('globalRequests')) $('globalRequests').textContent = fmt(data.totalRequests);
         if ($('globalTokens')) $('globalTokens').textContent = fmt(data.totalTokens);
         if (Array.isArray(data.recent)) {
-          // data.recent is sent descending (newest at index 0). To keep newest
-          // at top using list.prepend, iterate from oldest to newest.
-          for (let i = data.recent.length - 1; i >= 0; i--) {
-            renderStreamEvent(data.recent[i], globalSnapshotLoaded);
+          // Explicitly sort descending by timestamp (newest first, oldest last)
+          const sorted = data.recent.slice().sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+          if (!globalSnapshotLoaded) {
+            sorted.forEach((event) => renderStreamEvent(event, false, 'append'));
+            globalSnapshotLoaded = true;
+          } else {
+            // Live updates arriving later: prepend newest events to the top
+            for (let i = sorted.length - 1; i >= 0; i--) {
+              renderStreamEvent(sorted[i], true, 'prepend');
+            }
           }
-          globalSnapshotLoaded = true;
         }
-      } catch {
-        // Ignore JSON parse errors on ping/keep-alive
+      } catch (err) {
+        // Ignore parse error on ping
       }
     };
   }

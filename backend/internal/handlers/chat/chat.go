@@ -157,15 +157,17 @@ func (h *ChatHandler) handleSingleModel(ctx context.Context, w http.ResponseWrit
 				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
 				return
 			}
-			cw.Header().Set("Content-Type", "application/json")
-			cw.WriteHeader(ue.StatusCode)
-			cw.Write(ue.Body)
+			msg := extractErrorText(ue.Body)
+			if msg == "" {
+				msg = "upstream request rejected"
+			}
+			msg = sanitizeClientErrorMessage(msg)
+			handlerutil.WriteJSONError(cw, ue.StatusCode, msg)
 			return
 		}
-		handlerutil.WriteJSONError(cw, http.StatusBadGateway, fmt.Sprintf("upstream error: %v", result))
+		handlerutil.WriteJSONError(cw, http.StatusBadGateway, "upstream service unavailable")
 	}
 }
-
 // HandleMessages handles POST /v1/messages (Claude format requests).
 func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -379,12 +381,15 @@ func (h *ChatHandler) handleMessagesSingleModel(ctx context.Context, w http.Resp
 				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
 				return
 			}
-			cw.Header().Set("Content-Type", "application/json")
-			cw.WriteHeader(ue.StatusCode)
-			cw.Write(ue.Body)
+			msg := extractErrorText(ue.Body)
+			if msg == "" {
+				msg = "upstream request rejected"
+			}
+			msg = sanitizeClientErrorMessage(msg)
+			handlerutil.WriteJSONError(cw, ue.StatusCode, msg)
 			return
 		}
-		handlerutil.WriteJSONError(cw, http.StatusBadGateway, fmt.Sprintf("upstream error: %v", result))
+		handlerutil.WriteJSONError(cw, http.StatusBadGateway, "upstream service unavailable")
 	}
 }
 
