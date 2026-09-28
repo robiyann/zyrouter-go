@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -21,15 +21,16 @@ var (
 // OpenDatabase opens a SQLite database and configures it with WAL mode, normal synchronous mode,
 // and other safe concurrency / performance defaults matching the Node/Bun implementation.
 func OpenDatabase(path string) (*sql.DB, error) {
-	// Ensure the parent directory of the database file exists
-	dbDir := filepath.Dir(path)
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
-		return nil, fmt.Errorf("create db dir %s: %w", dbDir, err)
+	if path != ":memory:" && !strings.Contains(path, ":memory:") {
+		// Ensure the parent directory of the database file exists
+		dbDir := filepath.Dir(path)
+		if err := os.MkdirAll(dbDir, 0755); err != nil {
+			return nil, fmt.Errorf("create db dir %s: %w", dbDir, err)
+		}
+		// The DB stores provider API keys/tokens in plaintext, so keep the file
+		// and its directory private to the owning user.
+		_ = os.Chmod(dbDir, 0700)
 	}
-	// The DB stores provider API keys/tokens in plaintext, so keep the file
-	// and its directory private to the owning user.
-	_ = os.Chmod(dbDir, 0700)
-
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open(%s): %w", path, err)
@@ -60,9 +61,11 @@ PRAGMA busy_timeout = 5000;
 	// Restrict the DB file to the owning user (it stores plaintext keys).
 	// The file is created by the driver on first open; chmod it now and
 	// again on every open to re-assert the permission.
-	if err := os.Chmod(path, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
-		db.Close()
-		return nil, fmt.Errorf("chmod db file %s: %w", path, err)
+	if path != ":memory:" && !strings.Contains(path, ":memory:") {
+		if err := os.Chmod(path, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			db.Close()
+			return nil, fmt.Errorf("chmod db file %s: %w", path, err)
+		}
 	}
 
 	// Configure connection pool limits for SQLite to reduce lock contention

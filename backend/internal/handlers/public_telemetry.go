@@ -60,6 +60,13 @@ func allowedAliasesForClient(repo *db.Repo, r *http.Request) map[string]bool {
 		for _, alias := range aliases {
 			allowed[strings.ToLower(alias)] = true
 		}
+		if len(aliases) == 0 && repo != nil {
+			if allAliases, err := repo.GetModelAliases(); err == nil {
+				for alias := range allAliases {
+					allowed[strings.ToLower(alias)] = true
+				}
+			}
+		}
 		return allowed
 	}
 	if client := middleware.GetAuthenticatedClient(r); client != nil && client.PolicyID != nil {
@@ -67,6 +74,13 @@ func allowedAliasesForClient(repo *db.Repo, r *http.Request) map[string]bool {
 			var data models.KeyRestrictions
 			if json.Unmarshal([]byte(policy.Data), &data) == nil {
 				for _, alias := range data.AllowedModels {
+					allowed[strings.ToLower(alias)] = true
+				}
+			}
+		}
+		if len(allowed) == 0 && repo != nil {
+			if allAliases, err := repo.GetModelAliases(); err == nil {
+				for alias := range allAliases {
 					allowed[strings.ToLower(alias)] = true
 				}
 			}

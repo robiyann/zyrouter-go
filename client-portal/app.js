@@ -875,7 +875,8 @@
       timeZone: 'Asia/Jakarta',
       hour12: false,
     });
-    const statusClass = e.status === 'error' ? 'error' : 'success';
+    const isErr = e.status === 'error' || (typeof e.status === 'string' && (e.status.startsWith('4') || e.status.startsWith('5'))) || (typeof e.status === 'number' && e.status >= 400);
+    const statusClass = isErr ? 'error' : 'success';
     const totalTokens = e.totalTokens || ((e.promptTokens || 0) + (e.completionTokens || 0));
 
     row.innerHTML = `
@@ -936,7 +937,11 @@
         if ($('globalRequests')) $('globalRequests').textContent = fmt(data.totalRequests);
         if ($('globalTokens')) $('globalTokens').textContent = fmt(data.totalTokens);
         if (Array.isArray(data.recent)) {
-          data.recent.forEach((event) => renderStreamEvent(event, globalSnapshotLoaded));
+          // data.recent is sent descending (newest at index 0). To keep newest
+          // at top using list.prepend, iterate from oldest to newest.
+          for (let i = data.recent.length - 1; i >= 0; i--) {
+            renderStreamEvent(data.recent[i], globalSnapshotLoaded);
+          }
           globalSnapshotLoaded = true;
         }
       } catch {
@@ -956,6 +961,13 @@
 
     privateSource.addEventListener('snapshot', (evt) => {
       // Snapshot received
+    });
+
+    privateSource.addEventListener('request', (evt) => {
+      try {
+        const logEntry = JSON.parse(evt.data);
+        renderStreamEvent(logEntry);
+      } catch {}
     });
 
     privateSource.addEventListener('log', (evt) => {

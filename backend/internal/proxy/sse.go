@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,21 +25,32 @@ func WriteSSEHeaders(w http.ResponseWriter) http.Flusher {
 // reported as a successful completion.
 func SSECopy(w http.ResponseWriter, upstream io.Reader, flusher http.Flusher, onChunk func([]byte)) error {
 	buf := make([]byte, 4096)
+	var sawDone bool
 	for {
 		n, err := upstream.Read(buf)
 		if n > 0 {
-			if onChunk != nil {
-				onChunk(buf[:n])
+			chunk := buf[:n]
+			if bytes.Contains(chunk, []byte("[DONE]")) {
+				sawDone = true
 			}
-			if _, werr := w.Write(buf[:n]); werr != nil {
+			if onChunk != nil {
+				onChunk(chunk)
+			}
+			if _, werr := w.Write(chunk); werr != nil {
+				if sawDone {
+					return nil
+				}
 				return fmt.Errorf("write stream to client: %w", werr)
 			}
 			if flusher != nil {
 				flusher.Flush()
 			}
+			if sawDone {
+				return nil
+			}
 		}
 		if err != nil {
-			if err == io.EOF {
+			if err == io.EOF || sawDone {
 				return nil
 			}
 			return fmt.Errorf("read upstream stream: %w", err)

@@ -5599,19 +5599,37 @@ function renderSparkline(points = [], color = '#c8ff63') {
 let labsSelectedModel = '';
 
 function modelLabsWelcomeMarkup() {
-  return `<div class="mlab-welcome" id="labs-welcome"><span class="material-symbols-outlined mlab-welcome-icon">science</span><h2>Model Lab</h2><p><button type="button" class="mlab-inline-picker" id="labs-open-picker-inline">${escapeHtml(labsSelectedModel || 'Pick a model below')}</button> — answers stream live through your gateway.</p><div class="mlab-suggestions">${[
-    ['Test tool calling: use printf to print hello', 'build'],
-    ['Think step by step through a tricky logic puzzle', 'psychology'],
-    ['Explain how TCP retransmission works, briefly', 'public'],
-    ['Write a haiku about packet loss', 'auto_awesome'],
-  ].map(([label, icon]) => `<button type="button" class="mlab-suggestion" data-labs-suggestion="${escapeHtml(label)}"><span class="material-symbols-outlined">${icon}</span>${escapeHtml(label)}</button>`).join('')}</div></div>`;
+  return `
+    <div class="mlab-welcome" id="labs-welcome">
+      <div class="mlab-welcome-icon">
+        <span class="material-symbols-outlined">science</span>
+      </div>
+      <h2>Model Lab Playground</h2>
+      <p>Direct gateway testbed. Responses stream in real-time through Zyrouter with multi-provider routing and zero masking.</p>
+      <div class="mlab-suggestions">
+        ${[
+          ['Explain TCP handshake vs TLS 1.3 resumption briefly', 'lan'],
+          ['Write a concise Go HTTP handler with timeout context', 'code'],
+          ['Analyze reasoning trade-offs: latency vs depth', 'psychology'],
+          ['Compose a haiku about packet loss on high ping', 'auto_awesome'],
+        ].map(([label, icon]) => `
+          <button type="button" class="mlab-suggestion" data-labs-suggestion="${escapeHtml(label)}">
+            <span class="material-symbols-outlined">${icon}</span>
+            <span>${escapeHtml(label)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function renderModelLabs(payload = {}) {
   const models = Array.isArray(payload.models) ? payload.models.filter((model) => model && model.id) : [];
   const aliases = Array.isArray(payload.aliases) ? payload.aliases : [];
   const aliasMap = new Map(aliases.filter((record) => record && record.alias).map((record) => [record.alias, record]));
-  if (!models.some((model) => model.id === labsSelectedModel)) labsSelectedModel = '';
+  if (!models.some((model) => model.id === labsSelectedModel)) {
+    labsSelectedModel = models[0]?.id || '';
+  }
   const providerGroups = new Map();
   models.forEach((model) => {
     const record = aliasMap.get(model.id) || {};
@@ -5619,35 +5637,287 @@ function renderModelLabs(payload = {}) {
     if (!providerGroups.has(provider)) providerGroups.set(provider, []);
     providerGroups.get(provider).push(model);
   });
-  const providerRows = Array.from(providerGroups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([provider, entries]) => `<button type="button" class="mlab-provider-card" data-labs-provider="${escapeHtml(provider)}" data-labs-search="${escapeHtml(provider.toLowerCase())}"><span class="material-symbols-outlined mlab-provider-icon">hub</span><span><strong>${escapeHtml(provider)}</strong><small>${entries.length} published model${entries.length === 1 ? '' : 's'}</small></span><span class="material-symbols-outlined mlab-model-check">arrow_forward</span></button>`).join('');
+  const activeRecord = aliasMap.get(labsSelectedModel) || {};
+  const activeProvider = String(activeRecord.provider || (labsSelectedModel.includes('/') ? labsSelectedModel.split('/')[0] : 'GATEWAY')).toUpperCase();
+
+  const providerRows = Array.from(providerGroups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([provider, entries]) => `
+    <button type="button" class="mlab-provider-card" data-labs-provider="${escapeHtml(provider)}" data-labs-search="${escapeHtml(provider.toLowerCase())}">
+      <span class="material-symbols-outlined mlab-provider-icon">hub</span>
+      <span>
+        <strong>${escapeHtml(provider)}</strong>
+        <small>${entries.length} published model${entries.length === 1 ? '' : 's'}</small>
+      </span>
+      <span class="material-symbols-outlined mlab-model-check">arrow_forward</span>
+    </button>
+  `).join('');
+
   const modelRows = models.map((model) => {
     const record = aliasMap.get(model.id) || {};
     const target = record.provider && record.upstreamModel ? `${record.provider} / ${record.upstreamModel}` : 'Published gateway alias';
-    return `<button type="button" class="mlab-model-row" data-labs-model="${escapeHtml(model.id)}" data-labs-provider="${escapeHtml(record.provider || 'gateway')}" data-labs-search="${escapeHtml(`${model.id} ${target}`.toLowerCase())}"><span class="material-symbols-outlined">neurology</span><span><strong>${escapeHtml(model.id)}</strong><small>${escapeHtml(target)}</small></span><span class="material-symbols-outlined mlab-model-check">${model.id === labsSelectedModel ? 'check_circle' : 'radio_button_unchecked'}</span></button>`;
+    const prov = String(record.provider || (model.id.includes('/') ? model.id.split('/')[0] : 'gateway')).toLowerCase();
+    return `
+      <button type="button" class="mlab-model-row${model.id === labsSelectedModel ? ' selected' : ''}" data-labs-model="${escapeHtml(model.id)}" data-labs-provider="${escapeHtml(prov)}" data-labs-search="${escapeHtml(`${model.id} ${target} ${prov}`.toLowerCase())}">
+        <span class="material-symbols-outlined">neurology</span>
+        <span>
+          <strong>${escapeHtml(model.id)}</strong>
+          <small>${escapeHtml(target)}</small>
+        </span>
+        <span class="material-symbols-outlined mlab-model-check">${model.id === labsSelectedModel ? 'check_circle' : 'radio_button_unchecked'}</span>
+      </button>
+    `;
   }).join('');
+
   const compareModelOptions = models.map((model) => `<option value="${escapeHtml(model.id)}"${model.id === labsSelectedModel ? ' selected' : ''}>${escapeHtml(model.id)}</option>`).join('');
+
   return `
     <div class="mlab-page">
       <section class="mlab-surface card">
-        <div class="mlab-transcript" id="labs-transcript">${modelLabsWelcomeMarkup()}</div>
+        <!-- Topbar: Model Selector + Mode Switcher + Session Controls -->
+        <header class="mlab-topbar">
+          <div class="mlab-topbar-left">
+            <button type="button" class="mlab-model-badge" id="labs-open-picker" title="Switch active model">
+              <span class="material-symbols-outlined mlab-model-badge-icon">psychology</span>
+              <div class="mlab-model-badge-text">
+                <span class="mlab-model-badge-provider" id="labs-selected-provider-pill">${escapeHtml(activeProvider)}</span>
+                <strong class="mlab-model-badge-name" id="labs-selected-model">${escapeHtml(labsSelectedModel || 'Select model')}</strong>
+              </div>
+              <span class="material-symbols-outlined mlab-model-badge-arrow">unfold_more</span>
+            </button>
+          </div>
+
+          <div class="mlab-topbar-center">
+            <div class="mlab-mode-tabs" role="tablist">
+              <button type="button" class="mlab-mode-tab active" id="labs-tab-chat" data-mode="chat">
+                <span class="material-symbols-outlined">forum</span>
+                <span>Chat</span>
+              </button>
+              <button type="button" class="mlab-mode-tab" id="labs-tab-compare" data-mode="compare">
+                <span class="material-symbols-outlined">compare_arrows</span>
+                <span>Prompt Bench</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mlab-topbar-right">
+            <button type="button" class="mlab-header-button" id="labs-open-tune" title="Configure system instruction">
+              <span class="material-symbols-outlined">tune</span>
+              <span>System Prompt</span>
+              <span class="mlab-tune-indicator" id="labs-tune-indicator" hidden></span>
+            </button>
+            <button type="button" class="mlab-header-button" id="btn-labs-clear" title="Start new session">
+              <span class="material-symbols-outlined">restart_alt</span>
+              <span>New</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Collapsible System Prompt Drawer -->
+        <div class="mlab-tune-drawer" id="labs-tune-panel" hidden>
+          <div class="mlab-tune-drawer-content">
+            <div class="mlab-tune-header">
+              <div>
+                <strong>System Instruction</strong>
+                <small>Injected before the conversation with <code>role: system</code>.</small>
+              </div>
+              <div class="mlab-tune-actions">
+                <button type="button" class="mlab-paste-button" data-labs-paste="#labs-system-prompt">
+                  <span class="material-symbols-outlined" style="font-size:12px;">content_paste</span> Paste
+                </button>
+                <button type="button" class="mlab-picker-back" id="labs-reset-system-prompt">Clear</button>
+                <button type="button" class="mlab-close-button" id="labs-close-tune" aria-label="Close system prompt">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </div>
+            </div>
+            <textarea id="labs-system-prompt" rows="3" placeholder="You are a concise, helpful assistant answering questions via Zyrouter gateway…"></textarea>
+            <div class="mlab-tune-footer">
+              <span>Active for this session only. Server configuration remains untouched.</span>
+              <span id="labs-tune-chars" class="mlab-tune-charcount">0 chars</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Workspace Stage -->
+        <div class="mlab-stage">
+          <!-- 1. Single Chat View -->
+          <div class="mlab-view-chat" id="labs-view-chat">
+            <div class="mlab-transcript" id="labs-transcript">${modelLabsWelcomeMarkup()}</div>
+          </div>
+
+          <!-- 2. Integrated Prompt Bench View (Side-by-Side Dual View) -->
+          <div class="mlab-view-compare" id="labs-view-compare" hidden>
+            <div class="mlab-bench-container">
+              <div class="mlab-bench-head">
+                <div>
+                  <span class="kicker">PROMPT BENCH</span>
+                  <h3>Dual Output Comparison</h3>
+                  <p>Evaluate how system instructions or prompt variations alter output side-by-side.</p>
+                </div>
+                <div class="mlab-bench-controls">
+                  <label class="mlab-bench-model-select">
+                    <span>Model:</span>
+                    <select id="labs-compare-model">
+                      ${compareModelOptions || '<option value="">No published models</option>'}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="mlab-bench-prompt-strip">
+                <div class="mlab-bench-prompt-head">
+                  <strong>Shared User Prompt</strong>
+                  <button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-input">
+                    <span class="material-symbols-outlined" style="font-size:12px;">content_paste</span> Paste
+                  </button>
+                </div>
+                <textarea id="labs-compare-input" class="mlab-compare-prompt" rows="2" placeholder="Enter prompt to evaluate across both variants…"></textarea>
+              </div>
+
+              <div class="mlab-bench-grid">
+                <!-- Column A -->
+                <div class="mlab-bench-card" id="labs-card-variant-a">
+                  <div class="mlab-bench-card-header">
+                    <div class="mlab-bench-card-title">
+                      <span class="mlab-variant-badge a">Variant A</span>
+                      <strong>Baseline</strong>
+                    </div>
+                    <button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-a">Paste</button>
+                  </div>
+                  <textarea id="labs-compare-a" rows="3" placeholder="System prompt A (or leave empty for baseline)…"></textarea>
+                  <div class="mlab-bench-output-wrap">
+                    <div class="mlab-bench-output-head">
+                      <span class="mlab-bench-output-label">Response A</span>
+                      <button type="button" class="mlab-copy-btn" id="labs-copy-a" title="Copy response" hidden>
+                        <span class="material-symbols-outlined">content_copy</span>
+                      </button>
+                    </div>
+                    <div class="mlab-compare-body" id="labs-compare-body-a">
+                      <div class="mlab-bench-empty">Output will appear here</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Column B -->
+                <div class="mlab-bench-card" id="labs-card-variant-b">
+                  <div class="mlab-bench-card-header">
+                    <div class="mlab-bench-card-title">
+                      <span class="mlab-variant-badge b">Variant B</span>
+                      <strong>Experiment</strong>
+                    </div>
+                    <button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-b">Paste</button>
+                  </div>
+                  <textarea id="labs-compare-b" rows="3" placeholder="System prompt B (e.g. You are a senior engineer who speaks in bullet points)…"></textarea>
+                  <div class="mlab-bench-output-wrap">
+                    <div class="mlab-bench-output-head">
+                      <span class="mlab-bench-output-label">Response B</span>
+                      <button type="button" class="mlab-copy-btn" id="labs-copy-b" title="Copy response" hidden>
+                        <span class="material-symbols-outlined">content_copy</span>
+                      </button>
+                    </div>
+                    <div class="mlab-compare-body" id="labs-compare-body-b">
+                      <div class="mlab-bench-empty">Output will appear here</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mlab-bench-footer">
+                <div class="mlab-bench-status" id="labs-bench-status">Ready to compare</div>
+                <button type="button" class="mlab-compare-run" id="labs-run-compare">
+                  <span class="material-symbols-outlined">play_arrow</span> Run Dual Evaluation
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- The Sleek Composer Card -->
         <form id="labs-prompt-form" class="mlab-composer">
-          <div class="mlab-composer-box">
-            <div class="mlab-tune-panel" id="labs-tune-panel" hidden><div class="mlab-tune-header"><div><strong>System prompt</strong><small>Injected before the conversation as role: system.</small></div><div class="mlab-tune-actions"><button type="button" class="mlab-paste-button" data-labs-paste="#labs-system-prompt">Paste</button><button type="button" class="mlab-close-button" id="labs-close-tune" aria-label="Close system prompt"><span class="material-symbols-outlined">close</span></button></div></div><textarea id="labs-system-prompt" rows="4" placeholder="You are a concise, reliable assistant…"></textarea><div class="mlab-tune-footer"><span>Only this playground session uses the prompt.</span><button type="button" class="mlab-picker-back" id="labs-reset-system-prompt">Reset</button></div></div>
-            <textarea id="labs-prompt-input" rows="1" placeholder="${labsSelectedModel ? `Message ${escapeHtml(labsSelectedModel)}…` : 'Pick a model, then ask anything…'}" required></textarea>
+          <div class="mlab-composer-card">
+            <div class="mlab-composer-row">
+              <textarea id="labs-prompt-input" rows="1" placeholder="${labsSelectedModel ? `Message ${escapeHtml(labsSelectedModel)}…` : 'Pick a model, then ask anything…'}" required></textarea>
+            </div>
             <div class="mlab-composer-footer">
-              <button type="button" class="mlab-tool-button" id="labs-open-picker" title="Select model"><span class="material-symbols-outlined">route</span><span id="labs-selected-model">${escapeHtml(labsSelectedModel || 'Select model')}</span><span class="material-symbols-outlined">expand_more</span></button>
-              <div class="mlab-composer-actions"><button type="button" class="mlab-tool-button" id="labs-open-tune" title="Inject a system prompt"><span class="material-symbols-outlined">tune</span> System prompt</button><button type="button" class="mlab-tool-button" id="labs-open-compare" title="Compare system prompts"><span class="material-symbols-outlined">compare</span> Compare</button><span id="labs-status">Ready · stream through gateway</span><span class="mlab-enter-hint">Enter to send · Shift+Enter for new line</span><button type="button" class="mlab-tool-button" id="btn-labs-clear" title="New session"><span class="material-symbols-outlined">add</span> New</button><button type="submit" class="mlab-send-button" id="btn-labs-run" title="Send"><span class="material-symbols-outlined">arrow_upward</span></button></div>
+              <div class="mlab-composer-meta">
+                <span class="mlab-status-indicator" id="labs-status">
+                  <span class="mlab-status-dot"></span>
+                  <span class="mlab-status-text">Ready · stream through gateway</span>
+                </span>
+              </div>
+              <div class="mlab-composer-actions">
+                <button type="button" id="labs-open-compare" style="display:none;">Compare</button>
+                <span class="mlab-enter-hint"><kbd>↵</kbd> send · <kbd>Shift ↵</kbd> newline</span>
+                <button type="submit" class="mlab-send-button" id="btn-labs-run" title="Send message">
+                  <span class="material-symbols-outlined mlab-send-icon">arrow_upward</span>
+                </button>
+              </div>
             </div>
           </div>
         </form>
       </section>
-      <div class="mlab-picker-overlay" id="labs-model-modal" hidden><div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model"><div class="mlab-picker-header"><div><span class="kicker">MODEL LABS</span><h3 id="labs-picker-title">Select provider</h3></div><button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker"><span class="material-symbols-outlined">close</span></button></div><div class="mlab-search-wrap"><span class="material-symbols-outlined">search</span><input id="labs-model-search" type="search" placeholder="Search providers…" /></div><div class="mlab-picker-step" id="labs-provider-step"><div class="mlab-step-caption">1 · Choose an upstream provider</div><div class="mlab-provider-grid" id="labs-provider-results">${providerRows || '<div class="mlab-picker-empty">No providers with published models found.</div>'}</div></div><div class="mlab-picker-step" id="labs-model-step" hidden><div class="mlab-model-step-bar"><button type="button" class="mlab-picker-back" id="labs-picker-back"><span class="material-symbols-outlined">arrow_back</span> Providers</button><div class="mlab-step-caption" id="labs-selected-provider">2 · Choose a model</div></div><div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div></div></div></div>
-      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden><div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts"><div class="mlab-picker-header"><div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div><button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button></div><p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p><label class="mlab-compare-model-field"><span>Model</span><select id="labs-compare-model">${compareModelOptions || '<option value="">No published models</option>'}</select></label><div class="mlab-compare-prompt-wrap"><div class="mlab-compare-label"><span>User prompt</span><button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-input">Paste</button></div><textarea id="labs-compare-input" class="mlab-compare-prompt" rows="3" placeholder="User prompt to compare…"></textarea></div><div class="mlab-compare-columns"><label><div class="mlab-compare-label"><span>Variant A · baseline</span><button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-a">Paste</button></div><textarea id="labs-compare-a" rows="5" placeholder="Leave empty for no system prompt"></textarea></label><label><div class="mlab-compare-label"><span>Variant B · injected</span><button type="button" class="mlab-paste-button" data-labs-paste="#labs-compare-b">Paste</button></div><textarea id="labs-compare-b" rows="5" placeholder="You are a concise, reliable assistant…"></textarea></label></div><div class="mlab-compare-results" id="labs-compare-results" hidden></div><div class="mlab-compare-actions"><button type="button" class="mlab-picker-back" id="labs-cancel-compare">Cancel</button><button type="button" class="mlab-compare-run" id="labs-run-compare"><span class="material-symbols-outlined">compare</span> Run comparison</button></div></div></div>
-    </div>`;
+
+      <!-- Universal Model Selector Modal -->
+      <div class="mlab-picker-overlay" id="labs-model-modal" hidden>
+        <div class="mlab-picker-dialog" role="dialog" aria-modal="true" aria-label="Select model">
+          <div class="mlab-picker-header">
+            <div>
+              <span class="kicker">GATEWAY CATALOG</span>
+              <h3 id="labs-picker-title">Select Model</h3>
+            </div>
+            <button type="button" class="mlab-close-button" id="labs-close-picker" aria-label="Close model picker">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <div class="mlab-search-wrap">
+            <span class="material-symbols-outlined">search</span>
+            <input id="labs-model-search" type="search" placeholder="Search models or providers (e.g. flash, gpt, deepseek)…" />
+          </div>
+
+          <div class="mlab-picker-chips" id="labs-provider-chips">
+            <button type="button" class="mlab-chip active" data-chip-provider="all">All (${models.length})</button>
+            ${Array.from(providerGroups.entries()).map(([prov, list]) => `<button type="button" class="mlab-chip" data-chip-provider="${escapeHtml(prov.toLowerCase())}">${escapeHtml(prov.toUpperCase())} (${list.length})</button>`).join('')}
+          </div>
+
+          <!-- Provider step (kept for test compatibility) -->
+          <div class="mlab-picker-step" id="labs-provider-step" hidden>
+            <div class="mlab-step-caption">1 · Choose an upstream provider</div>
+            <div class="mlab-provider-grid" id="labs-provider-results">${providerRows || '<div class="mlab-picker-empty">No providers with published models found.</div>'}</div>
+          </div>
+
+          <!-- Model step -->
+          <div class="mlab-picker-step" id="labs-model-step">
+            <div class="mlab-model-step-bar" style="display:none;">
+              <button type="button" class="mlab-picker-back" id="labs-picker-back"><span class="material-symbols-outlined">arrow_back</span> Providers</button>
+              <div class="mlab-step-caption" id="labs-selected-provider">Choose a model</div>
+            </div>
+            <div class="mlab-model-grid" id="labs-model-results">${models.length ? modelRows : '<div class="mlab-picker-empty">No published models found.</div>'}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparison modal container (kept for test compatibility) -->
+      <div class="mlab-picker-overlay" id="labs-compare-modal" hidden>
+        <div class="mlab-compare-dialog" role="dialog" aria-modal="true" aria-label="Compare system prompts">
+          <div class="mlab-picker-header">
+            <div><span class="kicker">PROMPT BENCH</span><h3>Compare system prompts</h3></div>
+            <button type="button" class="mlab-close-button" id="labs-close-compare" aria-label="Close comparison"><span class="material-symbols-outlined">close</span></button>
+          </div>
+          <p class="mlab-compare-description">Run the same user prompt twice and compare how the system instruction changes the response.</p>
+          <div class="mlab-compare-results" id="labs-compare-results" hidden></div>
+          <div class="mlab-compare-actions">
+            <button type="button" class="mlab-picker-back" id="labs-cancel-compare">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function bindModelLabs(payload = {}) {
   const models = Array.isArray(payload.models) ? payload.models.filter((model) => model && model.id) : [];
+  const aliases = Array.isArray(payload.aliases) ? payload.aliases : [];
+  const aliasMap = new Map(aliases.filter((record) => record && record.alias).map((record) => [record.alias, record]));
   const transcript = document.querySelector('#labs-transcript');
   const form = document.querySelector('#labs-prompt-form');
   const input = document.querySelector('#labs-prompt-input');
@@ -5661,55 +5931,186 @@ function bindModelLabs(payload = {}) {
   const selectedProviderLabel = document.querySelector('#labs-selected-provider');
   const systemPromptInput = document.querySelector('#labs-system-prompt');
   const tunePanel = document.querySelector('#labs-tune-panel');
+  const tuneIndicator = document.querySelector('#labs-tune-indicator');
+  const tuneChars = document.querySelector('#labs-tune-chars');
   const compareModal = document.querySelector('#labs-compare-modal');
   const compareInput = document.querySelector('#labs-compare-input');
   const compareA = document.querySelector('#labs-compare-a');
   const compareB = document.querySelector('#labs-compare-b');
   const compareModelSelect = document.querySelector('#labs-compare-model');
   const compareResults = document.querySelector('#labs-compare-results');
-  let activeProvider = '';
+  const viewChat = document.querySelector('#labs-view-chat');
+  const viewCompare = document.querySelector('#labs-view-compare');
+  const tabChat = document.querySelector('#labs-tab-chat');
+  const tabCompare = document.querySelector('#labs-tab-compare');
+
+  let activeFilterProvider = 'all';
   let conversation = [];
   let activeAbortController = null;
-  const openPicker = () => { if (modal) { showProviders(); modal.hidden = false; search?.focus(); } };
-  const closePicker = () => { if (modal) modal.hidden = true; };
-  const showProviders = () => {
-    activeProvider = '';
-    if (providerStep) providerStep.hidden = false;
-    if (modelStep) modelStep.hidden = true;
-    if (pickerTitle) pickerTitle.textContent = 'Select provider';
-    if (search) { search.value = ''; search.placeholder = 'Search providers…'; }
+
+  // Helper to update status text cleanly
+  const updateStatus = (text, type = 'ready') => {
+    if (!status) return;
+    const textEl = status.querySelector('.mlab-status-text') || status;
+    const dotEl = status.querySelector('.mlab-status-dot');
+    textEl.textContent = text;
+    if (dotEl) {
+      dotEl.style.background = type === 'error' ? '#ef4444' : type === 'streaming' ? '#38bdf8' : 'var(--lime)';
+      dotEl.style.boxShadow = type === 'error' ? '0 0 8px #ef4444' : type === 'streaming' ? '0 0 8px #38bdf8' : '0 0 8px var(--lime)';
+    }
   };
-  const showProviderModels = (provider) => {
-    activeProvider = String(provider || '').toLowerCase();
-    if (providerStep) providerStep.hidden = true;
-    if (modelStep) modelStep.hidden = false;
-    if (pickerTitle) pickerTitle.textContent = 'Select model';
-    if (selectedProviderLabel) selectedProviderLabel.textContent = `2 · ${provider} models`;
-    if (search) { search.value = ''; search.placeholder = `Search ${provider} models…`; }
-    document.querySelectorAll('[data-labs-model]').forEach((button) => {
-      button.hidden = String(button.dataset.labsProvider || '').toLowerCase() !== activeProvider;
+
+  const setStreamingState = (isStreaming) => {
+    if (!runButton) return;
+    if (isStreaming) {
+      runButton.classList.add('is-streaming');
+      runButton.setAttribute('title', 'Stop generating');
+      const icon = runButton.querySelector('.material-symbols-outlined') || runButton;
+      icon.textContent = 'stop';
+    } else {
+      runButton.classList.remove('is-streaming');
+      runButton.disabled = false;
+      runButton.setAttribute('title', 'Send message');
+      const icon = runButton.querySelector('.material-symbols-outlined') || runButton;
+      icon.textContent = 'arrow_upward';
+    }
+  };
+
+  // Tabs switching
+  const switchMode = (mode) => {
+    if (mode === 'compare') {
+      if (viewChat) viewChat.hidden = true;
+      if (viewCompare) viewCompare.hidden = false;
+      tabChat?.classList.remove('active');
+      tabCompare?.classList.add('active');
+      if (compareModelSelect && labsSelectedModel) compareModelSelect.value = labsSelectedModel;
+      if (compareInput && input?.value) compareInput.value = input.value;
+      if (compareB && systemPromptInput?.value && !compareB.value) compareB.value = systemPromptInput.value;
+      compareInput?.focus();
+    } else {
+      if (viewChat) viewChat.hidden = false;
+      if (viewCompare) viewCompare.hidden = true;
+      tabChat?.classList.add('active');
+      tabCompare?.classList.remove('active');
+      input?.focus();
+    }
+  };
+  tabChat?.addEventListener('click', () => switchMode('chat'));
+  tabCompare?.addEventListener('click', () => switchMode('compare'));
+  document.querySelector('#labs-open-compare')?.addEventListener('click', () => switchMode('compare'));
+
+  // Universal Model Search & Filter
+  const filterModels = () => {
+    const query = String(search?.value || '').trim().toLowerCase();
+    const rows = document.querySelectorAll('[data-labs-model]');
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const prov = String(row.dataset.labsProvider || '').toLowerCase();
+      const searchData = String(row.dataset.labsSearch || '').toLowerCase();
+      const matchesProvider = activeFilterProvider === 'all' || prov === activeFilterProvider;
+      const matchesQuery = !query || searchData.includes(query);
+      const isVisible = matchesProvider && matchesQuery;
+      row.hidden = !isVisible;
+      if (isVisible) visibleCount++;
     });
+    const emptyEl = document.querySelector('#labs-model-results .mlab-picker-empty');
+    if (emptyEl) emptyEl.hidden = visibleCount > 0;
   };
+
+  document.querySelectorAll('[data-chip-provider]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('[data-chip-provider]').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeFilterProvider = chip.dataset.chipProvider || 'all';
+      filterModels();
+    });
+  });
+
+  search?.addEventListener('input', filterModels);
+
+  const openPicker = () => {
+    if (!modal) return;
+    modal.hidden = false;
+    if (search) {
+      search.value = '';
+      activeFilterProvider = 'all';
+      document.querySelectorAll('[data-chip-provider]').forEach((c) => c.classList.toggle('active', c.dataset.chipProvider === 'all'));
+      filterModels();
+      setTimeout(() => search.focus(), 50);
+    }
+  };
+  const closePicker = () => { if (modal) modal.hidden = true; };
+
   const selectModel = (modelID) => {
     if (!models.some((model) => model.id === modelID)) return;
     labsSelectedModel = modelID;
+    const rec = aliasMap.get(modelID) || {};
+    const provName = String(rec.provider || (modelID.includes('/') ? modelID.split('/')[0] : 'GATEWAY')).toUpperCase();
+
     document.querySelectorAll('[data-labs-model]').forEach((button) => {
       const selected = button.dataset.labsModel === modelID;
       button.classList.toggle('selected', selected);
       const check = button.querySelector('.mlab-model-check');
       if (check) check.textContent = selected ? 'check_circle' : 'radio_button_unchecked';
     });
-    const label = document.querySelector('#labs-selected-model');
-    if (label) label.textContent = modelID;
+
+    const modelLabel = document.querySelector('#labs-selected-model');
+    if (modelLabel) modelLabel.textContent = modelID;
+    const providerPill = document.querySelector('#labs-selected-provider-pill');
+    if (providerPill) providerPill.textContent = provName;
     const inline = document.querySelector('#labs-open-picker-inline');
     if (inline) inline.textContent = modelID;
     if (input) input.placeholder = `Message ${modelID}…`;
-    if (status) status.textContent = 'Ready · stream through gateway';
+    if (compareModelSelect) compareModelSelect.value = modelID;
+    updateStatus('Ready · stream through gateway', 'ready');
     closePicker();
+    input?.focus();
   };
-  document.querySelector('#labs-open-tune')?.addEventListener('click', () => { if (tunePanel) { tunePanel.hidden = !tunePanel.hidden; if (!tunePanel.hidden) systemPromptInput?.focus(); } });
-  document.querySelector('#labs-close-tune')?.addEventListener('click', () => { if (tunePanel) tunePanel.hidden = true; });
-  document.querySelector('#labs-reset-system-prompt')?.addEventListener('click', () => { if (systemPromptInput) systemPromptInput.value = ''; });
+
+  document.querySelectorAll('[data-labs-model]').forEach((btn) => {
+    btn.addEventListener('click', () => selectModel(btn.dataset.labsModel));
+  });
+
+  document.querySelector('#labs-open-picker')?.addEventListener('click', openPicker);
+  document.querySelector('#labs-open-picker-inline')?.addEventListener('click', openPicker);
+  transcript?.addEventListener('click', (event) => {
+    if (event.target.closest('#labs-open-picker-inline')) openPicker();
+  });
+  document.querySelector('#labs-close-picker')?.addEventListener('click', closePicker);
+  modal?.addEventListener('click', (event) => { if (event.target === modal) closePicker(); });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closePicker();
+      closeCompare();
+      if (tunePanel) tunePanel.hidden = true;
+    }
+  });
+
+  // System Prompt drawer & counter
+  const updateSystemPromptState = () => {
+    const val = String(systemPromptInput?.value || '').trim();
+    if (tuneIndicator) tuneIndicator.hidden = val.length === 0;
+    if (tuneChars) tuneChars.textContent = `${systemPromptInput?.value?.length || 0} chars`;
+  };
+  systemPromptInput?.addEventListener('input', updateSystemPromptState);
+
+  document.querySelector('#labs-open-tune')?.addEventListener('click', () => {
+    if (tunePanel) {
+      tunePanel.hidden = !tunePanel.hidden;
+      if (!tunePanel.hidden) systemPromptInput?.focus();
+    }
+  });
+  document.querySelector('#labs-close-tune')?.addEventListener('click', () => {
+    if (tunePanel) tunePanel.hidden = true;
+  });
+  document.querySelector('#labs-reset-system-prompt')?.addEventListener('click', () => {
+    if (systemPromptInput) {
+      systemPromptInput.value = '';
+      updateSystemPromptState();
+    }
+  });
+
+  // Plain-text paste helper
   const bindPlainTextPaste = (field) => field?.addEventListener('paste', (event) => {
     const text = event.clipboardData?.getData('text/plain');
     if (typeof text !== 'string' || text.length === 0) return;
@@ -5720,6 +6121,7 @@ function bindModelLabs(payload = {}) {
     field.dispatchEvent(new Event('input', { bubbles: true }));
   });
   [systemPromptInput, compareInput, compareA, compareB].forEach(bindPlainTextPaste);
+
   const pasteIntoField = async (field) => {
     if (!field || !navigator.clipboard?.readText) {
       showToast('Clipboard read is unavailable in this browser', 'error');
@@ -5740,50 +6142,64 @@ function bindModelLabs(payload = {}) {
   document.querySelectorAll('[data-labs-paste]').forEach((button) => button.addEventListener('click', () => {
     pasteIntoField(document.querySelector(button.dataset.labsPaste));
   }));
-  const openCompare = () => {
-    if (compareModelSelect) compareModelSelect.value = labsSelectedModel || models[0]?.id || '';
-    if (compareInput) compareInput.value = input?.value || '';
-    if (compareB && systemPromptInput?.value) compareB.value = systemPromptInput.value;
-    if (compareModal) compareModal.hidden = false;
-    compareInput?.focus();
-  };
-  const closeCompare = () => { if (compareModal) compareModal.hidden = true; };
-  document.querySelector('#labs-open-compare')?.addEventListener('click', openCompare);
-  document.querySelector('#labs-close-compare')?.addEventListener('click', closeCompare);
-  document.querySelector('#labs-cancel-compare')?.addEventListener('click', closeCompare);
-  compareModal?.addEventListener('click', (event) => { if (event.target === compareModal) closeCompare(); });
-  document.querySelector('#labs-open-picker')?.addEventListener('click', openPicker);
-  document.querySelector('#labs-open-picker-inline')?.addEventListener('click', openPicker);
-  transcript?.addEventListener('click', (event) => {
-    if (event.target.closest('#labs-open-picker-inline')) openPicker();
+
+  // Auto-resize textarea
+  input?.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 180) + 'px';
   });
-  document.querySelector('#labs-close-picker')?.addEventListener('click', closePicker);
-  document.querySelector('#labs-picker-back')?.addEventListener('click', showProviders);
-  modal?.addEventListener('click', (event) => { if (event.target === modal) closePicker(); });
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePicker(); }, { once: true });
-  document.querySelectorAll('[data-labs-provider]').forEach((button) => button.addEventListener('click', () => showProviderModels(button.dataset.labsProvider)));
-  document.querySelectorAll('[data-labs-model]').forEach((button) => button.addEventListener('click', () => selectModel(button.dataset.labsModel)));
-  search?.addEventListener('input', () => {
-    const query = search.value.trim().toLowerCase();
-    const selector = activeProvider ? '[data-labs-model]' : '[data-labs-provider]';
-    document.querySelectorAll(selector).forEach((button) => {
-      const matchesProvider = !activeProvider || String(button.dataset.labsProvider || '').toLowerCase() === activeProvider;
-      button.hidden = !matchesProvider || (Boolean(query) && !String(button.dataset.labsSearch || '').includes(query));
-    });
-  });
+
+  // Add message bubble
   const addBubble = (role, text = '') => {
     document.querySelector('#labs-welcome')?.remove();
     const bubble = document.createElement('div');
     bubble.className = `mlab-message ${role}`;
-    bubble.innerHTML = role === 'user' ? `<div class="mlab-message-meta">You</div><div class="mlab-user-bubble"></div>` : `<div class="mlab-message-meta">${escapeHtml(labsSelectedModel || 'assistant')}</div><div class="mlab-assistant-body"></div>`;
+    if (role === 'user') {
+      bubble.innerHTML = `
+        <div class="mlab-message-header">
+          <span class="mlab-message-meta">You</span>
+        </div>
+        <div class="mlab-user-bubble"></div>
+      `;
+    } else {
+      bubble.innerHTML = `
+        <div class="mlab-message-header">
+          <span class="mlab-message-meta">
+            <span class="material-symbols-outlined" style="font-size:12px; color:var(--lime);">neurology</span>
+            ${escapeHtml(labsSelectedModel || 'assistant')}
+          </span>
+          <button type="button" class="mlab-msg-copy-btn" title="Copy response">
+            <span class="material-symbols-outlined">content_copy</span>
+          </button>
+        </div>
+        <div class="mlab-assistant-body"></div>
+      `;
+      const copyBtn = bubble.querySelector('.mlab-msg-copy-btn');
+      copyBtn?.addEventListener('click', async () => {
+        const bodyText = bubble.querySelector('.mlab-assistant-body')?.textContent || '';
+        try {
+          await copyText(bodyText);
+          const icon = copyBtn.querySelector('span');
+          if (icon) icon.textContent = 'check';
+          setTimeout(() => { if (icon) icon.textContent = 'content_copy'; }, 1500);
+        } catch {}
+      });
+    }
     const body = bubble.querySelector(role === 'user' ? '.mlab-user-bubble' : '.mlab-assistant-body');
     body.textContent = text;
     transcript?.appendChild(bubble);
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
     return body;
   };
+
   const streamCompletion = async (messages, onDelta, signal, modelID = labsSelectedModel) => {
-    const response = await fetch(`${apiBase}/v1/chat/completions`, { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', signal, body: JSON.stringify({ model: modelID, messages, stream: true, max_tokens: 1024 }) });
+    const response = await fetch(`${apiBase}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { ...getHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      credentials: 'same-origin',
+      signal,
+      body: JSON.stringify({ model: modelID, messages, stream: true, max_tokens: 1024 })
+    });
     if (!response.ok) {
       const text = await response.text();
       let message = text;
@@ -5815,32 +6231,68 @@ function bindModelLabs(payload = {}) {
     if (buffer) consume(buffer);
     return answer || '(The gateway returned an empty response.)';
   };
+
+  // Reset Session
   document.querySelector('#btn-labs-clear')?.addEventListener('click', () => {
     activeAbortController?.abort();
     activeAbortController = null;
+    setStreamingState(false);
     conversation = [];
     if (transcript) transcript.innerHTML = modelLabsWelcomeMarkup();
     if (compareResults) { compareResults.hidden = true; compareResults.innerHTML = ''; }
+    const bodyA = document.querySelector('#labs-compare-body-a');
+    const bodyB = document.querySelector('#labs-compare-body-b');
+    if (bodyA) bodyA.innerHTML = '<div class="mlab-bench-empty">Output will appear here</div>';
+    if (bodyB) bodyB.innerHTML = '<div class="mlab-bench-empty">Output will appear here</div>';
+    document.querySelector('#labs-copy-a')?.setAttribute('hidden', '');
+    document.querySelector('#labs-copy-b')?.setAttribute('hidden', '');
     if (tunePanel) tunePanel.hidden = true;
-    if (runButton) runButton.disabled = false;
-    if (status) status.textContent = 'Ready · stream through gateway';
+    updateStatus('Ready · stream through gateway', 'ready');
     input?.focus();
   });
+
   const buildMessages = (history, prompt, systemPrompt = '') => [
     ...(String(systemPrompt || '').trim() ? [{ role: 'system', content: String(systemPrompt).trim() }] : []),
     ...history,
     { role: 'user', content: prompt },
   ];
+
+  // Run Prompt
   const runPrompt = async (rawPrompt) => {
+    // If currently streaming, clicking send/stop cancels the stream!
+    if (activeAbortController) {
+      activeAbortController.abort();
+      activeAbortController = null;
+      setStreamingState(false);
+      updateStatus('Generation stopped', 'ready');
+      return;
+    }
+
     const prompt = String(rawPrompt || '').trim();
-    if (!prompt || !labsSelectedModel || !runButton) { if (!labsSelectedModel) openPicker(); return; }
+    if (!prompt) return;
+
+    if (!labsSelectedModel) {
+      if (models.length > 0) {
+        selectModel(models[0].id);
+      } else {
+        openPicker();
+        return;
+      }
+    }
+
     const messages = buildMessages(conversation, prompt, systemPromptInput?.value);
     addBubble('user', prompt);
-    if (input) input.value = '';
+    if (input) {
+      input.value = '';
+      input.style.height = 'auto';
+    }
+
     const responseBody = addBubble('assistant', '');
     responseBody.innerHTML = '<span class="mlab-thinking" role="status">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span>';
-    runButton.disabled = true;
-    if (status) status.textContent = `Streaming ${labsSelectedModel}…`;
+
+    setStreamingState(true);
+    updateStatus(`Streaming ${labsSelectedModel}…`, 'streaming');
+
     try {
       activeAbortController = new AbortController();
       const answer = await streamCompletion(messages, (text) => {
@@ -5849,64 +6301,123 @@ function bindModelLabs(payload = {}) {
       }, activeAbortController.signal);
       responseBody.textContent = answer;
       conversation = [...conversation, { role: 'user', content: prompt }, { role: 'assistant', content: answer }];
-      if (status) status.textContent = 'Complete · request recorded in Usage Ledger';
+      updateStatus('Complete · recorded in Usage Ledger', 'ready');
     } catch (error) {
       if (error?.name !== 'AbortError') {
         responseBody.textContent = `Gateway error: ${error.message}`;
         responseBody.parentElement.classList.add('error');
-        if (status) status.textContent = 'Request failed · check Console Stream for details';
+        updateStatus('Request failed · check Console Stream', 'error');
       }
     } finally {
       activeAbortController = null;
-      runButton.disabled = false;
+      setStreamingState(false);
       input?.focus();
     }
   };
+
+  // Run Prompt Bench Dual Comparison
   const runCompare = async () => {
-    const prompt = String(compareInput?.value || input?.value || '').trim();
-    const compareModel = String(compareModelSelect?.value || labsSelectedModel || '').trim();
-    if (!prompt || !compareModel) {
-      if (status) status.textContent = 'Select a model inside Prompt Bench first';
+    if (activeAbortController) {
+      activeAbortController.abort();
+      activeAbortController = null;
+      updateStatus('Comparison cancelled', 'ready');
+      const benchStatus = document.querySelector('#labs-bench-status');
+      if (benchStatus) benchStatus.textContent = 'Comparison cancelled';
       return;
     }
+
+    const prompt = String(compareInput?.value || input?.value || '').trim();
+    const compareModel = String(compareModelSelect?.value || labsSelectedModel || '').trim();
+    if (!prompt) {
+      showToast('Please enter a user prompt to evaluate', 'error');
+      compareInput?.focus();
+      return;
+    }
+    if (!compareModel) {
+      showToast('Select a model inside Prompt Bench first', 'error');
+      return;
+    }
+
     const systemA = String(compareA?.value || '').trim();
     const systemB = String(compareB?.value || '').trim();
-    if (compareResults) {
-      compareResults.hidden = false;
-      compareResults.innerHTML = `<div class="mlab-compare-header"><div><span class="kicker">PROMPT BENCH</span><strong>Comparing ${escapeHtml(compareModel)}</strong></div><span class="mlab-compare-status">Streaming both variants…</span></div><div class="mlab-compare-grid"><article class="mlab-compare-card"><header><strong>Variant A</strong><small>${systemA ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-a"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article><article class="mlab-compare-card"><header><strong>Variant B</strong><small>${systemB ? 'Injected system prompt' : 'No system prompt'}</small></header><div class="mlab-compare-body" id="labs-compare-body-b"><span class="mlab-thinking">Thinking<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span></div></article></div>`;
-      compareResults.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-    const compareButton = document.querySelector('#labs-run-compare');
-    if (compareButton) compareButton.disabled = true;
-    if (status) status.textContent = `Comparing ${compareModel}…`;
+
     const bodyA = document.querySelector('#labs-compare-body-a');
     const bodyB = document.querySelector('#labs-compare-body-b');
+    const copyA = document.querySelector('#labs-copy-a');
+    const copyB = document.querySelector('#labs-copy-b');
+    const benchStatus = document.querySelector('#labs-bench-status');
+    const compareButton = document.querySelector('#labs-run-compare');
+
+    if (bodyA) bodyA.innerHTML = '<span class="mlab-thinking">Streaming Variant A<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span>';
+    if (bodyB) bodyB.innerHTML = '<span class="mlab-thinking">Streaming Variant B<span class="mlab-thinking-dots"><i></i><i></i><i></i></span></span>';
+    if (copyA) copyA.hidden = true;
+    if (copyB) copyB.hidden = true;
+
+    if (compareButton) compareButton.disabled = true;
+    if (benchStatus) benchStatus.textContent = `Streaming both variants on ${compareModel}…`;
+    updateStatus(`Benchmarking ${compareModel}…`, 'streaming');
+
     activeAbortController = new AbortController();
     try {
       const [answerA, answerB] = await Promise.all([
-        streamCompletion(buildMessages(conversation, prompt, systemA), (text) => { if (bodyA) bodyA.textContent = text; }, activeAbortController.signal, compareModel),
-        streamCompletion(buildMessages(conversation, prompt, systemB), (text) => { if (bodyB) bodyB.textContent = text; }, activeAbortController.signal, compareModel),
+        streamCompletion(buildMessages([], prompt, systemA), (text) => { if (bodyA) bodyA.textContent = text; }, activeAbortController.signal, compareModel),
+        streamCompletion(buildMessages([], prompt, systemB), (text) => { if (bodyB) bodyB.textContent = text; }, activeAbortController.signal, compareModel),
       ]);
       if (bodyA) bodyA.textContent = answerA;
       if (bodyB) bodyB.textContent = answerB;
-      const compareStatus = compareResults?.querySelector('.mlab-compare-status');
-      if (compareStatus) compareStatus.textContent = 'Complete · both requests recorded in Usage Ledger';
-      if (status) status.textContent = 'Comparison complete';
+      if (copyA) copyA.hidden = false;
+      if (copyB) copyB.hidden = false;
+      if (benchStatus) benchStatus.textContent = 'Evaluation complete · both requests logged';
+      updateStatus('Comparison complete', 'ready');
     } catch (error) {
       if (error?.name !== 'AbortError') {
-        const compareStatus = compareResults?.querySelector('.mlab-compare-status');
-        if (compareStatus) compareStatus.textContent = `Comparison failed · ${error.message}`;
-        if (status) status.textContent = 'Comparison failed';
+        if (benchStatus) benchStatus.textContent = `Failed: ${error.message}`;
+        updateStatus('Evaluation failed', 'error');
       }
     } finally {
       activeAbortController = null;
       if (compareButton) compareButton.disabled = false;
     }
   };
-  document.querySelectorAll('[data-labs-suggestion]').forEach((button) => button.addEventListener('click', () => runPrompt(button.dataset.labsSuggestion)));
+
+  // Wire bench copy buttons
+  document.querySelector('#labs-copy-a')?.addEventListener('click', async () => {
+    const text = document.querySelector('#labs-compare-body-a')?.textContent || '';
+    if (text) {
+      await copyText(text);
+      showToast('Copied Variant A response to clipboard', 'info');
+    }
+  });
+  document.querySelector('#labs-copy-b')?.addEventListener('click', async () => {
+    const text = document.querySelector('#labs-compare-body-b')?.textContent || '';
+    if (text) {
+      await copyText(text);
+      showToast('Copied Variant B response to clipboard', 'info');
+    }
+  });
+
+  // Suggestion chips
+  document.querySelectorAll('[data-labs-suggestion]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const prompt = btn.dataset.labsSuggestion;
+      if (!labsSelectedModel && models.length > 0) {
+        selectModel(models[0].id);
+      }
+      runPrompt(prompt);
+    });
+  });
+
   document.querySelector('#labs-run-compare')?.addEventListener('click', runCompare);
-  input?.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form?.requestSubmit(); } });
-  form?.addEventListener('submit', (event) => { event.preventDefault(); runPrompt(input?.value); });
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      form?.requestSubmit();
+    }
+  });
+  form?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    runPrompt(input?.value);
+  });
 }
 
 function renderUsage(payload) {
@@ -6299,9 +6810,18 @@ let authLogsCurrentPage = 1;
 const authLogsPageSize = 10;
 
 function renderAuthLogs(payload = {}) {
-  const logs = Array.isArray(payload.logs) ? payload.logs : [];
-  const total = Number(payload.total || logs.length);
+  const p = payload || {};
+  const logs = Array.isArray(p.logs) ? p.logs : [];
+  const total = Number(p.total || logs.length);
   const totalPages = Math.ceil(total / authLogsPageSize) || 1;
+  const security = p.securitySummary || {};
+  const securityCardMarkup = security && security.status ? `
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin-bottom:12px;">
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">MIGRATION</span><strong style="display:block; margin-top:4px; color:var(--text-bright); font-size:13px;">${escapeHtml(security.status || 'ACTIVE')}</strong><small style="color:var(--muted); font-size:10px;">Security posture</small></div>
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">PLAINTEXT LEGACY</span><strong style="display:block; margin-top:4px; color:${Number(security.plaintextKeys || 0) > 0 ? '#f87171' : 'var(--lime)'}; font-size:13px;">${escapeHtml(String(security.plaintextKeys ?? '--'))}</strong><small style="color:var(--muted); font-size:10px;">Unsafe keys</small></div>
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">HASHED KEYS</span><strong style="display:block; margin-top:4px; color:var(--lime); font-size:13px;">${escapeHtml(String(security.hashedKeys ?? '--'))}</strong><small style="color:var(--muted); font-size:10px;">Protected keys</small></div>
+        <div class="stat-card-v2" style="padding:10px;"><span class="stat-card-kicker">INACTIVE</span><strong style="display:block; margin-top:4px; color:var(--text-bright); font-size:13px;">${escapeHtml(String(security.inactiveKeys ?? '--'))}</strong><small style="color:var(--muted); font-size:10px;">Revoked keys</small></div>
+      </div>` : '';
   const rows = logs.length ? logs.map((entry) => `
     <tr>
       <td>${escapeHtml(formatWIBTimestamp(entry.timestamp || Date.now()))}</td>
@@ -6319,6 +6839,7 @@ function renderAuthLogs(payload = {}) {
         <div><span class="kicker">SECURITY EVENTS</span><h2>Admin Auth Log</h2><p>Login success, password failure, lockout, dan akses admin yang ditolak. Credential tidak disimpan.</p></div>
         <button type="button" class="secondary-button" id="btn-refresh-authlogs">Refresh</button>
       </div>
+      ${securityCardMarkup}
       <div class="data-table-container">
         <table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>IP Address</th><th>Request</th><th>Status</th><th>User Agent</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
@@ -6342,16 +6863,22 @@ function bindAuthLogs() {
     if (authLogsCurrentPage > 1) {
       authLogsCurrentPage--;
       const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
-      const logs = await request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`);
-      content.innerHTML = renderAuthLogs(logs);
+      const [logs, securitySummary] = await Promise.all([
+        request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
+        request('/api/admin/security/summary').catch(() => ({}))
+      ]);
+      content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
       bindAuthLogs();
     }
   });
   document.querySelector('#btn-authlogs-next')?.addEventListener('click', async () => {
     authLogsCurrentPage++;
     const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
-    const logs = await request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`);
-    content.innerHTML = renderAuthLogs(logs);
+    const [logs, securitySummary] = await Promise.all([
+      request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
+      request('/api/admin/security/summary').catch(() => ({}))
+    ]);
+    content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
     bindAuthLogs();
   });
 }
@@ -6645,7 +7172,11 @@ async function renderView(name) {
         },
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: async () => {
-          return request(`/api/auth-logs?limit=${authLogsPageSize}&offset=0`);
+          const [logs, securitySummary] = await Promise.all([
+            request(`/api/auth-logs?limit=${authLogsPageSize}&offset=0`),
+            request('/api/admin/security/summary').catch(() => ({}))
+          ]);
+          return { ...logs, securitySummary };
         },
         pools: () => request('/api/proxy-pools'),
         aliases: async () => {
@@ -6935,6 +7466,162 @@ function parseRestrictionsObject(raw) {
   }
 }
 
+function getActiveProviderModels(allConnections = [], allBackendModels = [], providerNodes = [], customModels = []) {
+  const activeConns = (allConnections || []).filter(isItemActive);
+  const activeProviderMap = new Map();
+  const allActiveModels = [];
+  const suggestedPrefixes = new Set();
+  const nodeMap = new Map((providerNodes || []).map((node) => [String(node.id || '').toLowerCase(), node]));
+
+  const ensureProviderGroup = (provId) => {
+    if (!provId) return null;
+    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
+    const canonicalId = cat?.id || provId;
+    if (activeProviderMap.has(canonicalId)) return activeProviderMap.get(canonicalId);
+    const node = nodeMap.get(canonicalId) || nodeMap.get(provId);
+    // Public/no-auth providers have no providerConnections row, but they are
+    // still active routing targets and must appear in policy restrictions.
+    if (!cat || (cat.category !== 'free' && cat.authType !== 'noauth')) return null;
+    const defaultPrefix = cat?.alias || canonicalId;
+    const entry = {
+      provId: canonicalId,
+      providerName: node?.name || cat?.name || canonicalId.toUpperCase(),
+      conns: [],
+      modelSet: new Set(cat?.defaultModels || []),
+      routePrefix: node?.prefix || defaultPrefix
+    };
+    activeProviderMap.set(canonicalId, entry);
+    return entry;
+  };
+
+  // 1. Group active connections by unique Provider Type
+  activeConns.forEach((conn) => {
+    const rawProv = (conn.provider || '').toLowerCase();
+    if (!rawProv) return;
+    const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === rawProv || (p.alias && p.alias === rawProv));
+    const provId = cat?.id || rawProv;
+
+    if (!activeProviderMap.has(provId)) {
+      const node = nodeMap.get(provId) || nodeMap.get(rawProv);
+      const defaultPrefix = cat?.alias || provId;
+      activeProviderMap.set(provId, {
+        provId,
+        providerName: node?.name || cat?.name || provId.toUpperCase(),
+        conns: [],
+        modelSet: new Set(cat?.defaultModels || []),
+        routePrefix: node?.prefix || defaultPrefix
+      });
+    }
+
+    const entry = activeProviderMap.get(provId);
+    entry.conns.push(conn);
+
+    // Add custom models from connection data
+    try {
+      const d = typeof conn.data === 'string' ? JSON.parse(conn.data) : (conn.data || {});
+      const connectionPrefix = String(d.prefix || d.providerSpecificData?.prefix || '').trim().toLowerCase();
+      if (connectionPrefix) entry.routePrefix = connectionPrefix;
+      if (d.defaultModel) entry.modelSet.add(d.defaultModel);
+      if (Array.isArray(d.customModels)) d.customModels.forEach((cm) => entry.modelSet.add(cm));
+    } catch {}
+  });
+
+  // Include models manually registered in the provider detail view. These are
+  // not guaranteed to be returned by the live /models endpoint.
+  (customModels || []).forEach((model) => {
+    const provider = String(model.provider || model.providerId || '').toLowerCase();
+    const alias = String(model.providerAlias || '').toLowerCase();
+    const entry = activeProviderMap.get(provider) || Array.from(activeProviderMap.values()).find((candidate) => {
+      const node = nodeMap.get(candidate.provId);
+      const candidateAliases = [
+        candidate.provId,
+        candidate.routePrefix,
+        node?.prefix,
+        node?.providerAlias,
+        node?.name
+      ].map((value) => String(value || '').toLowerCase()).filter(Boolean);
+      return candidateAliases.includes(provider) || candidateAliases.includes(alias);
+    });
+    if (!entry || !model.id) return;
+    entry.modelSet.add(String(model.id).trim());
+  });
+
+  // 2. Add backend /models matching active providers
+  (allBackendModels || []).forEach((m) => {
+    const mid = typeof m === 'string' ? m : m.id;
+    const owner = typeof m === 'object' ? (m.owned_by || '').toLowerCase() : '';
+    if (owner) {
+      const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === owner || (p.alias && p.alias === owner));
+      const canonicalOwner = cat?.id || owner;
+      const entry = activeProviderMap.get(canonicalOwner) || ensureProviderGroup(canonicalOwner);
+      if (entry) entry.modelSet.add(mid);
+    }
+  });
+
+  // 3. Build distinct provider groups and suggested prefixes
+  const groups = [];
+  activeProviderMap.forEach((entry, provId) => {
+    const rawModels = Array.from(entry.modelSet)
+      .map((model) => {
+        const normalized = String(model || '').trim();
+        if (!normalized) return '';
+        const prefix = entry.routePrefix || provId;
+        if (normalized.includes('/')) {
+          const parts = normalized.split('/');
+          const curPrefix = parts[0];
+          const curModel = parts[1];
+          const cat = KNOWN_PROVIDER_CATALOG.find((p) => p.id === provId || (p.alias && p.alias === provId));
+          if (curPrefix.toLowerCase() === prefix.toLowerCase() ||
+              (cat && (curPrefix.toLowerCase() === cat.id.toLowerCase() || (cat.alias && curPrefix.toLowerCase() === cat.alias.toLowerCase())))) {
+            return `${prefix}/${curModel}`;
+          }
+          return normalized;
+        }
+        return `${prefix}/${normalized}`;
+      })
+      .filter(Boolean);
+    rawModels.forEach((m) => allActiveModels.push(m));
+
+    // Suggested wildcard prefixes for this active provider
+    suggestedPrefixes.add(`${provId}/*`);
+    if (provId.includes('openai')) {
+      suggestedPrefixes.add('gpt-*');
+      suggestedPrefixes.add('o1-*');
+    }
+    if (provId.includes('anthropic') || provId.includes('claude')) {
+      suggestedPrefixes.add('claude-*');
+    }
+    if (provId.includes('gemini') || provId.includes('google')) {
+      suggestedPrefixes.add('gemini-*');
+    }
+    if (provId.includes('deepseek')) {
+      suggestedPrefixes.add('deepseek-*');
+    }
+    if (provId.includes('groq')) {
+      suggestedPrefixes.add('llama-*');
+    }
+    if (provId.includes('mistral')) {
+      suggestedPrefixes.add('mistral-*');
+    }
+    if (provId.includes('xai') || provId.includes('grok')) {
+      suggestedPrefixes.add('grok-*');
+    }
+
+    groups.push({
+      provider: provId,
+      providerName: entry.providerName,
+      accountCount: entry.conns.length,
+      models: Array.from(new Set(rawModels))
+    });
+  });
+
+  return {
+    activeConnections: activeConns,
+    groups,
+    allActiveModels: Array.from(new Set(allActiveModels)),
+    suggestedPrefixes: Array.from(suggestedPrefixes)
+  };
+}
 function keyPolicyForm(item, isNew = false, availableProviders = [], availableModels = [], providerNodes = [], customModels = [], accountTypes = []) {
   const current = parseRestrictionsObject(item.restrictions);
   // Model & provider routing restrictions are governed at the system & tier level.

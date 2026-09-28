@@ -1,5 +1,27 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-28] - [Antigravity] - Model Labs UI/UX Overhaul & Prompt Bench Redesign
+- **Modul**: `Frontend / Model Labs / Prompt Bench / Design System`
+- **File Diubah**:
+  - `frontend/app.js`
+  - `frontend/styles.css`
+  - `frontend/index.html`
+  - `tests/frontend_contract.test.mjs`
+  - `backend/internal/db/client.go`
+- **Deskripsi Perubahan**:
+  - **Layout & Top Workbench Bar**: Memindahkan model selector pill, mode switch (`Chat` vs `Prompt Bench`), System Prompt trigger dengan glowing indicator dot, dan tombol New session ke Workbench Top Bar di bagian atas canvas.
+  - **Rapikan Composer & Tombol**: Mengeliminasi penumpukan 7 tombol di composer footer. Status gateway dipindah ke status pill rapi dengan dot pulse, shortcut hint disederhanakan, dan tombol kirim diupgrade menjadi tombol Send/Stop dinamis (dapat membatalkan streaming secara instan).
+  - **Collapsible System Prompt Drawer**: Mengganti panel melayang (floating overlay) yang menutupi chat dengan accordion drawer terintegrasi di bawah topbar, lengkap dengan paste cepat, counter karakter, dan tombol clear.
+  - **Integrated Prompt Bench (Dual Split Mode)**: Mengintegrasikan Prompt Bench langsung ke dalam canvas utama sebagai tampilan berdampingan (Variant A vs Variant B) dengan streaming paralel dan tombol copy mandiri.
+  - **Universal Instant Model Search**: Search bar pada modal picker kini mencari model ID, target upstream, dan nama provider sekaligus, dilengkapi chip filter provider horizontal 1-klik.
+  - **Chat Polish**: Menambahkan tombol Copy ke setiap respons assistant dan memperbaiki state empty welcome suggestions agar auto-run saat diklik.
+  - **Responsive Boundary Fix**: Menerapkan `box-sizing: border-box` universal pada seluruh elemen Model Labs, membatasi `overflow-x: hidden`, mengatur padding `#view-generic.labs-mode` yang adaptif, dan menambahkan breakpoint responsif `<= 920px` agar Prompt Bench dual cards, Top Bar, dan footer tombol tidak lagi menabrak/terpotong di batas kanan pada layar kecil/sedang.
+  - **Cartethyia-Style Floating Island Shell**: Mengubah layout global `.room-shell` menjadi layout pulau melayang (*floating island*) dengan margin/padding luar `12px 14px 16px 14px` dan `gap: 14px`, sehingga sidebar `.dock` kini menjadi kartu kaca melayang (*floating dock*) dengan `border-radius: 16px; border: 1px solid var(--line); height: calc(100vh - 28px); position: sticky; top: 12px;` yang dikelilingi jarak visual dari tepi viewport kiri dan bawah. Area konten kanan (`.room-main`, `.room-header`, dan views) juga mengambang serasi dengan padding bawah yang lega, membiarkan wallpaper galaksi/nebula terlihat elegan di sela-selanya seperti Cartethyia.
+  - **Global Telemetry Stream Chronological Patch**: Memperbaiki urutan render `data.recent` pada Client Portal dengan iterasi terbalik saat memanggil `list.prepend(row)` agar event request terbaru selalu tampil di paling atas secara konsisten. Memperbaiki pendeteksian kode status error HTTP (4xx/5xx agar berwarna merah, bukan hijau), menyelaraskan event listener `request` pada private logs stream, dan menambahkan fallback alias publik pada `allowedAliasesForClient` di backend agar akun user pada tier yang belum dikonfigurasikan tetap dapat menerima feed live telemetry.
+  - **SSE Terminal Sentinel & Client Disconnect Race Patch**: Mengatasi false-alarm `context canceled` (status 0 padahal klien sudah menerima respons lengkap). Menambahkan deteksi `[DONE]` pada `internalproxy.SSECopy` agar langsung keluar bersih segera setelah data penutup di-flush ke klien tanpa tertahan menunggu EOF upstream yang terlambat. Menambahkan pengaman ganda di `fallback.go` yang memeriksa `metrics.ResponseBuf` terhadap terminal sentinel (`[DONE]` atau `message_stop`) sehingga pemutusan soket oleh aplikasi klien pasca-generasi tidak lagi ditandai sebagai kegagalan proxy atau status 0, melainkan dicatat sah sebagai HTTP 200 OK dengan token yang terhitung penuh. Menambahkan unit test `TestSSECopy_CompletesOnDone` dan `TestSSECopy_ReturnsErrorWhenInterruptedBeforeDone`.
+  - **Contract & DB Fixes**: Memulihkan endpoint `/api/admin/security/summary` dan `getActiveProviderModels` pada contract tests, memperbaiki permission check SQLite `:memory:` pada Windows, dan bump frontend asset version ke `v=2.9.14`.
+- **Status Task**: Selesai / Terverifikasi 100% Test Suite
+
 ### [2026-09-10] - [Codex] - Cline & Grok CLI OAuth Account Onboarding
 - **Modul**: `Backend / Frontend / OAuth Provider Accounts`
 - **Deskripsi Perubahan**:

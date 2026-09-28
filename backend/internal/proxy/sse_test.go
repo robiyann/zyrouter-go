@@ -2,7 +2,9 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -124,5 +126,55 @@ func TestStreamWriterErrors(t *testing.T) {
 	_, err2 := WriteChunk(ew, []byte("hello"))
 	if err2 == nil {
 		t.Error("expected error, got nil")
+	}
+}
+
+type trailingErrorReader struct {
+	data   []byte
+	offset int
+	err    error
+}
+
+func (r *trailingErrorReader) Read(p []byte) (n int, err error) {
+	if r.offset < len(r.data) {
+		n = copy(p, r.data[r.offset:])
+		r.offset += n
+		return n, nil
+	}
+	return 0, r.err
+}
+
+func TestSSECopy_CompletesOnDone(t *testing.T) {
+	// Stream contains data: [DONE], followed by trailing context.Canceled error.
+	// SSECopy should return nil because [DONE] marks clean completion.
+	streamData := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"test\"}}]}\n\ndata: [DONE]\n\n")
+	upstream := &trailingErrorReader{
+		data: streamData,
+		err:  context.Canceled,
+	}
+	rec := httptest.NewRecorder()
+	var collected []byte
+	err := SSECopy(rec, upstream, rec, func(chunk []byte) {
+		collected = append(collected, chunk...)
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on [DONE] stream, got: %v", err)
+	}
+	if !bytes.Contains(collected, []byte("[DONE]")) {
+		t.Fatalf("expected collected bytes to contain [DONE]")
+	}
+}
+
+func TestSSECopy_ReturnsErrorWhenInterruptedBeforeDone(t *testing.T) {
+	// Stream interrupted before [DONE] is reached.
+	streamData := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
+	upstream := &trailingErrorReader{
+		data: streamData,
+		err:  context.Canceled,
+	}
+	rec := httptest.NewRecorder()
+	err := SSECopy(rec, upstream, rec, nil)
+	if err == nil {
+		t.Fatalf("expected error when stream interrupted before [DONE], got nil")
 	}
 }

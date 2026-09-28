@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -369,6 +370,17 @@ func (h *ChatHandler) tryForwardWithConnection(
 	}
 
 	latencyMs := time.Since(start).Milliseconds()
+
+	// If the stream already emitted a completion sentinel ([DONE] or message_stop),
+	// any trailing read error or context cancellation caused by the client closing
+	// the connection after receiving the final chunk must not mark the request as failed.
+	if fwdErr != nil && isStream && metrics != nil {
+		bufBytes := metrics.ResponseBuf.Bytes()
+		if bytes.Contains(bufBytes, []byte("[DONE]")) || bytes.Contains(bufBytes, []byte("message_stop")) {
+			log.Info("fallback", "treating stream as successful completion (terminal sentinel was delivered)", "provider", provider, "model", model, "trailingError", fwdErr)
+			fwdErr = nil
+		}
+	}
 
 	// Lightweight request trace for /debug/traces (provider/model latency).
 	status := "error"

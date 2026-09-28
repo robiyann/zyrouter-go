@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>Zyrouter Poster 2 · Bento Quickstart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 1080px;
+      height: 1350px;
+      background-color: #000000;
+      color: #f4f4f5;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 56px 52px;
+    }
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: 
+        radial-gradient(rgba(255, 255, 255, 0.04) 1.5px, transparent 1.5px);
+      background-size: 28px 28px;
+      z-index: 0;
+    }
+    .poster-content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    /* Top Header */
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .brand-pill {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 8px 18px;
+      border-radius: 9999px;
+    }
+    .brand-letter {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: #006FEE;
+      display: grid;
+      place-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      font-size: 0.85rem;
+      color: #fff;
+    }
+    .brand-label {
+      font-weight: 800;
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      color: #fff;
+    }
+    .badge-tier {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 8px 18px;
+      border-radius: 9999px;
+    }
+    /* Hero Title */
+    .hero-wrap {
+      margin-top: 24px;
+    }
+    .hero-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #006FEE;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+    .hero-title {
+      font-size: 3.2rem;
+      font-weight: 900;
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+    }
+    .hero-title span {
+      color: #006FEE;
+    }
+    /* Bento Grid */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .bento-card {
+      background: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 22px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .card-head-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #71717a;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    /* Bento 1: Code Snippet */
+    .bento-code {
+      grid-row: span 2;
+      background: #09090c;
+    }
+    .code-editor {
+      background: #030305;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.65;
+      color: #e2e8f0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .c-comment { color: #52525b; }
+    .c-keyword { color: #f43f5e; font-weight: 700; }
+    .c-func { color: #38bdf8; }
+    .c-string { color: #34d399; }
+    .c-highlight {
+      background: rgba(0, 111, 238, 0.18);
+      border-left: 3px solid #006FEE;
+      padding-left: 6px;
+      margin: 4px 0;
+      display: block;
+    }
+    /* Bento 2: Speed */
+    .bento-speed {
+      background: #121215;
+    }
+    .speed-stat {
+      font-size: 2.6rem;
+      font-weight: 900;
+      color: #38bdf8;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+      margin: 6px 0;
+    }
+    .bento-desc {
+      font-size: 0.82rem;
+      color: #a1a1aa;
+      line-height: 1.45;
+    }
+    /* Bento 3: 0-Password Auth */
+    .bento-auth {
+      background: #121215;
+    }
+    .auth-lead-title {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: #fff;
+      margin: 6px 0 4px;
+    }
+    /* Wide Bottom Shelf: The 6 Models */
+    .models-shelf {
+      margin-top: 18px;
+      background: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 22px;
+    }
+    .shelf-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .shelf-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .shelf-count {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: #17C964;
+      background: rgba(23, 201, 100, 0.15);
+      border: 1px solid rgba(23, 201, 100, 0.3);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 700;
+    }
+    .models-pill-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .pill-item {
+      background: #18181b;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pill-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #ffffff;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pill-desc {
+      font-size: 0.72rem;
+      color: #71717a;
+    }
+    /* Footer Bar */
+    .footer-bar {
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #006FEE;
+      border-radius: 16px;
+      padding: 18px 28px;
+      color: #fff;
+    }
+    .footer-text {
+      display: flex;
+      flex-direction: column;
+    }
+    .footer-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .footer-desc {
+      font-size: 0.85rem;
+      opacity: 0.9;
+    }
+    .footer-action {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      color: #000;
+      font-weight: 800;
+      font-size: 0.95rem;
+      padding: 10px 22px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="poster-content">
+    <!-- Top Header -->
+    <header class="top-header">
+      <div class="brand-pill">
+        <div class="brand-letter">Z</div>
+        <span class="brand-label">ZYROUTER</span>
+      </div>
+      <div class="badge-tier">
+        <span>CLIENT ACCESS</span>
+      </div>
+    </header>
+
+    <!-- Hero Title -->
+    <div class="hero-wrap">
+      <div class="hero-eyebrow">
+        <span>DROP-IN OPENAI COMPATIBILITY</span>
+      </div>
+      <h1 class="hero-title">
+        Integrasi 6 Model AI.<br>
+        <span>Cuma Butuh 3 Baris Kode.</span>
+      </h1>
+    </div>
+
+    <!-- Bento Grid -->
+    <div class="bento-grid">
+      <!-- Bento 1: Code Snippet -->
+      <div class="bento-card bento-code">
+        <div class="card-head-tag">
+          <span>PYTHON / NODE.JS SDK</span>
+          <span>● READY</span>
+        </div>
+        <div class="code-editor">
+          <p class="c-comment"># Cukup arahkan Base URL ke Zyrouter</p>
+          <p><span class="c-keyword">from</span> openai <span class="c-keyword">import</span> OpenAI</p>
+          <br>
+          <p>client = <span class="c-func">OpenAI</span>(</p>
+          <p class="c-highlight">&nbsp;&nbsp;base_url=<span class="c-string">"https://api.zyvenox.tech/v1"</span>,</p>
+          <p>&nbsp;&nbsp;api_key=<span class="c-string">"zy_your_key"</span></p>
+          <p>)</p>
+          <br>
+          <p class="c-comment"># Ganti model kapan saja</p>
+          <p>res = client.chat.completions.<span class="c-func">create</span>(</p>
+          <p>&nbsp;&nbsp;model=<span class="c-string">"qwen3.8-flash"</span>,</p>
+          <p>&nbsp;&nbsp;messages=[{<span class="c-string">"role"</span>: <span class="c-string">"user"</span>, <span class="c-string">"content"</span>: <span class="c-string">"Hi!"</span>}]</p>
+          <p>)</p>
+        </div>
+      </div>
+
+      <!-- Bento 2: Speed / Latency -->
+      <div class="bento-card bento-speed">
+        <div class="card-head-tag">
+          <span>LATENSI RENDAH</span>
+          <span>⚡ FLASH</span>
+        </div>
+        <div class="speed-stat">&lt; 350ms</div>
+        <p class="bento-desc">
+          Streaming respons token real-time dengan latensi rendah dan koneksi stabil.
+        </p>
+      </div>
+
+      <!-- Bento 3: Telegram 0-Password Auth -->
+      <div class="bento-card bento-auth">
+        <div class="card-head-tag">
+          <span>VERIFIKASI AMAN</span>
+          <span>0-PASSWORD</span>
+        </div>
+        <div class="auth-lead-title">1-Klik Telegram</div>
+        <p class="bento-desc">
+          Tanpa registrasi email &amp; password. Verifikasi instan via Telegram resmi langsung dapat API Key.
+        </p>
+      </div>
+    </div>
+
+    <!-- Wide Bottom Shelf: The 6 Models -->
+    <div class="models-shelf">
+      <div class="shelf-header">
+        <h3 class="shelf-title">
+          <span>6 Model AI Client yang Siap Digunakan:</span>
+        </h3>
+        <span class="shelf-count">ONLINE</span>
+      </div>
+
+      <div class="models-pill-grid">
+        <div class="pill-item">
+          <span class="pill-name">glm-5.3-flash</span>
+          <span class="pill-desc">Chat responsif &amp; multitugas</span>
+        </div>
+        <div class="pill-item">
+          <span class="pill-name">ling-3.0-flash-fin-free</span>
+          <span class="pill-desc">Analitik data finansial (Free)</span>
+        </div>
+        <div class="pill-item">
+          <span class="pill-name">mimo-2.5-auto</span>
+          <span class="pill-desc">Routing inferensi cerdas</span>
+        </div>
+        <div class="pill-item">
+          <span class="pill-name">mimo-v2.5</span>
+          <span class="pill-desc">Penalaran percakapan panjang</span>
+        </div>
+        <div class="pill-item">
+          <span class="pill-name">muse-spark-1.3</span>
+          <span class="pill-desc">Sintesis konten &amp; ide kreatif</span>
+        </div>
+        <div class="pill-item">
+          <span class="pill-name">qwen3.8-flash</span>
+          <span class="pill-desc">Coding &amp; logika multibahasa</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Footer Bar -->
+    <footer class="footer-bar">
+      <div class="footer-text">
+        <span class="footer-title">Dapatkan API Key Sekarang</span>
+        <span class="footer-desc">Buka client portal dan verifikasi akun Telegram Anda</span>
+      </div>
+      <div class="footer-action">
+        <span>client.zyvenox.tech</span>
+        <span>→</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

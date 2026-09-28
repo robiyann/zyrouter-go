@@ -90,6 +90,10 @@ func (b *ResponseBuf) String() string {
 	return string(b.buf)
 }
 
+// Bytes returns a slice of the captured content bytes.
+func (b *ResponseBuf) Bytes() []byte {
+	return b.buf
+}
 // StreamMetrics captures timing and content during a proxied stream.
 type StreamMetrics struct {
 	TTFT        int64       // ms from request start to first chunk

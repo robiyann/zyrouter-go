@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>Zyrouter Poster 1 · Client Access</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 1080px;
+      height: 1350px;
+      background-color: #000000;
+      color: #ecedee;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 64px 60px;
+    }
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: 
+        radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+      background-size: 32px 32px;
+      z-index: 0;
+      opacity: 0.6;
+    }
+    .poster-content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    /* Header */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: #006FEE;
+      display: grid;
+      place-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      font-size: 1.15rem;
+      color: #fff;
+    }
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+    }
+    .b-name {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .b-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #71717A;
+    }
+    .chip-active {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(23, 201, 100, 0.12);
+      border: 1px solid rgba(23, 201, 100, 0.25);
+      color: #17C964;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #17C964;
+    }
+    /* Hero Title */
+    .hero-wrap {
+      margin-top: 36px;
+    }
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
+      border-radius: 9999px;
+      background: rgba(0, 111, 238, 0.12);
+      border: 1px solid rgba(0, 111, 238, 0.25);
+      color: #006FEE;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .headline {
+      font-size: 3.6rem;
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      margin-bottom: 14px;
+    }
+    .headline span {
+      color: #006FEE;
+    }
+    .subheadline {
+      font-size: 1.2rem;
+      color: #a1a1aa;
+      line-height: 1.5;
+      max-width: 820px;
+    }
+    /* 4 Value Pills */
+    .value-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+    .v-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 8px 14px;
+      border-radius: 9999px;
+      font-size: 0.82rem;
+      color: #d4d4d8;
+      font-weight: 600;
+    }
+    .v-check {
+      color: #17C964;
+      font-weight: 800;
+    }
+    /* Mockup Container: The 6 Models */
+    .card-models-box {
+      margin-top: 32px;
+      background: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      padding: 26px;
+    }
+    .box-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .box-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .box-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #17C964;
+      background: rgba(23, 201, 100, 0.12);
+      border: 1px solid rgba(23, 201, 100, 0.25);
+      padding: 3px 10px;
+      border-radius: 9999px;
+    }
+    .models-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+    .model-card {
+      background: #18181b;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .m-left {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .m-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .m-spec {
+      font-size: 0.78rem;
+      color: #71717a;
+    }
+    .m-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(0, 111, 238, 0.15);
+      color: #60A5FA;
+    }
+    .m-tag.free {
+      background: rgba(23, 201, 100, 0.15);
+      color: #17C964;
+    }
+    /* Endpoint Strip */
+    .endpoint-strip {
+      margin-top: 18px;
+      background: #09090b;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+    .ep-label { color: #71717a; font-weight: 700; }
+    .ep-url { color: #006FEE; font-weight: 600; }
+    .ep-sdk { color: #17C964; font-weight: 700; }
+    /* Bottom CTA Card */
+    .footer-cta {
+      margin-top: 36px;
+      background: #006FEE;
+      border-radius: 18px;
+      padding: 22px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+    }
+    .cta-text-main {
+      font-size: 1.25rem;
+      font-weight: 800;
+    }
+    .cta-text-sub {
+      font-size: 0.88rem;
+      opacity: 0.9;
+    }
+    .cta-btn-white {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 800;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="poster-content">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="brand-wrap">
+        <div class="brand-badge">Z</div>
+        <div class="brand-text">
+          <span class="b-name">ZYROUTER</span>
+          <span class="b-sub">AI CLIENT PORTAL</span>
+        </div>
+      </div>
+      <div class="chip-active">
+        <span class="chip-dot"></span>
+        <span>GATEWAY ONLINE</span>
+      </div>
+    </header>
+
+    <!-- Main Hero Hook -->
+    <div class="hero-wrap">
+      <div class="hero-tag">
+        <span>100% OPENAI SDK COMPATIBLE</span>
+      </div>
+      <h1 class="headline">
+        Satu Endpoint.<br>
+        <span>6 Model AI Pilihan.</span>
+      </h1>
+      <p class="subheadline">
+        Akses inferensi tercepat ke GLM, Ling, Mimo, Muse, dan Qwen cukup dengan satu API Key tanpa langganan terpisah.
+      </p>
+
+      <!-- 4 Quick Value Pills -->
+      <div class="value-row">
+        <div class="v-pill"><span class="v-check">✓</span> 0 Email &amp; 0 Password</div>
+        <div class="v-pill"><span class="v-check">✓</span> Verifikasi Cepat via Telegram</div>
+        <div class="v-pill"><span class="v-check">✓</span> Realtime Streaming</div>
+        <div class="v-pill"><span class="v-check">✓</span> API Key Sekali Tampil</div>
+      </div>
+    </div>
+
+    <!-- The 6 Models Showcase Box -->
+    <div class="card-models-box">
+      <div class="box-header">
+        <span class="box-title">Model AI yang Diaktifkan untuk Client:</span>
+        <span class="box-badge">6 MODEL AKTIF</span>
+      </div>
+
+      <div class="models-grid">
+        <!-- Model 1 -->
+        <div class="model-card">
+          <div class="m-left">
+            <span class="m-name">glm-5.3-flash</span>
+            <span class="m-spec">Chat interaktif kilat &amp; multitugas</span>
+          </div>
+          <span class="m-tag">FLASH</span>
+        </div>
+
+        <!-- Model 2 -->
+        <div class="model-card">
+          <div class="m-left">
+            <span class="m-name">ling-3.0-flash-fin-free</span>
+            <span class="m-spec">Analitik data finansial &amp; tabel</span>
+          </div>
+          <span class="m-tag free">FREE TIER</span>
+        </div>
+
+        <!-- Model 3 -->
+        <div class="model-card">
+          <div class="m-left">
+            <span class="m-name">mimo-2.5-auto</span>
+            <span class="m-spec">Routing inferensi cerdas terpadu</span>
+          </div>
+          <span class="m-tag">AUTO</span>
+        </div>
+
+        <!-- Model 4 -->
+        <div class="model-card">
+          <div class="m-left">
+            <span class="m-name">mimo-v2.5</span>
+            <span class="m-spec">Penalaran multi-turn konteks panjang</span>
+          </div>
+          <span class="m-tag">LOGIC</span>
+        </div>
+
+        <!-- Model 5 -->
+        <div class="model-card">
+          <div class="m-left">
+            <span class="m-name">muse-spark-1.3</span>
+            <span class="m-spec">Kreasi copywriting &amp; ide kreatif</span>
+          </div>
+          <span class="m-tag">CREATIVE</span>
+        </div>
+
+        <!-- Model 6 -->
+        <div class="model-card">
+          <div class="m-left">
+            <span class="m-name">qwen3.8-flash</span>
+            <span class="m-spec">Coding presisi &amp; logika multibahasa</span>
+          </div>
+          <span class="m-tag">CODE</span>
+        </div>
+      </div>
+
+      <!-- Endpoint Strip -->
+      <div class="endpoint-strip">
+        <div>
+          <span class="ep-label">BASE URL: </span>
+          <span class="ep-url">https://api.zyvenox.tech/v1</span>
+        </div>
+        <div class="ep-sdk">Drop-in OpenAI SDK</div>
+      </div>
+    </div>
+
+    <!-- Bottom CTA Bar -->
+    <footer class="footer-cta">
+      <div>
+        <div class="cta-text-main">Mulai Akses Sekarang</div>
+        <div class="cta-text-sub">Buka <strong>client.zyvenox.tech</strong> dan verifikasi akun Telegram Anda</div>
+      </div>
+      <div class="cta-btn-white">
+        <span>Klaim API Key</span>
+        <span>→</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
