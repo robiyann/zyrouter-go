@@ -437,6 +437,32 @@ func (r *Repo) UpdateUserAccountType(userID, accountTypeID string) error {
 	return nil
 }
 
+// SetUserBannedByTelegramID toggles the server-owned access state for a
+// verified Telegram identity. API keys remain intact so unbanning does not
+// resurrect keys that were independently revoked.
+func (r *Repo) SetUserBannedByTelegramID(telegramUserID string, banned bool) error {
+	telegramUserID = strings.TrimSpace(telegramUserID)
+	if telegramUserID == "" {
+		return fmt.Errorf("telegram user id is required")
+	}
+	isActive := 1
+	if banned {
+		isActive = 0
+	}
+	result, err := r.db.Exec(`UPDATE users SET isActive=?, updatedAt=? WHERE telegramUserId=?`, isActive, time.Now().UTC().Format(time.RFC3339), telegramUserID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *Repo) GetUserSettings(userID string) (*models.UserFeatureSettings, error) {
 	var rtk, caveman, ponytail sql.NullInt64
 	var cavemanLevel, ponytailLevel sql.NullString

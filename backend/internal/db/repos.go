@@ -30,15 +30,15 @@ func (r *Repo) RawDB() *sql.DB {
 
 // ValidateApiKey checks if the given API key exists and is active.
 func (r *Repo) ValidateApiKey(key string) (bool, error) {
-	var active int
-	err := r.db.QueryRow("SELECT isActive FROM apiKeys WHERE (keyHash IS NOT NULL AND keyHash = ?) OR (keyHash IS NULL AND key = ?) LIMIT 1", HashUserSecret(key), key).Scan(&active)
+	var active, userActive sql.NullInt64
+	err := r.db.QueryRow("SELECT a.isActive, u.isActive FROM apiKeys a LEFT JOIN users u ON u.id = a.userId WHERE (a.keyHash IS NOT NULL AND a.keyHash = ?) OR (a.keyHash IS NULL AND a.key = ?) LIMIT 1", HashUserSecret(key), key).Scan(&active, &userActive)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return active == 1, nil
+	return active.Int64 == 1 && (!userActive.Valid || userActive.Int64 == 1), nil
 }
 
 // GetApiKeyByKey retrieves detailed APIKey information by key string.
@@ -46,10 +46,11 @@ func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var userID, typeID, keyHash sql.NullString
 	var telegramUserID, telegramUsername, telegramDisplayName sql.NullString
+	var userActive sql.NullInt64
 	err := r.db.QueryRow(
-		"SELECT a.id, a.key, a.keyHash, a.name, a.machineId, a.isActive, a.restrictions, a.createdAt, a.clientId, a.policyId, a.userId, a.accountTypeId, u.telegramUserId, u.telegramUsername, u.displayName FROM apiKeys a LEFT JOIN users u ON u.id = a.userId WHERE (a.keyHash IS NOT NULL AND a.keyHash = ?) OR (a.keyHash IS NULL AND a.key = ?) LIMIT 1",
+		"SELECT a.id, a.key, a.keyHash, a.name, a.machineId, a.isActive, a.restrictions, a.createdAt, a.clientId, a.policyId, a.userId, a.accountTypeId, u.telegramUserId, u.telegramUsername, u.displayName, u.isActive FROM apiKeys a LEFT JOIN users u ON u.id = a.userId WHERE (a.keyHash IS NOT NULL AND a.keyHash = ?) OR (a.keyHash IS NULL AND a.key = ?) LIMIT 1",
 		HashUserSecret(key), key,
-	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID, &telegramUserID, &telegramUsername, &telegramDisplayName)
+	).Scan(&apiKey.ID, &apiKey.Key, &keyHash, &apiKey.Name, &apiKey.MachineID, &apiKey.IsActive, &apiKey.Restrictions, &apiKey.CreatedAt, &apiKey.ClientID, &apiKey.PolicyID, &userID, &typeID, &telegramUserID, &telegramUsername, &telegramDisplayName, &userActive)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -62,6 +63,11 @@ func (r *Repo) GetApiKeyByKey(key string) (*models.APIKey, error) {
 	}
 	if userID.Valid {
 		apiKey.UserID = &userID.String
+		if userActive.Valid && userActive.Int64 != 1 {
+			// A banned/inactive Telegram user invalidates every owned key at
+			// authentication time without destroying the key's own state.
+			apiKey.IsActive = 0
+		}
 	}
 	if typeID.Valid {
 		apiKey.AccountTypeID = &typeID.String

@@ -4730,8 +4730,8 @@ function renderUsersList(users, accountTypes) {
           ${users.map((u) => `
             <tr>
               <td>
-                <span class="table-badge ${u.isActive === 1 ? 'active' : 'inactive'}" style="font-size:7.5px;">
-                  ${u.isActive === 1 ? 'ACTIVE' : 'INACTIVE'}
+                <span class="table-badge ${u.isBanned ? 'inactive' : (u.isActive === 1 ? 'active' : 'inactive')}" style="font-size:7.5px;">
+                  ${u.isBanned ? 'BANNED' : (u.isActive === 1 ? 'ACTIVE' : 'INACTIVE')}
                 </span>
               </td>
               <td>
@@ -4754,11 +4754,16 @@ function renderUsersList(users, accountTypes) {
                 `}
               </td>
               <td class="table-cell-actions">
-                ${u.hasActiveKey ? `
+                <div style="display:flex; gap:5px; justify-content:flex-end; flex-wrap:wrap;">
+                  <button class="${u.isBanned ? 'solid-button' : 'danger-button'}" data-user-ban="${escapeHtml(u.telegramUserId || '')}" data-user-banned="${u.isBanned ? 'true' : 'false'}" ${!u.telegramUserId ? 'disabled' : ''} style="font-size:9.5px; padding:3px 7px;">
+                    ${u.isBanned ? 'Unban User' : 'Ban User'}
+                  </button>
+                ${u.hasActiveKey && !u.isBanned ? `
                   <button class="danger-button" data-revoke-user-key="${escapeHtml(u.id)}" style="font-size:9.5px; padding:3px 7px;">
                     Revoke Key
                   </button>
-                ` : '<span style="font-size:10px; color:var(--muted);">--</span>'}
+                ` : ''}
+                </div>
               </td>
             </tr>
           `).join('')}
@@ -5115,6 +5120,29 @@ function bindAccountTypeActions(payload) {
         await renderView('account-types');
       } catch (err) {
         alert(`Failed to revoke key: ${err.message}`);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-user-ban]').forEach((btn) => {
+    btn.onclick = async () => {
+      const telegramUserId = btn.dataset.userBan;
+      const currentlyBanned = btn.dataset.userBanned === 'true';
+      if (!telegramUserId) return;
+      const action = currentlyBanned ? 'unban' : 'ban';
+      if (!confirm(`${currentlyBanned ? 'Unban' : 'Ban'} Telegram user ${telegramUserId}? This changes access for all API keys owned by this user.`)) return;
+      try {
+        const res = await fetch(`${apiBase}/api/admin/users/telegram/${encodeURIComponent(telegramUserId)}/ban`, {
+          method: 'PUT',
+          headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ banned: !currentlyBanned })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+        showToast(`User ${action}ned`, 'success');
+        await renderView('account-types');
+      } catch (err) {
+        alert(`Failed to ${action} user: ${err.message}`);
       }
     };
   });

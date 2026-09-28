@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 
@@ -111,8 +112,11 @@ func (h *AdminHandler) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]map[string]any, 0, len(users))
 	for _, user := range users {
-		activeKey, _ := h.repo.GetActiveUserApiKey(user.ID)
-		result = append(result, map[string]any{"id": user.ID, "telegramUsername": user.TelegramUsername, "displayName": user.DisplayName, "accountTypeId": user.AccountTypeID, "isActive": user.IsActive, "verifiedAt": user.VerifiedAt, "createdAt": user.CreatedAt})
+		var activeKey *models.APIKey
+		if user.IsActive == 1 {
+			activeKey, _ = h.repo.GetActiveUserApiKey(user.ID)
+		}
+		result = append(result, map[string]any{"id": user.ID, "telegramUserId": user.TelegramUserID, "telegramUsername": user.TelegramUsername, "displayName": user.DisplayName, "accountTypeId": user.AccountTypeID, "isActive": user.IsActive, "isBanned": user.IsActive != 1, "verifiedAt": user.VerifiedAt, "createdAt": user.CreatedAt})
 		result[len(result)-1]["hasActiveKey"] = activeKey != nil
 		if activeKey != nil {
 			result[len(result)-1]["keyPrefix"] = activeKey.Key
@@ -128,6 +132,33 @@ func (h *AdminHandler) HandleRevokeUserKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+}
+
+func (h *AdminHandler) HandleSetUserBan(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Banned *bool `json:"banned"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Banned == nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "banned is required")
+		return
+	}
+	telegramUserID := strings.TrimSpace(chi.URLParam(r, "telegramUserId"))
+	if telegramUserID == "" {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "telegram user id is required")
+		return
+	}
+	if err := h.repo.SetUserBannedByTelegramID(telegramUserID, *body.Banned); err != nil {
+		if err == sql.ErrNoRows {
+			handlerutil.WriteJSONError(w, http.StatusNotFound, "telegram user not found")
+			return
+		}
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to update user ban state")
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+		"telegramUserId": telegramUserID,
+		"banned":         *body.Banned,
+	})
 }
 
 func (h *AdminHandler) HandleUpdateUserAccountType(w http.ResponseWriter, r *http.Request) {
