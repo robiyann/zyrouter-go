@@ -25,3 +25,6 @@ backend/zyrouter
 backend/antigravity-quota-bot
 *.db
 .wrangler/
+
+# PM2 process config (env-specific, use ecosystem.config.cjs.example as template)
+ecosystem.config.cjs
