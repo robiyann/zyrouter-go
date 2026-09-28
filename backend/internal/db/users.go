@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"zyrouter/backend/internal/models"
 )
+
+var ErrUserBanned = errors.New("user_banned")
 
 func HashUserSecret(value string) string {
 	sum := sha256.Sum256([]byte(value))
@@ -215,6 +218,14 @@ func (r *Repo) MarkChallengeTelegramVerified(challengeID, telegramID, username, 
 	if err != nil || time.Now().UTC().After(expires) || status != "pending" {
 		return "", fmt.Errorf("verification challenge expired or already used")
 	}
+	var userActive int
+	userErr := tx.QueryRow(`SELECT isActive FROM users WHERE telegramUserId=?`, telegramID).Scan(&userActive)
+	if userErr == nil && userActive != 1 {
+		return "", ErrUserBanned
+	}
+	if userErr != nil && userErr != sql.ErrNoRows {
+		return "", userErr
+	}
 	now := time.Now().UTC()
 	// Keep only one post-Telegram confirmation challenge active per Telegram ID.
 	// This prevents multiple browser tabs from racing separate confirmation codes.
@@ -260,7 +271,8 @@ func (r *Repo) CompleteVerification(challengeID, browserKey, code, defaultType s
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	var userID string
-	err = tx.QueryRow(`SELECT id FROM users WHERE telegramUserId=?`, tgID).Scan(&userID)
+	var userActive int
+	err = tx.QueryRow(`SELECT id,isActive FROM users WHERE telegramUserId=?`, tgID).Scan(&userID, &userActive)
 	if err == sql.ErrNoRows {
 		if defaultType == "" {
 			defaultType = "user"
@@ -280,6 +292,8 @@ func (r *Repo) CompleteVerification(challengeID, browserKey, code, defaultType s
 		}
 	} else if err != nil {
 		return nil, err
+	} else if userActive != 1 {
+		return nil, ErrUserBanned
 	} else if username != "" || displayName != "" {
 		if _, err := tx.Exec(`UPDATE users SET telegramUsername=COALESCE(NULLIF(?,''),telegramUsername),displayName=COALESCE(NULLIF(?,''),displayName),updatedAt=? WHERE id=?`, username, displayName, now, userID); err != nil {
 			return nil, err

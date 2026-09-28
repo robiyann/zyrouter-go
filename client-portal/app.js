@@ -373,7 +373,7 @@
       });
 
       if (!res.ok) {
-        throw new Error('Kode konfirmasi salah atau sudah kedaluwarsa.');
+        throw await createApiError(res, 'Kode konfirmasi salah atau sudah kedaluwarsa.');
       }
 
       // Successful login
@@ -388,6 +388,10 @@
       history.replaceState(null, '', '#dashboard');
       await loadDashboard();
     } catch (err) {
+      if (err?.code === 'user_banned') {
+        showUserBannedState();
+        return;
+      }
       showAuthError(err.message || 'Gagal menyelesaikan verifikasi');
       if (completeBtn) completeBtn.disabled = false;
     }

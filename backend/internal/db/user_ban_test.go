@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -36,6 +37,13 @@ func TestSetUserBannedByTelegramIDBlocksAndRestoresOwnedKey(t *testing.T) {
 	}
 	if err := repo.SetUserBannedByTelegramID("99887766", true); err != nil {
 		t.Fatal(err)
+	}
+	challengeID, _, err := repo.CreateVerificationChallenge(time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.MarkChallengeTelegramVerified(challengeID, "99887766", "banned_user", "Banned User"); !errors.Is(err, ErrUserBanned) {
+		t.Fatalf("expected Telegram verification to reject banned user, got %v", err)
 	}
 	valid, err = repo.ValidateApiKey("sk-user-ban")
 	if err != nil || valid {

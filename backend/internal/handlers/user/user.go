@@ -228,6 +228,10 @@ func (h *Handler) CompleteVerification(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := h.Repo.CompleteVerification(body.ChallengeID, cookie.Value, body.ConfirmationCode, "user")
 	if err != nil {
+		if errors.Is(err, db.ErrUserBanned) {
+			handlerutil.WriteJSONError(w, http.StatusForbidden, "user_banned: This Telegram user is banned. Contact support to restore access.")
+			return
+		}
 		handlerutil.WriteJSONError(w, http.StatusForbidden, err.Error())
 		return
 	}

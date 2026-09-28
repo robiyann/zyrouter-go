@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -172,6 +173,11 @@ func (b *BotService) handleMessage(ctx context.Context, msg *telegramMessage) {
 	confirmationCode, err := b.repo.MarkChallengeTelegramVerified(code, telegramID, msg.From.Username, name)
 	if err != nil {
 		log.Warn("telegram", "verification failed", "telegramID", telegramID, "error", err)
+		if errors.Is(err, db.ErrUserBanned) {
+			b.sendMessage(ctx, msg.Chat.ID,
+				"🚫 <b>User Banned</b>\n\nAkun Telegram ini sedang diblokir dan tidak dapat menggunakan Client Dashboard maupun API key. Hubungi <b>@robiyan</b> untuk bantuan.")
+			return
+		}
 		b.sendMessage(ctx, msg.Chat.ID,
 			fmt.Sprintf("❌ <b>Verifikasi Gagal</b>\n\n<i>%s</i>\n\nPastikan kode rahasia masih aktif (berlaku 10 menit). Silakan gunakan kode terbaru dari dashboard Anda.", err.Error()))
 		return
