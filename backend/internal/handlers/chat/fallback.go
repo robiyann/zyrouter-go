@@ -140,7 +140,7 @@ func (h *ChatHandler) handleAccountFallback(
 				continue
 			}
 		}
-		log.Info("fallback", "trying connection", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", c.Name, "email", c.Email, "priority", c.Priority)
+		log.Debug("fallback", "trying connection", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", c.Name, "email", c.Email, "priority", c.Priority)
 		if err := h.tryForwardWithConnection(ctx, w, provider, model, c.ID, connData, body, isStream, translateResponse, endpoint); err == nil {
 			return nil
 		} else {
@@ -301,7 +301,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 		}
 	}
 
-	log.Info("router", "dispatch", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
+	log.Debug("router", "dispatch", "provider", providerLabel, "providerId", provider, "model", modelLabel, "modelId", model, "account", accountLabel, "connectionId", connectionID, "proxy", proxyLabel, "strategy", stratLabel, "stream", isStream)
 
 	pipedBody := h.applyTokenSaversForContext(ctx, body)
 	start := time.Now()

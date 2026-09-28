@@ -76,7 +76,7 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	cachedTokens := usage.GetCachedTokens()
 	cacheCreationTokens := usage.CacheCreationInputTokens
 
-	log.Info("router", "success", "provider", providerLabel, "providerId", info.Provider, "model", modelLabel, "modelId", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
+	log.Debug("router", "success", "provider", providerLabel, "providerId", info.Provider, "model", modelLabel, "modelId", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
 	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
 	var usageErr error
 	if info.UserID != "" {
