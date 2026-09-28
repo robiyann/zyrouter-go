@@ -72,6 +72,9 @@ func WriteJSONError(w http.ResponseWriter, status int, message string) {
 		errCode = "provider_prefix_forbidden"
 	} else if strings.Contains(message, "model_alias_required") {
 		errCode = "model_alias_required"
+	} else if strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "user_banned:") {
+		errCode = "user_banned"
+		message = strings.TrimSpace(strings.TrimSpace(message[len("user_banned:"):]))
 	}
 
 	errResp := map[string]any{

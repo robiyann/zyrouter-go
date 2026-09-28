@@ -158,6 +158,29 @@
     if (el) el.textContent = '';
   }
 
+  async function createApiError(response, fallback) {
+    const data = await response.json().catch(() => ({}));
+    const payload = data && data.error ? data.error : {};
+    const error = new Error(payload.message || fallback);
+    error.status = response.status;
+    error.code = payload.code || '';
+    return error;
+  }
+
+  function showUserBannedState() {
+    stopStreams();
+    sessionType = null;
+    machineToken = '';
+    activeProfile = null;
+    activePolicy = null;
+    allowedModelsList = [];
+    $('app')?.classList.add('hidden');
+    $('auth')?.classList.remove('hidden');
+    $('sessionMenu')?.classList.add('hidden');
+    cancelVerification();
+    showAuthError('USER BANNED — Akun Telegram ini diblokir dan seluruh API key miliknya tidak dapat digunakan. Hubungi @robiyan untuk bantuan.');
+  }
+
   // Telegram Verification Flow (Blueprint 3.2)
   async function startVerification() {
     if (challenge) return;
@@ -479,6 +502,10 @@
       // Show Default Overview Tab
       showView(preferredView || 'overview');
     } catch (err) {
+      if (err?.code === 'user_banned') {
+        showUserBannedState();
+        return;
+      }
       if (bootstrapAttempt <= 1) {
         // Initial unauthenticated state is expected
         $('app')?.classList.add('hidden');
@@ -499,7 +526,7 @@
     ]);
 
     if (!pRes.ok) {
-      throw new Error('Sesi user belum aktif');
+      throw await createApiError(pRes, 'Sesi user belum aktif');
     }
 
     sessionType = 'telegram';

@@ -23,8 +23,12 @@ func RequireUserSession(repo *db.Repo) func(http.Handler) http.Handler {
 				return
 			}
 			user, err := repo.GetUserBySession(token)
-			if err != nil || user == nil || user.IsActive != 1 {
+			if err != nil || user == nil {
 				handlerutil.WriteJSONError(w, http.StatusUnauthorized, "invalid or expired user session")
+				return
+			}
+			if user.IsActive != 1 {
+				handlerutil.WriteJSONError(w, http.StatusForbidden, "user_banned: This Telegram user is banned. Contact support to restore access.")
 				return
 			}
 			ctx := context.WithValue(r.Context(), authenticatedUserKey, user)
