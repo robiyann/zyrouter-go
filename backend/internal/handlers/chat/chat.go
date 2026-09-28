@@ -64,6 +64,10 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.validateRequestPolicy(r, reqBody.Model, modelInfo); err != nil {
+		if shouldWritePolicyNotice(r, err) {
+			writePolicyNotice(w, reqBody.Model, reqBody.Stream, false)
+			return
+		}
 		handlerutil.WriteJSONError(w, http.StatusForbidden, fmt.Sprintf("Forbidden: %v", err))
 		return
 	}
@@ -76,6 +80,10 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.reserveUserQuota(r, body); err != nil {
+		if shouldWritePolicyNotice(r, err) {
+			writePolicyNotice(w, reqBody.Model, reqBody.Stream, false)
+			return
+		}
 		status := http.StatusTooManyRequests
 		if !errors.Is(err, auth.ErrRateLimitExceeded) {
 			status = http.StatusInternalServerError
@@ -201,6 +209,10 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.validateRequestPolicy(r, reqBody.Model, modelInfo); err != nil {
+		if shouldWritePolicyNotice(r, err) {
+			writePolicyNotice(w, reqBody.Model, reqBody.Stream, true)
+			return
+		}
 		handlerutil.WriteJSONError(w, http.StatusForbidden, fmt.Sprintf("Forbidden: %v", err))
 		return
 	}
@@ -235,6 +247,10 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	workingBody["stream"] = reqBody.Stream
 	if err := h.reserveUserQuota(r, body); err != nil {
+		if shouldWritePolicyNotice(r, err) {
+			writePolicyNotice(w, reqBody.Model, reqBody.Stream, true)
+			return
+		}
 		status := http.StatusTooManyRequests
 		if !errors.Is(err, auth.ErrRateLimitExceeded) {
 			status = http.StatusInternalServerError
@@ -302,7 +318,7 @@ func (h *ChatHandler) validateRequestPolicy(r *http.Request, requested string, i
 			return fmt.Errorf("account type lookup failed: %w", err)
 		}
 		if !allowed {
-			return fmt.Errorf("model alias '%s' is not enabled for this account type", requested)
+			return fmt.Errorf("%w: model alias '%s' is not enabled for this account type", auth.ErrModelNotAllowed, requested)
 		}
 	}
 
