@@ -3,11 +3,16 @@
 ### [2026-09-28] - [Antigravity] - Model Labs UI/UX Overhaul & Prompt Bench Redesign
 - **Modul**: `Frontend / Model Labs / Prompt Bench / Design System`
 - **File Diubah**:
+  - `ecosystem.config.cjs`
   - `frontend/app.js`
   - `frontend/styles.css`
   - `frontend/index.html`
   - `tests/frontend_contract.test.mjs`
   - `backend/internal/db/client.go`
+  - `backend/internal/proxy/sse.go`
+  - `backend/internal/handlers/chat/fallback.go`
+  - `backend/internal/handlers/public_telemetry.go`
+  - `client-portal/app.js`
 - **Deskripsi Perubahan**:
   - **Layout & Top Workbench Bar**: Memindahkan model selector pill, mode switch (`Chat` vs `Prompt Bench`), System Prompt trigger dengan glowing indicator dot, dan tombol New session ke Workbench Top Bar di bagian atas canvas.
   - **Rapikan Composer & Tombol**: Mengeliminasi penumpukan 7 tombol di composer footer. Status gateway dipindah ke status pill rapi dengan dot pulse, shortcut hint disederhanakan, dan tombol kirim diupgrade menjadi tombol Send/Stop dinamis (dapat membatalkan streaming secara instan).
@@ -19,6 +24,7 @@
   - **Cartethyia-Style Floating Island Shell**: Mengubah layout global `.room-shell` menjadi layout pulau melayang (*floating island*) dengan margin/padding luar `12px 14px 16px 14px` dan `gap: 14px`, sehingga sidebar `.dock` kini menjadi kartu kaca melayang (*floating dock*) dengan `border-radius: 16px; border: 1px solid var(--line); height: calc(100vh - 28px); position: sticky; top: 12px;` yang dikelilingi jarak visual dari tepi viewport kiri dan bawah. Area konten kanan (`.room-main`, `.room-header`, dan views) juga mengambang serasi dengan padding bawah yang lega, membiarkan wallpaper galaksi/nebula terlihat elegan di sela-selanya seperti Cartethyia.
   - **Global Telemetry Stream Chronological Patch**: Memperbaiki urutan render `data.recent` pada Client Portal dengan iterasi terbalik saat memanggil `list.prepend(row)` agar event request terbaru selalu tampil di paling atas secara konsisten. Memperbaiki pendeteksian kode status error HTTP (4xx/5xx agar berwarna merah, bukan hijau), menyelaraskan event listener `request` pada private logs stream, dan menambahkan fallback alias publik pada `allowedAliasesForClient` di backend agar akun user pada tier yang belum dikonfigurasikan tetap dapat menerima feed live telemetry.
   - **SSE Terminal Sentinel & Client Disconnect Race Patch**: Mengatasi false-alarm `context canceled` (status 0 padahal klien sudah menerima respons lengkap). Menambahkan deteksi `[DONE]` pada `internalproxy.SSECopy` agar langsung keluar bersih segera setelah data penutup di-flush ke klien tanpa tertahan menunggu EOF upstream yang terlambat. Menambahkan pengaman ganda di `fallback.go` yang memeriksa `metrics.ResponseBuf` terhadap terminal sentinel (`[DONE]` atau `message_stop`) sehingga pemutusan soket oleh aplikasi klien pasca-generasi tidak lagi ditandai sebagai kegagalan proxy atau status 0, melainkan dicatat sah sebagai HTTP 200 OK dengan token yang terhitung penuh. Menambahkan unit test `TestSSECopy_CompletesOnDone` dan `TestSSECopy_ReturnsErrorWhenInterruptedBeforeDone`.
+  - **PM2 Ecosystem Config Syntax Fix**: Memperbaiki file `ecosystem.config.cjs` yang kehilangan quotes string (`require('fs')`, `require('path')`, string literals, dan newline separator) yang sebelumnya memicu SyntaxError saat diparse oleh Node.js/PM2.
   - **Contract & DB Fixes**: Memulihkan endpoint `/api/admin/security/summary` dan `getActiveProviderModels` pada contract tests, memperbaiki permission check SQLite `:memory:` pada Windows, dan bump frontend asset version ke `v=2.9.14`.
 - **Status Task**: Selesai / Terverifikasi 100% Test Suite
 
