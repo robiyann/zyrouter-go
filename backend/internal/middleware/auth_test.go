@@ -196,6 +196,34 @@ func TestRequireApiKey_RejectsUnknownTokenOnLoopback(t *testing.T) {
 	}
 }
 
+func TestRequireApiKeyRejectsBannedTelegramUser(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	now := "2026-09-29T00:00:00Z"
+	if _, err := database.Exec(`INSERT INTO users (id, telegramUserId, telegramUsername, displayName, accountTypeId, isActive, verifiedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+		"user-banned-auth", "11223344", "banned", "Banned", "user", now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CreateUserApiKey("user-banned-auth", "user", "banned-auth-key", "banned-auth-secret", "Banned user key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetUserBannedByTelegramID("11223344", true); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := RequireApiKey(repo)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer banned-auth-secret")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected banned Telegram user's key to be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestIsLocalRequest_UsesForwardedClientIP(t *testing.T) {
 	publicViaNginx := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
 	publicViaNginx.Header.Set("X-Real-IP", "198.51.100.20")
