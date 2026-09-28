@@ -233,7 +233,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 	}
 
 	// Read recent requests from SQLite history (last 50 requests)
-	recentQuery := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model, 
+	recentQuery := `SELECT COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp, provider, model,
 		CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END,
 		CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
