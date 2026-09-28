@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -105,6 +106,9 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 				combinedRecent = append(combinedRecent, req)
 			}
 		}
+		sort.SliceStable(combinedRecent, func(i, j int) bool {
+			return combinedRecent[i].Timestamp > combinedRecent[j].Timestamp
+		})
 		if len(combinedRecent) > 50 {
 			combinedRecent = combinedRecent[:50]
 		}
@@ -227,7 +231,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
 		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
-		FROM usageHistory ORDER BY id DESC LIMIT 50`
+		FROM usageHistory ORDER BY timestamp DESC, id DESC LIMIT 50`
 	type rawRecentRow struct {
 		ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 		prompt, completion                                        int

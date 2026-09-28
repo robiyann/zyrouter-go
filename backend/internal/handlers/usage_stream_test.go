@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/usagetracker"
 )
 
@@ -84,4 +86,43 @@ func TestHandleUsageStream(t *testing.T) {
 	}
 
 	tracker.TrackPending("gemini-2.5-flash", "antigravity", "conn_test", false, false)
+}
+
+func TestHandleUsageStatsOrdersRecentByTimestamp(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "usage-order-*.sqlite")
+	if err != nil {
+		t.Fatalf("create temp database: %v", err)
+	}
+	path := tmpFile.Name()
+	_ = tmpFile.Close()
+	defer os.Remove(path)
+
+	database, err := db.OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+	repo := db.NewRepo(database)
+	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, promptTokens, completionTokens, status) VALUES (?, ?, ?, 1, 1, '200'), (?, ?, ?, 1, 1, '200')`,
+		"2026-09-28T12:00:00Z", "provider", "older", "2026-09-28T12:05:00Z", "provider", "newer"); err != nil {
+		t.Fatalf("insert usage history: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/usage/stats?days=all", nil)
+	rec := httptest.NewRecorder()
+	HandleUsageStats(repo)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		RecentRequests []struct {
+			Model string `json:"model"`
+		} `json:"recentRequests"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode usage payload: %v", err)
+	}
+	if len(payload.RecentRequests) < 2 || payload.RecentRequests[0].Model != "provider/newer" {
+		t.Fatalf("expected newest request first, got %+v", payload.RecentRequests)
+	}
 }

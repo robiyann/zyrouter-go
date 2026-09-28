@@ -6662,7 +6662,13 @@ function renderUsage(payload) {
 }
 
 function renderLogs(payload = {}) {
-  const recent = Array.isArray(payload.recentRequests) ? payload.recentRequests : [];
+  const recent = Array.isArray(payload.recentRequests)
+    ? [...payload.recentRequests].sort((a, b) => {
+      const left = Date.parse(a?.timestamp || '') || 0;
+      const right = Date.parse(b?.timestamp || '') || 0;
+      return right - left;
+    })
+    : [];
   const initialCount = recent.length;
 
   return `
