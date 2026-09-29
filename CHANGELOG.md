@@ -1,5 +1,12 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Overview Mesh Provider Aggregate Counts
+- **Modul**: `Admin Provider Summary / Overview Mesh / Tests`
+- **Deskripsi Perubahan**:
+  - Summary provider responses now return all configured connections, provider aggregate stats, and provider nodes without the paginated catalog cap.
+  - Overview mesh topology renders configured custom nodes even when their connections are not in a truncated page and uses database aggregate counts for active badges.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Admin Usage Ledger Label and Metadata Parity
 - **Modul**: `Admin Usage History / Database / Frontend / Tests`
 - **Deskripsi Perubahan**:

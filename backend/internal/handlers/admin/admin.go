@@ -250,6 +250,37 @@ func (h *AdminHandler) HandleGetProviders(w http.ResponseWriter, r *http.Request
 	if offset < 0 {
 		offset = 0
 	}
+	if summary {
+		// Overview and other summary consumers need the complete provider
+		// topology. Do not apply the paginated catalog limit here; aggregate
+		// counts remain database-side so large connection pools are cheap.
+		connections, total, err := h.repo.GetProviderConnectionsPaginated(provider, false, true, 0, 0)
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if connections == nil {
+			connections = []*models.ProviderConnection{}
+		}
+		providerStats, statsErr := h.repo.GetProviderConnectionStats(provider, false)
+		if statsErr != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, statsErr.Error())
+			return
+		}
+		nodes, nodesErr := h.repo.GetProviderNodes()
+		if nodesErr != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, nodesErr.Error())
+			return
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+			"connections":   connections,
+			"total":         total,
+			"providerStats": providerStats,
+			"stats":         providerStats,
+			"nodes":         nodes,
+		})
+		return
+	}
 
 	connections, total, err := h.repo.GetProviderConnectionsPaginated(provider, false, summary, limit, offset)
 	if err != nil {

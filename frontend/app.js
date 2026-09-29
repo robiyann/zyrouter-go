@@ -10670,6 +10670,16 @@ async function loadOverview() {
     updateSystemOverview(systemPayload);
     const providers = providerPayload.connections || [];
     const customNodes = nodesPayload.nodes || [];
+    const providerStats = providerPayload.stats || providerPayload.providerStats || {};
+    const findProviderStat = (providerID) => {
+      const rawID = String(providerID || '').trim();
+      const lowerID = rawID.toLowerCase();
+      if (providerStats[lowerID]) return providerStats[lowerID];
+      if (providerStats[rawID]) return providerStats[rawID];
+      const match = Object.entries(providerStats).find(([key]) => key.toLowerCase() === lowerID);
+      return match ? match[1] : null;
+    };
+    const statForProvider = (providerID) => findProviderStat(providerID) || { active: 0, total: 0 };
     const customNodeIds = new Set(customNodes.map((n) => String(n.id || '').toLowerCase()));
     // Hide stale custom connections whose provider node was already deleted.
     const meshProviders = providers.filter((connection) => {
@@ -10687,10 +10697,18 @@ async function loadOverview() {
     const promptTokens = Number(usagePayload.promptTokens ?? usagePayload.totalPromptTokens ?? 0);
     const completionTokens = Number(usagePayload.completionTokens ?? usagePayload.totalCompletionTokens ?? 0);
     const totalTokens = Number(usagePayload.totalTokens ?? (promptTokens + completionTokens) ?? 0);
-    const activeConnsCount = providers.filter(isItemActive).length;
+    const statsActiveCount = Object.values(providerStats).reduce((sum, item) => sum + (Number(item?.active) || 0), 0);
+    const activeConnsCount = Object.keys(providerStats).length > 0 ? statsActiveCount : providers.filter(isItemActive).length;
     const providerKey = (connection) => String(connection?.provider || '').trim().toLowerCase();
-    const totalUpstreamProviders = new Set(meshProviders.map(providerKey).filter(Boolean));
-    const activeUpstreamProviders = new Set(meshProviders.filter(isItemActive).map(providerKey).filter(Boolean));
+    const totalUpstreamProviders = new Set([
+      ...meshProviders.map(providerKey).filter(Boolean),
+      ...customNodes.map((node) => String(node.id || '').trim().toLowerCase()).filter(Boolean),
+      ...Object.keys(providerStats).map((key) => key.toLowerCase()),
+    ]);
+    const activeUpstreamProviders = new Set([
+      ...meshProviders.filter(isItemActive).map(providerKey).filter(Boolean),
+      ...Object.entries(providerStats).filter(([, item]) => Number(item?.active) > 0).map(([key]) => key.toLowerCase()),
+    ]);
 
     // 1. Throughput & Tokens Card V2 (Real-time stream token rate)
     const tokRateEl = document.querySelector('#realtime-tok-rate');
@@ -10788,12 +10806,13 @@ async function loadOverview() {
     const meshProvCol = document.querySelector('#mesh-providers-col');
     const nextMeshProviderSignature = JSON.stringify({
       connections: meshProviders.map((c) => ({ id: c.id, provider: c.provider, name: c.name, isActive: c.isActive })),
-      nodes: customNodes.map((n) => ({ id: n.id, name: n.name, prefix: n.prefix }))
+      nodes: customNodes.map((n) => ({ id: n.id, name: n.name, prefix: n.prefix })),
+      stats: providerStats,
     });
     const meshProvidersChanged = nextMeshProviderSignature !== meshProviderSignature;
     if (meshProvCol && meshProvidersChanged) {
       meshProviderSignature = nextMeshProviderSignature;
-      if (!Array.isArray(meshProviders) || meshProviders.length === 0) {
+      if ((!Array.isArray(meshProviders) || meshProviders.length === 0) && customNodes.length === 0 && Object.keys(providerStats).length === 0) {
         meshProvCol.innerHTML = `
           <div class="mesh-node provider-node" data-provider-id="none">
             <span class="material-symbols-outlined mesh-icon" style="color:var(--dim);">cloud_off</span>
@@ -10806,10 +10825,6 @@ async function loadOverview() {
       } else {
         const provMap = new Map();
         meshProviders.forEach((c) => {
-          // Check active status
-          const isActive = isItemActive(c);
-          if (!isActive) return;
-
           let rawProv = (c.provider || '').toLowerCase();
           let cleanProvKey = rawProv;
           let friendlyName = '';
@@ -10840,14 +10855,50 @@ async function loadOverview() {
             }
           }
           if (!provMap.has(rawProv)) {
+            const nodeStat = statForProvider(rawProv);
             provMap.set(rawProv, {
               provId: c.provider,
               name: friendlyName,
               iconKey: cleanProvKey,
-              conns: []
+              conns: [],
+              activeCount: Number(nodeStat.active) || 0,
+              hasStats: Boolean(findProviderStat(rawProv)),
             });
           }
           provMap.get(rawProv).conns.push(c);
+        });
+        customNodes.forEach((node) => {
+          const rawID = String(node.id || '').trim().toLowerCase();
+          if (!rawID) return;
+          const nodeStat = findProviderStat(node.id);
+          if (!provMap.has(rawID)) {
+            provMap.set(rawID, {
+              provId: node.id,
+              name: node.name || node.prefix || 'Custom Node',
+              iconKey: 'openai',
+              conns: [],
+              activeCount: Number(nodeStat?.active) || Number(nodeStat?.total) || 0,
+              hasStats: Boolean(nodeStat),
+            });
+          } else if (nodeStat) {
+            const entry = provMap.get(rawID);
+            entry.activeCount = Number(nodeStat.active) || Number(nodeStat.total) || entry.activeCount || 0;
+            entry.hasStats = true;
+          }
+        });
+        Object.keys(providerStats).forEach((providerID) => {
+          const rawID = providerID.toLowerCase();
+          if (provMap.has(rawID)) return;
+          const nodeName = nodeNameMap.get(rawID);
+          const nodeStat = statForProvider(providerID);
+          provMap.set(rawID, {
+            provId: providerID,
+            name: nodeName || providerID,
+            iconKey: rawID.startsWith('anthropic') ? 'anthropic' : (rawID.startsWith('openai') ? 'openai' : rawID),
+            conns: [],
+            activeCount: Number(nodeStat.active) || 0,
+            hasStats: true,
+          });
         });
         if (provMap.size === 0) {
           meshProvCol.innerHTML = `
@@ -10861,7 +10912,7 @@ async function loadOverview() {
           `;
         } else {
           meshProvCol.innerHTML = Array.from(provMap.values()).map((p) => {
-            const activeCount = p.conns.filter(isItemActive).length;
+            const activeCount = p.hasStats ? p.activeCount : p.conns.filter(isItemActive).length;
             return `
               <div class="mesh-node provider-node" data-provider-id="${escapeHtml(p.provId)}" style="cursor:pointer;">
                 ${renderProviderIcon(p.iconKey || p.provId)}
