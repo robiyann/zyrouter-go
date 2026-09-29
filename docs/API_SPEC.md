@@ -89,7 +89,8 @@ Cline access tokens are normalized with the upstream-required `workos:` prefix a
 ### 3.4. Admin model inventory and aliases
 
 - `GET /api/providers/{id}/models` — Admin-only upstream discovery helper. It is never used as the public model catalog and does not publish models automatically.
-- `GET /api/model-aliases` — List the manually published client aliases.
+- `GET /api/model-aliases?page=1&pageSize=25&q=&provider=` — Bounded server-side alias page with `records`, active `aliases`, `total`, and `totalPages`.
+- `GET /api/model-aliases` — Legacy full alias map retained for internal compatibility consumers; admin UI uses the bounded page form.
 - `POST /api/model-aliases` — Publish/update one bare alias mapped to one provider/upstream model.
 - `DELETE /api/model-aliases/{alias}` — Remove a published alias.
 - `GET /models` and `GET /v1/models` — Return active published aliases only.

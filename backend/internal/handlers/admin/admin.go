@@ -1259,6 +1259,34 @@ func (h *AdminHandler) HandleTestProxyPool(w http.ResponseWriter, r *http.Reques
 // ==========================================
 
 func (h *AdminHandler) HandleGetModelAliases(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("page") != "" {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+		records, total, err := h.repo.GetModelAliasRecordsPage(page, pageSize, r.URL.Query().Get("q"), r.URL.Query().Get("provider"))
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusInternalServerError, "failed to load model aliases")
+			return
+		}
+		aliases := make(map[string]string, len(records))
+		for _, record := range records {
+			if record.IsActive != 1 {
+				continue
+			}
+			if record.Provider == "__combo__" {
+				aliases[record.Alias] = "combo:" + record.UpstreamModel
+			} else {
+				aliases[record.Alias] = record.Provider + "/" + record.UpstreamModel
+			}
+		}
+		if page < 1 {
+			page = 1
+		}
+		if pageSize < 1 || pageSize > 100 {
+			pageSize = 25
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"aliases": aliases, "records": records, "page": page, "pageSize": pageSize, "total": total, "totalPages": (total + pageSize - 1) / pageSize, "q": r.URL.Query().Get("q"), "provider": r.URL.Query().Get("provider")})
+		return
+	}
 	aliases, err := h.repo.GetModelAliases()
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())

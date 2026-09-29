@@ -693,6 +693,58 @@ func (r *Repo) GetModelAliasRecords() ([]*models.ModelAlias, error) {
 	return result, rows.Err()
 }
 
+// GetModelAliasRecordsPage returns a bounded admin page of structured aliases.
+func (r *Repo) GetModelAliasRecordsPage(page, pageSize int, search, provider string) ([]*models.ModelAlias, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	where := []string{"1=1"}
+	args := make([]any, 0, 4)
+	if search = strings.TrimSpace(search); search != "" {
+		pattern := "%" + strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search) + "%"
+		where = append(where, `(alias LIKE ? ESCAPE '\' OR provider LIKE ? ESCAPE '\' OR upstreamModel LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern, pattern)
+	}
+	if provider = strings.TrimSpace(provider); provider != "" && !strings.EqualFold(provider, "all") {
+		where = append(where, "provider = ?")
+		args = append(args, provider)
+	}
+	clause := strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM modelAliases WHERE `+clause, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	queryArgs := append(append([]any{}, args...), pageSize, (page-1)*pageSize)
+	rows, err := r.db.Query(`SELECT id, alias, provider, upstreamModel, connectionId, isActive, capabilities, createdAt, updatedAt FROM modelAliases WHERE `+clause+` ORDER BY alias LIMIT ? OFFSET ?`, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	result := make([]*models.ModelAlias, 0, pageSize)
+	for rows.Next() {
+		var item models.ModelAlias
+		var connectionID sql.NullString
+		var capabilities string
+		if err := rows.Scan(&item.ID, &item.Alias, &item.Provider, &item.UpstreamModel, &connectionID, &item.IsActive, &capabilities, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		if connectionID.Valid && connectionID.String != "" {
+			item.ConnectionID = &connectionID.String
+		}
+		if capabilities != "" {
+			_ = json.Unmarshal([]byte(capabilities), &item.Capabilities)
+		}
+		result = append(result, &item)
+	}
+	return result, total, rows.Err()
+}
+
 func (r *Repo) GetModelAliasRecord(alias string) (*models.ModelAlias, error) {
 	var item models.ModelAlias
 	var connectionID sql.NullString

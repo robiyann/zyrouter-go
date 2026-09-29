@@ -5480,6 +5480,10 @@ function renderAliases(payload) {
   if (payload && Array.isArray(payload.nodes)) {
     cachedProviderNodes = payload.nodes;
   }
+  if (payload && payload.page != null) {
+    aliasCurrentPage = Number(payload.page) || 1;
+    aliasPageSize = Number(payload.pageSize) || aliasPageSize;
+  }
   const allEntries = Object.entries(cachedAliasesPayload.aliases || {});
   const recordByAlias = new Map((cachedAliasesPayload.records || []).map((record) => [record.alias, record]));
   if (!allEntries.length) return emptySurface('No model aliases configured. Click "+ Create alias" to map a client model name.');
@@ -5512,13 +5516,17 @@ function renderAliases(payload) {
     return true;
   });
 
-  const totalPages = Math.ceil(filtered.length / aliasPageSize) || 1;
+  const totalPages = payload && payload.total != null
+    ? Math.ceil(Number(payload.total) / aliasPageSize) || 1
+    : Math.ceil(filtered.length / aliasPageSize) || 1;
   if (aliasCurrentPage > totalPages) aliasCurrentPage = totalPages;
   if (aliasCurrentPage < 1) aliasCurrentPage = 1;
 
+  const serverPaged = payload && payload.page != null;
   const startIdx = (aliasCurrentPage - 1) * aliasPageSize;
-  const endIdx = Math.min(startIdx + aliasPageSize, filtered.length);
-  const pageItems = filtered.slice(startIdx, endIdx);
+  const endIdx = serverPaged ? startIdx + filtered.length : Math.min(startIdx + aliasPageSize, filtered.length);
+  const pageItems = serverPaged ? filtered : filtered.slice(startIdx, endIdx);
+  const displayTotal = serverPaged ? Number(payload.total || 0) : filtered.length;
 
   const providerTabs = Object.keys(providerCounts)
     .sort((a, b) => (providerCounts[b] || 0) - (providerCounts[a] || 0))
@@ -5536,7 +5544,7 @@ function renderAliases(payload) {
 
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span class="table-badge purple" style="font-size:9.5px; padding:4px 8px;">
-              ${filtered.length} / ${allEntries.length} ALIASES
+              ${serverPaged ? `${displayTotal} TOTAL` : `${filtered.length} / ${allEntries.length} ALIASES`}
             </span>
             ${allEntries.length > 0 ? `
               <button class="danger-button" id="btn-clear-all-aliases" type="button" style="font-size:11px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;">
@@ -5634,7 +5642,7 @@ function renderAliases(payload) {
         <!-- 3. Pagination Footer -->
         <div class="aliases-pagination-bar">
           <div>
-            Showing <strong>${filtered.length > 0 ? startIdx + 1 : 0}&ndash;${endIdx}</strong> of <strong>${filtered.length}</strong> mappings
+            Showing <strong>${pageItems.length > 0 ? startIdx + 1 : 0}&ndash;${pageItems.length > 0 ? endIdx : 0}</strong> of <strong>${displayTotal}</strong> mappings
           </div>
 
           <div class="aliases-pagination-controls">
@@ -7321,7 +7329,7 @@ async function renderView(name) {
         pools: () => request('/api/proxy-pools'),
         aliases: async () => {
           const [aliasRes, provRes, nodesRes] = await Promise.all([
-            request('/api/model-aliases'),
+            request(`/api/model-aliases?${new URLSearchParams({ page: aliasCurrentPage, pageSize: aliasPageSize, q: aliasSearchQuery, provider: aliasProviderFilter })}`),
             request('/api/providers?summary=1').catch(() => ({ connections: [] })),
             request('/api/provider-nodes').catch(() => ({ nodes: [] }))
           ]);
@@ -9148,14 +9156,8 @@ function bindAliasDeckActions() {
     searchInput.oninput = () => {
       aliasSearchQuery = searchInput.value;
       aliasCurrentPage = 1;
-      content.innerHTML = renderAliases();
-      bindAliasDeckActions();
-      // refocus search
-      const reSearch = document.querySelector('#alias-search-input');
-      if (reSearch) {
-        reSearch.focus();
-        reSearch.setSelectionRange(reSearch.value.length, reSearch.value.length);
-      }
+      clearTimeout(searchInput._serverSearchTimer);
+      searchInput._serverSearchTimer = setTimeout(() => renderView('aliases'), 300);
     };
   }
 
@@ -9163,8 +9165,7 @@ function bindAliasDeckActions() {
     chip.onclick = () => {
       aliasProviderFilter = chip.dataset.filterProv;
       aliasCurrentPage = 1;
-      content.innerHTML = renderAliases();
-      bindAliasDeckActions();
+      renderView('aliases');
     };
   });
 
@@ -9173,8 +9174,7 @@ function bindAliasDeckActions() {
     pageSizeSelect.onchange = () => {
       aliasPageSize = Number(pageSizeSelect.value) || 25;
       aliasCurrentPage = 1;
-      content.innerHTML = renderAliases();
-      bindAliasDeckActions();
+      renderView('aliases');
     };
   }
 
@@ -9183,8 +9183,7 @@ function bindAliasDeckActions() {
     prevBtn.onclick = () => {
       if (aliasCurrentPage > 1) {
         aliasCurrentPage--;
-        content.innerHTML = renderAliases();
-        bindAliasDeckActions();
+        renderView('aliases');
       }
     };
   }
@@ -9193,8 +9192,7 @@ function bindAliasDeckActions() {
   if (nextBtn) {
     nextBtn.onclick = () => {
       aliasCurrentPage++;
-      content.innerHTML = renderAliases();
-      bindAliasDeckActions();
+      renderView('aliases');
     };
   }
 

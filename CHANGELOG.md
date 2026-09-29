@@ -32,6 +32,13 @@
   - Admin provider UI now exposes Prev/Next pagination while preserving provider aggregate statistics.
 - **Status Task**: In Progress — model alias catalog and remaining bounded CRUD surfaces are next.
 
+### [2026-09-29] - [Codex] - Bounded Model Alias Catalog
+- **Modul**: `Backend / Admin Dashboard / Database / Docs`
+- **Deskripsi Perubahan**:
+  - Admin Model Aliases now query only the requested server-side page and perform search/provider filtering in SQLite.
+  - Existing local page rendering remains compatible with the paged response while avoiding an unbounded alias payload on refresh.
+- **Status Task**: In Progress — final verification and remaining small configuration surfaces are under review.
+
 ### [2026-09-29] - [Codex] - Cursor-Driven Admin Security and Portal History
 - **Modul**: `Backend / Admin Dashboard / Client Portal / Tests / Docs`
 - **Deskripsi Perubahan**:
