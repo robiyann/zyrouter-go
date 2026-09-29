@@ -6910,12 +6910,16 @@ let cachedPoolsPayload = { proxyPools: [] };
 
 let authLogsCurrentPage = 1;
 const authLogsPageSize = 10;
+let authLogCursor = '';
+let authLogNextCursor = '';
+let authLogCursorStack = [];
 
 function renderAuthLogs(payload = {}) {
   const p = payload || {};
   const logs = Array.isArray(p.logs) ? p.logs : [];
   const total = Number(p.total || logs.length);
-  const totalPages = Math.ceil(total / authLogsPageSize) || 1;
+  const hasMore = p.hasMore === true || (!Object.prototype.hasOwnProperty.call(p, 'hasMore') && logs.length >= authLogsPageSize);
+  const page = authLogCursorStack.length + 1;
   const security = p.securitySummary || {};
   const securityCardMarkup = security && security.status ? `
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin-bottom:12px;">
@@ -6946,11 +6950,11 @@ function renderAuthLogs(payload = {}) {
         <table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>IP Address</th><th>Request</th><th>Status</th><th>User Agent</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font:12px var(--mono); color:var(--muted);">
-        <div>Showing <strong>${logs.length}</strong> of <strong>${total.toLocaleString()}</strong> events</div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button type="button" class="secondary-button" id="btn-authlogs-prev" ${authLogsCurrentPage <= 1 ? 'disabled' : ''} style="padding:4px 10px; font-size:11px;">Prev</button>
-          <span>Page ${authLogsCurrentPage} / ${totalPages}</span>
-          <button type="button" class="secondary-button" id="btn-authlogs-next" ${authLogsCurrentPage >= totalPages ? 'disabled' : ''} style="padding:4px 10px; font-size:11px;">Next</button>
+          <div>Showing <strong>${logs.length}</strong>${p.total != null ? ` of <strong>${total.toLocaleString()}</strong> events` : ' events'}</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="secondary-button" id="btn-authlogs-prev" ${authLogCursorStack.length === 0 ? 'disabled' : ''} style="padding:4px 10px; font-size:11px;">Prev</button>
+          <span>Page ${page}</span>
+          <button type="button" class="secondary-button" id="btn-authlogs-next" ${!hasMore || !authLogNextCursor ? 'disabled' : ''} style="padding:4px 10px; font-size:11px;">Next</button>
         </div>
       </div>
     </div>`;
@@ -6959,27 +6963,32 @@ function renderAuthLogs(payload = {}) {
 function bindAuthLogs() {
   document.querySelector('#btn-refresh-authlogs')?.addEventListener('click', () => {
     authLogsCurrentPage = 1;
+    authLogCursor = '';
+    authLogNextCursor = '';
+    authLogCursorStack = [];
     setView('authlogs');
   });
   document.querySelector('#btn-authlogs-prev')?.addEventListener('click', async () => {
-    if (authLogsCurrentPage > 1) {
-      authLogsCurrentPage--;
-      const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
+    if (authLogCursorStack.length > 0) {
+      authLogCursor = authLogCursorStack.pop() || '';
       const [logs, securitySummary] = await Promise.all([
-        request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
+        request(`/api/auth-logs?limit=${authLogsPageSize}&cursor=${encodeURIComponent(authLogCursor)}`),
         request('/api/admin/security/summary').catch(() => ({}))
       ]);
+      authLogNextCursor = logs.nextCursor || '';
       content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
       bindAuthLogs();
     }
   });
   document.querySelector('#btn-authlogs-next')?.addEventListener('click', async () => {
-    authLogsCurrentPage++;
-    const offset = (authLogsCurrentPage - 1) * authLogsPageSize;
+    if (!authLogNextCursor) return;
+    authLogCursorStack.push(authLogCursor);
+    authLogCursor = authLogNextCursor;
     const [logs, securitySummary] = await Promise.all([
-      request(`/api/auth-logs?limit=${authLogsPageSize}&offset=${offset}`),
+      request(`/api/auth-logs?limit=${authLogsPageSize}&cursor=${encodeURIComponent(authLogCursor)}`),
       request('/api/admin/security/summary').catch(() => ({}))
     ]);
+    authLogNextCursor = logs.nextCursor || '';
     content.innerHTML = renderAuthLogs({ ...logs, securitySummary });
     bindAuthLogs();
   });
@@ -7281,9 +7290,10 @@ async function renderView(name) {
         logs: () => request('/api/usage/stats?period=all&days=all').catch(() => request('/translator/console-logs')).catch(() => ({ recentRequests: [] })),
         authlogs: async () => {
           const [logs, securitySummary] = await Promise.all([
-            request(`/api/auth-logs?limit=${authLogsPageSize}&offset=0`),
+            request(`/api/auth-logs?limit=${authLogsPageSize}&cursor=${encodeURIComponent(authLogCursor)}`),
             request('/api/admin/security/summary').catch(() => ({}))
           ]);
+          authLogNextCursor = logs.nextCursor || '';
           return { ...logs, securitySummary };
         },
         pools: () => request('/api/proxy-pools'),

@@ -24,6 +24,14 @@
   - Client Portal Usage beralih ke cursor stack untuk Next/Previous tanpa memuat seluruh history.
 - **Status Task**: In Progress — audit/provider/alias high-volume surfaces masih diaudit.
 
+### [2026-09-29] - [Codex] - Cursor-Driven Admin Security and Portal History
+- **Modul**: `Backend / Admin Dashboard / Client Portal / Tests / Docs`
+- **Deskripsi Perubahan**:
+  - Auth logs now support opaque `(timestamp,id)` cursor pages in addition to the legacy offset contract.
+  - Added `/api/usage/history` for bounded admin ledger traversal without loading the 50-row in-memory snapshot as a fake full history.
+  - Client Portal personal usage navigation now uses a cursor stack for stable Next/Previous behavior under concurrent inserts.
+- **Status Task**: In Progress — provider/model catalog surfaces remain under high-volume audit.
+
 ### [2026-09-28] - [Antigravity] - Model Labs UI/UX Overhaul & Prompt Bench Redesign
 - **Modul**: `Frontend / Model Labs / Prompt Bench / Design System`
 - **File Diubah**:
