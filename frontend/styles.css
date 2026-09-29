@@ -2002,6 +2002,81 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   flex-direction: column;
 }
 
+.overview-event-row {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.overview-event-main,
+.overview-event-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overview-event-main {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.overview-event-meta {
+  flex: 0 1 auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  overflow: hidden;
+}
+
+.overview-event-status,
+.overview-event-model,
+.overview-event-provider,
+.overview-event-tokens,
+.overview-event-time {
+  white-space: nowrap;
+}
+
+.overview-event-status {
+  flex: 0 0 auto;
+  font: bold 10px var(--mono);
+}
+
+.overview-event-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-bright);
+  font-size: 11px;
+}
+
+.overview-event-provider {
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 8.5px;
+  padding: 1px 4px;
+}
+
+.overview-event-tokens {
+  color: var(--muted);
+}
+
+.overview-event-time {
+  max-width: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #52525b;
+  font-size: 8.5px;
+}
+
 .card h2 {
   font-size: 13px;
   font-weight: 600;
@@ -2369,6 +2444,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 @media (max-width: 640px) {
+  .activity-matrix-card {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  #overview-recent-stream-box {
+    width: 100%;
+    min-width: 0;
+    padding-right: 0 !important;
+  }
+
+  .overview-event-row {
+    padding: 5px 7px;
+    gap: 5px;
+  }
+
+  .overview-event-main,
+  .overview-event-meta {
+    gap: 4px;
+  }
+
+  .overview-event-status {
+    font-size: 9px;
+  }
+
+  .overview-event-model {
+    font-size: 10px;
+  }
+
+  .overview-event-provider {
+    max-width: 48px;
+  }
+
+  .overview-event-time {
+    max-width: 62px;
+  }
+
   .route-matrix-card .card-top {
     align-items: flex-start;
     flex-wrap: wrap;

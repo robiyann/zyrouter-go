@@ -10776,16 +10776,16 @@ async function loadOverview() {
           const timeStr = formatWIBTime(req.timestamp);
 
           return `
-            <div class="console-log-row" style="border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
-                <span style="color:${statusColor}; font-weight:bold; font-size:10px; font-family:var(--mono);">● ${escapeHtml(String(statusCode))}</span>
+            <div class="console-log-row overview-event-row">
+              <div class="overview-event-main">
+                <span class="overview-event-status" style="color:${statusColor};">● ${escapeHtml(String(statusCode))}</span>
                 <span class="method-tag post" style="margin:0; font-size:8px;">POST</span>
-                <strong style="color:var(--text-bright); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(req.model || 'model')}</strong>
+                <strong class="overview-event-model">${escapeHtml(req.model || 'model')}</strong>
               </div>
-              <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; font-family:var(--mono); font-size:9.5px;">
-                <span class="prov-pill ${escapeHtml(cleanP)}" style="font-size:8.5px; padding:1px 4px;">${escapeHtml(cleanP)}</span>
-                <span style="color:var(--muted);">${toks > 0 ? `${toks}t` : '--'}</span>
-                <span style="color:#52525b; font-size:8.5px;">${escapeHtml(timeStr)}</span>
+              <div class="overview-event-meta">
+                <span class="prov-pill overview-event-provider ${escapeHtml(cleanP)}">${escapeHtml(cleanP)}</span>
+                <span class="overview-event-tokens">${toks > 0 ? `${toks}t` : '--'}</span>
+                <span class="overview-event-time">${escapeHtml(timeStr)}</span>
               </div>
             </div>
           `;
@@ -11576,19 +11576,18 @@ startStream('/api/usage/stream', (payload) => {
       const cleanP = pName.startsWith('openai-compatible') ? 'custom' : pName;
 
       const itemEl = document.createElement('div');
-      itemEl.className = `console-log-row live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
-      itemEl.style.cssText = 'border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;';
-      itemEl.innerHTML = `
-        <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
-          <span style="color:${statusColor}; font-weight:bold; font-size:10px; font-family:var(--mono);">● ${escapeHtml(String(statusCode))}</span>
-          <span class="method-tag post" style="margin:0; font-size:8px;">POST</span>
-          <strong style="color:var(--text-bright); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(topReq.model || 'model')}</strong>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; font-family:var(--mono); font-size:9.5px;">
-          <span class="prov-pill ${escapeHtml(cleanP)}" style="font-size:8.5px; padding:1px 4px;">${escapeHtml(cleanP)}</span>
-          <span style="color:var(--muted);">${toks > 0 ? `${toks}t` : '--'}</span>
-          <span style="color:#52525b; font-size:8.5px;">${escapeHtml(timeStr)}</span>
-        </div>
+       itemEl.className = `console-log-row overview-event-row live-stream-row ${isErr ? 'live-row-err' : 'live-row-ok'}`;
+       itemEl.innerHTML = `
+         <div class="overview-event-main">
+           <span class="overview-event-status" style="color:${statusColor};">● ${escapeHtml(String(statusCode))}</span>
+           <span class="method-tag post" style="margin:0; font-size:8px;">POST</span>
+           <strong class="overview-event-model">${escapeHtml(topReq.model || 'model')}</strong>
+         </div>
+         <div class="overview-event-meta">
+           <span class="prov-pill overview-event-provider ${escapeHtml(cleanP)}">${escapeHtml(cleanP)}</span>
+           <span class="overview-event-tokens">${toks > 0 ? `${toks}t` : '--'}</span>
+           <span class="overview-event-time">${escapeHtml(timeStr)}</span>
+         </div>
       `;
       overviewStreamBox.insertBefore(itemEl, overviewStreamBox.firstChild);
       while (overviewStreamBox.children.length > 7) {

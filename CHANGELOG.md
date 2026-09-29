@@ -1,5 +1,12 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Mobile Event Activity Row Layout
+- **Modul**: `Overview Dashboard / Mobile Responsive UI`
+- **Deskripsi Perubahan**:
+  - Event Activity rows now use responsive main/meta layout instead of rigid inline flex sizing.
+  - Mobile rows keep status, method, model, provider, token, and time readable without horizontal clipping.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Mobile Mesh Topology Layout
 - **Modul**: `Overview Dashboard / Responsive Mesh`
 - **Deskripsi Perubahan**:
