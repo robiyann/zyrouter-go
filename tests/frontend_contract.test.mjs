@@ -85,6 +85,10 @@ assert.match(app, /querySelectorAll\('\.mesh-providers-col \.mesh-node'\)/, 'mes
 assert.match(app, /providerPayload\.stats \|\| providerPayload\.providerStats/, 'overview must consume aggregate provider stats');
 assert.match(app, /data-provider-name/, 'provider mesh nodes must expose friendly matching metadata');
 assert.match(app, /data-provider-prefix/, 'provider mesh nodes must expose prefix matching metadata');
-assert.match(app, /p\.dataset\.providerName/, 'mesh matcher must compare friendly provider names');
-assert.match(app, /p\.dataset\.providerPrefix/, 'mesh matcher must compare provider prefixes');
+assert.match(app, /node\.dataset\.providerName/, 'mesh matcher must compare friendly provider names');
+assert.match(app, /node\.dataset\.providerPrefix/, 'mesh matcher must compare provider prefixes');
+assert.match(app, /const activeProviders = Array\.from\(provMap\.values\(\)\)\.filter/, 'mesh must hide providers with no active connections');
+assert.match(app, /mesh-packet-out/, 'mesh must render outbound request packets');
+assert.match(app, /mesh-packet-in/, 'mesh must render inbound response packets');
+assert.match(app, /function meshRequestMatchesNode/, 'mesh must centralize strict provider matching');
 console.log('frontend backend contract checks passed');

@@ -1,5 +1,12 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Mesh Packet Flow and Inactive Provider Filtering
+- **Modul**: `Overview Dashboard / Provider Mesh / Realtime Animation`
+- **Deskripsi Perubahan**:
+  - Realtime mesh now emits bounded outbound/inbound SVG packets per active request, with provider impact scaling and glass glow.
+  - Providers with zero active connections are hidden, while matching is exact across provider ID, friendly name, and prefix to prevent false laser activation.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Mesh Laser Provider Matching
 - **Modul**: `Overview Dashboard / Provider Mesh / Realtime Routing`
 - **Deskripsi Perubahan**:

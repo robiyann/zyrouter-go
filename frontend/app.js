@@ -10906,7 +10906,12 @@ async function loadOverview() {
             hasStats: true,
           });
         });
-        if (provMap.size === 0) {
+        const activeProviders = Array.from(provMap.values()).filter((providerEntry) => {
+          const count = providerEntry.hasStats ? providerEntry.activeCount : providerEntry.conns.filter(isItemActive).length;
+          providerEntry.renderActiveCount = count;
+          return count > 0;
+        });
+        if (activeProviders.length === 0) {
           meshProvCol.innerHTML = `
             <div class="mesh-node provider-node" data-provider-id="none">
               <span class="material-symbols-outlined mesh-icon" style="color:var(--dim);">cloud_off</span>
@@ -10917,8 +10922,8 @@ async function loadOverview() {
             </div>
           `;
         } else {
-          meshProvCol.innerHTML = Array.from(provMap.values()).map((p) => {
-            const activeCount = p.hasStats ? p.activeCount : p.conns.filter(isItemActive).length;
+          meshProvCol.innerHTML = activeProviders.map((p) => {
+            const activeCount = p.renderActiveCount;
             return `
               <div class="mesh-node provider-node" data-provider-id="${escapeHtml(p.provId)}" data-provider-name="${escapeHtml((p.name || '').toLowerCase())}" data-provider-prefix="${escapeHtml((p.prefix || '').toLowerCase())}" style="cursor:pointer;">
                 ${renderProviderIcon(p.iconKey || p.provId)}
@@ -10959,6 +10964,27 @@ async function loadOverview() {
 }
 
 const meshPositionSeeds = new Map();
+let meshActiveRequests = [];
+
+function meshRequestMatchesNode(node, request) {
+  const providerID = String(node.dataset.providerId || '').toLowerCase().trim();
+  const providerName = String(node.dataset.providerName || '').toLowerCase().trim();
+  const providerPrefix = String(node.dataset.providerPrefix || '').toLowerCase().trim();
+  const requestProvider = String(request?.provider || '').toLowerCase().trim();
+  const requestModel = String(request?.model || '').toLowerCase().trim();
+  const modelPrefix = requestModel.includes('/') ? requestModel.split('/')[0].trim() : '';
+
+  if (requestProvider && [providerID, providerName, providerPrefix].includes(requestProvider)) {
+    return true;
+  }
+  return Boolean(modelPrefix && [providerID, providerName, providerPrefix].includes(modelPrefix));
+}
+
+function meshRequestPacketCount(request) {
+  const count = Number(request?.count);
+  return Math.min(Math.max(Number.isFinite(count) && count > 0 ? count : 1, 1), 6);
+}
+
 function meshPositionSeed(key) {
   const normalized = String(key || 'mesh');
   if (!meshPositionSeeds.has(normalized)) {
@@ -11114,6 +11140,15 @@ function drawMeshLines() {
     const isActive = node.classList.contains('active');
     pathsHtml += `<path d="${d}" class="mesh-path-glow ${isActive ? 'active' : ''}" />`;
     pathsHtml += `<path d="${d}" class="mesh-path-base ${isActive ? 'mesh-path-laser' : ''}" />`;
+
+    const reverseD = `M ${hubX} ${hubY} C ${c2X} ${c2Y}, ${c1X} ${c1Y}, ${nodeX} ${nodeY}`;
+    const matchingRequests = meshActiveRequests.filter((request) => meshRequestMatchesNode(node, request));
+    const packetCount = matchingRequests.reduce((sum, request) => sum + meshRequestPacketCount(request), 0);
+    for (let packetIndex = 0; packetIndex < packetCount; packetIndex += 1) {
+      const delay = (packetIndex / Math.max(packetCount, 1)) * 0.8;
+      pathsHtml += `<circle class="mesh-packet mesh-packet-out" r="3.5"><animateMotion dur="1.1s" begin="${delay.toFixed(3)}s" repeatCount="indefinite" path="${reverseD}" /></circle>`;
+      pathsHtml += `<circle class="mesh-packet mesh-packet-in" r="3"><animateMotion dur="1.1s" begin="${(delay + 0.58).toFixed(3)}s" repeatCount="indefinite" path="${d}" /></circle>`;
+    }
   });
 
   svg.innerHTML = pathsHtml;
@@ -11123,8 +11158,9 @@ function updateMeshRealtimeState(activeRequests = []) {
   const statusBadge = document.querySelector('#mesh-live-status');
   const latencyBadge = document.querySelector('#mesh-core-latency');
   const providers = Array.from(document.querySelectorAll('.mesh-providers-col .mesh-node'));
+  meshActiveRequests = Array.isArray(activeRequests) ? activeRequests : [];
 
-  if (!Array.isArray(activeRequests) || activeRequests.length === 0) {
+  if (meshActiveRequests.length === 0) {
     providers.forEach((p) => p.classList.remove('active'));
     if (statusBadge) {
       statusBadge.className = 'live-chip';
@@ -11141,27 +11177,8 @@ function updateMeshRealtimeState(activeRequests = []) {
   }
   if (latencyBadge) latencyBadge.textContent = `• ${activeRequests.length} in-flight`;
 
-  const activeQueries = [];
-
-  activeRequests.forEach((req) => {
-    if (req.provider) activeQueries.push(String(req.provider).toLowerCase().trim());
-    if (req.model) {
-      const model = String(req.model).toLowerCase().trim();
-      activeQueries.push(model);
-      if (model.includes('/')) activeQueries.push(model.split('/')[0]);
-    }
-  });
-
   providers.forEach((p) => {
-    const pid = (p.dataset.providerId || '').toLowerCase();
-    const pname = (p.dataset.providerName || '').toLowerCase();
-    const pprefix = (p.dataset.providerPrefix || '').toLowerCase();
-    const isActive = activeQueries.some((query) => {
-      if (!query) return false;
-      return pid === query || pid.includes(query) || query.includes(pid)
-        || (pname && (pname === query || pname.includes(query) || query.includes(pname)))
-        || (pprefix && (pprefix === query || pprefix.includes(query) || query.includes(pprefix)));
-    });
+    const isActive = meshActiveRequests.some((request) => meshRequestMatchesNode(p, request));
     p.classList.toggle('active', isActive);
   });
 

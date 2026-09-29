@@ -2174,7 +2174,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border-color: rgba(200, 255, 99, 0.6);
   background: linear-gradient(135deg, rgba(200, 255, 99, 0.12), rgba(16, 23, 28, 0.85));
   box-shadow: 0 0 14px rgba(200, 255, 99, 0.25);
-  transform: scale(1.03);
+  transform: scale(1.05);
+  animation: meshProviderImpact 0.65s ease-out;
+}
+
+@keyframes meshProviderImpact {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(200, 255, 99, 0); }
+  45% { transform: scale(1.09); box-shadow: 0 0 24px rgba(107, 231, 255, 0.5), 0 0 40px rgba(200, 255, 99, 0.25); }
+  100% { transform: scale(1.05); box-shadow: 0 0 14px rgba(200, 255, 99, 0.25); }
 }
 
 .mesh-node.active .mesh-node-info strong {
@@ -2285,6 +2292,37 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   stroke-linecap: round;
   animation: laserDash 0.85s linear infinite;
   filter: drop-shadow(0 0 3px rgba(200, 255, 99, 0.8));
+}
+
+.mesh-packet {
+  pointer-events: none;
+  stroke-width: 1;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.mesh-packet-out {
+  fill: #6be7ff;
+  stroke: #d7fbff;
+  color: #6be7ff;
+}
+
+.mesh-packet-in {
+  fill: #d6ff6a;
+  stroke: #ffffff;
+  color: #d6ff6a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mesh-packet animateMotion,
+  .mesh-path-laser,
+  .mesh-hub-pulse-ring,
+  .mesh-hub-dashed-orbit {
+    animation: none;
+  }
+
+  .mesh-packet {
+    display: none;
+  }
 }
 @keyframes laserDash {
   to { stroke-dashoffset: -40; }
