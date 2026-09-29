@@ -4589,11 +4589,17 @@ function renderKeys(payload) {
 
 let accountTypesTab = 'tiers'; // 'tiers' | 'users'
 let cachedProviderConnections = [];
+let userCurrentPage = 1;
+let userPageSize = 25;
+let userSearch = '';
+let userStatusFilter = 'all';
+let userAccountTypeFilter = 'all';
 
 function renderAccountTypes(payload) {
   const accountTypes = (payload && payload.accountTypes) || [];
   const users = (payload && payload.users) || [];
   const modelAliases = (payload && payload.modelAliases) || [];
+  const usersTotal = Number(payload?.usersTotal ?? users.length);
 
   return `
     <div class="card" style="padding:16px; margin-bottom:12px;">
@@ -4607,7 +4613,7 @@ function renderAccountTypes(payload) {
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <span class="table-badge purple">${accountTypes.length} TIERS</span>
-          <span class="table-badge green">${users.length} VERIFIED USERS</span>
+          <span class="table-badge green">${usersTotal} VERIFIED USERS</span>
           <button class="solid-button" id="btn-open-create-tier" type="button" style="font-size:11px; padding:6px 12px;">
             <span>+</span> Create Account Type
           </button>
@@ -4619,12 +4625,12 @@ function renderAccountTypes(payload) {
           Access Tiers (${accountTypes.length})
         </button>
         <button type="button" class="alias-filter-chip ${accountTypesTab === 'users' ? 'active' : ''}" id="tab-btn-users">
-          Verified Telegram Users (${users.length})
+          Verified Telegram Users (${usersTotal})
         </button>
       </div>
     </div>
 
-    ${accountTypesTab === 'tiers' ? renderTiersList(accountTypes, modelAliases) : renderUsersList(users, accountTypes)}
+    ${accountTypesTab === 'tiers' ? renderTiersList(accountTypes, modelAliases) : renderUsersList(users, accountTypes, payload)}
   `;
 }
 
@@ -4710,10 +4716,12 @@ function renderTiersList(accountTypes, modelAliases) {
   `;
 }
 
-function renderUsersList(users, accountTypes) {
-  if (!users.length) return emptySurface('No verified Telegram users found.');
-
-  return `
+function renderUsersList(users, accountTypes, payload = {}) {
+  const page = Number(payload.usersPage || userCurrentPage || 1);
+  const pageSize = Number(payload.usersPageSize || userPageSize || 25);
+  const total = Number(payload.usersTotal ?? users.length);
+  const totalPages = Number(payload.usersTotalPages || Math.ceil(total / pageSize) || 1);
+  const table = users.length ? `
     <div class="data-table-container card" style="padding:0; overflow:hidden;">
       <table class="data-table">
         <thead>
@@ -4769,6 +4777,37 @@ function renderUsersList(users, accountTypes) {
           `).join('')}
         </tbody>
       </table>
+    </div>` : `<div class="card generic-empty"><span class="empty-symbol large">+</span><h2>No verified Telegram users found.</h2><p>Adjust the server-side search or filters.</p></div>`;
+
+  return `
+    <div class="card" style="padding:12px 14px; margin-bottom:10px;">
+      <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <label style="flex:1; min-width:220px;">Search Telegram ID, username, or name
+          <input id="user-search-input" value="${escapeHtml(payload.usersQuery || userSearch)}" placeholder="e.g. 123456789 or @username" />
+        </label>
+        <label>Status
+          <select id="user-status-filter">
+            <option value="all" ${(payload.usersStatus || userStatusFilter) === 'all' ? 'selected' : ''}>All</option>
+            <option value="active" ${(payload.usersStatus || userStatusFilter) === 'active' ? 'selected' : ''}>Active</option>
+            <option value="banned" ${(payload.usersStatus || userStatusFilter) === 'banned' ? 'selected' : ''}>Banned</option>
+          </select>
+        </label>
+        <label>Per page
+          <select id="user-page-size">
+            ${[25, 50, 100].map((size) => `<option value="${size}" ${pageSize === size ? 'selected' : ''}>${size}</option>`).join('')}
+          </select>
+        </label>
+        <button type="button" class="secondary-button" id="user-filter-apply">Apply</button>
+        <button type="button" class="secondary-button" id="user-filter-clear">Clear</button>
+      </div>
+    </div>
+    ${table}
+    <div class="aliases-pagination-bar" style="padding:8px 14px;">
+      <span>Page <strong>${page}</strong> / <strong>${totalPages}</strong> · ${total} total users</span>
+      <div class="aliases-pagination-controls">
+        <button type="button" class="alias-page-btn" data-user-page="${Math.max(1, page - 1)}" ${page <= 1 ? 'disabled' : ''}>&larr; Prev</button>
+        <button type="button" class="alias-page-btn" data-user-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
+      </div>
     </div>
   `;
 }
@@ -5102,6 +5141,28 @@ function bindAccountTypeActions(payload) {
         alert(`Failed to update user account type: ${err.message}`);
         await renderView('account-types');
       }
+    };
+  });
+
+  document.querySelector('#user-filter-apply')?.addEventListener('click', async () => {
+    userSearch = document.querySelector('#user-search-input')?.value.trim() || '';
+    userStatusFilter = document.querySelector('#user-status-filter')?.value || 'all';
+    userPageSize = Math.min(100, Math.max(1, Number(document.querySelector('#user-page-size')?.value) || 25));
+    userCurrentPage = 1;
+    await renderView('account-types');
+  });
+  document.querySelector('#user-filter-clear')?.addEventListener('click', async () => {
+    userSearch = '';
+    userStatusFilter = 'all';
+    userAccountTypeFilter = 'all';
+    userCurrentPage = 1;
+    userPageSize = 25;
+    await renderView('account-types');
+  });
+  document.querySelectorAll('[data-user-page]').forEach((button) => {
+    button.onclick = async () => {
+      userCurrentPage = Math.max(1, Number(button.dataset.userPage) || 1);
+      await renderView('account-types');
     };
   });
 
@@ -7194,12 +7255,18 @@ async function renderView(name) {
         'account-types': async () => {
           const [typesRes, usersRes, aliasesRes] = await Promise.all([
             request('/api/admin/account-types').catch(() => ({ accountTypes: [] })),
-            request('/api/admin/users').catch(() => ({ users: [] })),
+            request(`/api/admin/users?${new URLSearchParams({ page: userCurrentPage, pageSize: userPageSize, q: userSearch, status: userStatusFilter, accountTypeId: userAccountTypeFilter })}`).catch(() => ({ users: [] })),
             request('/api/model-aliases').catch(() => ({ aliases: {} }))
           ]);
           return {
             accountTypes: typesRes.accountTypes || [],
             users: usersRes.users || [],
+            usersPage: usersRes.page || userCurrentPage,
+            usersPageSize: usersRes.pageSize || userPageSize,
+            usersTotal: usersRes.total || 0,
+            usersTotalPages: usersRes.totalPages || 1,
+            usersQuery: usersRes.q || userSearch,
+            usersStatus: usersRes.status || userStatusFilter,
             modelAliases: Object.keys(aliasesRes.aliases || (aliasesRes.records ? aliasesRes.records.reduce((acc, r) => { if (r.alias) acc[r.alias] = true; return acc; }, {}) : {}))
           };
         },

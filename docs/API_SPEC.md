@@ -76,9 +76,15 @@ Cline access tokens are normalized with the upstream-required `workos:` prefix a
 
 ### 3.3. API Keys & Restrictions (`/api/keys`)
 - `GET /api/keys` — List semua API Key yang aktif dan terdaftar.
+- `GET /api/keys?page=1&pageSize=25` — Bounded server-side page; `pageSize` is clamped to 100 and the response includes `page`, `pageSize`, `total`, and `totalPages`.
 - `POST /api/keys` — Buat API Key baru beserta restriksi (`allowedModels`, `allowedPrefixes`, `allowedProviders`, `rateLimit`).
 - `PUT /api/keys/{id}` — Update nama, status aktif/non-aktif, atau ubah restriksi.
 - `DELETE /api/keys/{id}` — Hapus / revoke API Key.
+
+### 3.3.1. Verified Telegram User Governance (`/api/admin/users`)
+- `GET /api/admin/users?page=1&pageSize=25&q=&status=&accountTypeId=` — Bounded server-side user page with database-side search and filters. The response includes `users`, `page`, `pageSize`, `total`, and `totalPages`.
+- The user projection contains only masked key metadata (`hasActiveKey`, `keyPrefix`, `keyCreatedAt`); active-key metadata is joined in one query to avoid N+1 lookups.
+- `PUT /api/admin/users/telegram/{telegramUserId}/ban` — Ban/unban all access owned by one Telegram identity with body `{"banned":true|false}`.
 
 ### 3.4. Admin model inventory and aliases
 

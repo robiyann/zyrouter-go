@@ -3,6 +3,7 @@ package admin
 import (
 	"database/sql"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -105,25 +106,32 @@ func (h *AdminHandler) HandleSetAccountTypeModels(w http.ResponseWriter, r *http
 }
 
 func (h *AdminHandler) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.repo.ListUsers()
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+	search := r.URL.Query().Get("q")
+	status := r.URL.Query().Get("status")
+	accountTypeID := r.URL.Query().Get("accountTypeId")
+	rows, total, err := h.repo.ListUsersPage(page, pageSize, search, status, accountTypeID)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	result := make([]map[string]any, 0, len(users))
-	for _, user := range users {
-		var activeKey *models.APIKey
-		if user.IsActive == 1 {
-			activeKey, _ = h.repo.GetActiveUserApiKey(user.ID)
-		}
-		result = append(result, map[string]any{"id": user.ID, "telegramUserId": user.TelegramUserID, "telegramUsername": user.TelegramUsername, "displayName": user.DisplayName, "accountTypeId": user.AccountTypeID, "isActive": user.IsActive, "isBanned": user.IsActive != 1, "verifiedAt": user.VerifiedAt, "createdAt": user.CreatedAt})
-		result[len(result)-1]["hasActiveKey"] = activeKey != nil
-		if activeKey != nil {
-			result[len(result)-1]["keyPrefix"] = activeKey.Key
-			result[len(result)-1]["keyCreatedAt"] = activeKey.CreatedAt
-		}
+	result := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		user := row.User
+		result = append(result, map[string]any{"id": user.ID, "telegramUserId": user.TelegramUserID, "telegramUsername": user.TelegramUsername, "displayName": user.DisplayName, "accountTypeId": user.AccountTypeID, "isActive": user.IsActive, "isBanned": user.IsActive != 1, "verifiedAt": user.VerifiedAt, "createdAt": user.CreatedAt, "hasActiveKey": row.HasActiveKey, "keyPrefix": row.KeyPrefix, "keyCreatedAt": row.KeyCreatedAt})
 	}
-	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"users": result})
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 25
+	}
+	totalPages := 0
+	if total > 0 {
+		totalPages = (total + pageSize - 1) / pageSize
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"users": result, "page": page, "pageSize": pageSize, "total": total, "totalPages": totalPages, "q": search, "status": status, "accountTypeId": accountTypeID})
 }
 
 func (h *AdminHandler) HandleRevokeUserKey(w http.ResponseWriter, r *http.Request) {

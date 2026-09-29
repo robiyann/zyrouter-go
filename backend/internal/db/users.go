@@ -431,6 +431,85 @@ func (r *Repo) ListUsers() ([]*models.User, error) {
 	return users, rows.Err()
 }
 
+// AdminUserRow is the bounded, admin-only projection used by the user
+// governance table. It avoids loading all users or issuing one key query per
+// user row.
+type AdminUserRow struct {
+	User         *models.User
+	HasActiveKey bool
+	KeyPrefix    string
+	KeyCreatedAt string
+}
+
+// ListUsersPage returns one server-side page of verified users with optional
+// search/status filters and their active-key summary in a single query.
+func (r *Repo) ListUsersPage(page, pageSize int, search, status, accountTypeID string) ([]AdminUserRow, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	where := []string{"1=1"}
+	args := make([]any, 0, 8)
+	if search = strings.TrimSpace(search); search != "" {
+		pattern := "%" + strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search) + "%"
+		where = append(where, `(u.telegramUserId LIKE ? ESCAPE '\' OR COALESCE(u.telegramUsername,'') LIKE ? ESCAPE '\' OR COALESCE(u.displayName,'') LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern, pattern)
+	}
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active":
+		where = append(where, "u.isActive = 1")
+	case "banned", "inactive":
+		where = append(where, "u.isActive = 0")
+	}
+	if accountTypeID = strings.TrimSpace(accountTypeID); accountTypeID != "" && !strings.EqualFold(accountTypeID, "all") {
+		where = append(where, "u.accountTypeId = ?")
+		args = append(args, accountTypeID)
+	}
+	clause := strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM users u WHERE `+clause, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	queryArgs := append(append([]any{}, args...), pageSize, offset)
+	rows, err := r.db.Query(`
+		SELECT u.id, u.telegramUserId, u.telegramUsername, u.displayName, u.accountTypeId,
+		       u.isActive, u.verifiedAt, u.createdAt, u.updatedAt,
+		       CASE WHEN ak.id IS NULL THEN 0 ELSE 1 END,
+		       COALESCE(ak.key, ''), COALESCE(ak.createdAt, '')
+		FROM users u
+		LEFT JOIN apiKeys ak ON ak.userId = u.id AND ak.isActive = 1
+		WHERE `+clause+`
+		ORDER BY u.createdAt DESC, u.id DESC
+		LIMIT ? OFFSET ?`, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	result := make([]AdminUserRow, 0, pageSize)
+	for rows.Next() {
+		var user models.User
+		var username, display, keyPrefix, keyCreatedAt sql.NullString
+		var hasActiveKey int
+		if err := rows.Scan(&user.ID, &user.TelegramUserID, &username, &display, &user.AccountTypeID, &user.IsActive, &user.VerifiedAt, &user.CreatedAt, &user.UpdatedAt, &hasActiveKey, &keyPrefix, &keyCreatedAt); err != nil {
+			return nil, 0, err
+		}
+		if username.Valid {
+			user.TelegramUsername = &username.String
+		}
+		if display.Valid {
+			user.DisplayName = &display.String
+		}
+		result = append(result, AdminUserRow{User: &user, HasActiveKey: hasActiveKey == 1, KeyPrefix: keyPrefix.String, KeyCreatedAt: keyCreatedAt.String})
+	}
+	return result, total, rows.Err()
+}
+
 func (r *Repo) UpdateUserAccountType(userID, accountTypeID string) error {
 	typ, err := r.GetAccountType(accountTypeID)
 	if err != nil {

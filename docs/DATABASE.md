@@ -18,6 +18,7 @@ Dokumentasi skema database SQLite untuk **Zyrouter** (`zyrouter.db`).
 ### API key storage and migration
 
 - New gateway, user, and client API keys use the `zy_` prefix. The full key is returned only by the create response; SQLite stores a display prefix plus `keyHash`.
+- High-volume admin lists use bounded server-side queries. User governance is ordered by `(createdAt DESC, id DESC)` and active-key metadata is joined in the same query; no unbounded user list or per-row key lookup is permitted.
 - On startup, `_meta` key `migration.api_keys_hash.v1` guards the transactional legacy migration. Legacy rows with `userId IS NULL` and no `clientId` are assigned `accountTypeId = administrator`.
 - Rows with `clientId` are hashed but are not promoted; their existing account type and ownership fields are preserved. Verified user-owned rows are not changed.
 - The reveal endpoint cannot recover a stored secret and returns an explicit error; rotate a lost key.
@@ -186,6 +187,7 @@ CREATE TABLE IF NOT EXISTS apiKeys (
 
 CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key);
 CREATE INDEX IF NOT EXISTS idx_ak_active ON apiKeys(isActive);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_active_created ON apiKeys(userId, isActive, createdAt DESC);
 CREATE INDEX IF NOT EXISTS idx_ak_client ON apiKeys(clientId);
 
 CREATE TABLE IF NOT EXISTS clientPolicies (
@@ -210,6 +212,10 @@ CREATE TABLE IF NOT EXISTS clients (
 
 CREATE INDEX IF NOT EXISTS idx_clients_token ON clients(accessTokenHash);
 CREATE INDEX IF NOT EXISTS idx_clients_policy ON clients(policyId);
+
+-- Verified Telegram user governance / bounded admin listing
+CREATE INDEX IF NOT EXISTS idx_users_created_id ON users(createdAt DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_users_active_type_created ON users(isActive, accountTypeId, createdAt DESC, id DESC);
 ```
 
 #### Struktur `restrictions` JSON:

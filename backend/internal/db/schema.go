@@ -305,6 +305,15 @@ func EnsureSchema(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_one_active_user ON apiKeys(userId) WHERE userId IS NOT NULL AND isActive = 1`); err != nil {
 		return fmt.Errorf("create user api key uniqueness index: %w", err)
 	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_created_id ON users(createdAt DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create users ordering index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_active_type_created ON users(isActive, accountTypeId, createdAt DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create users filter index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_keys_user_active_created ON apiKeys(userId, isActive, createdAt DESC)`); err != nil {
+		return fmt.Errorf("create user key lookup index: %w", err)
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_usage_user ON usageHistory(userId)`); err != nil {
 		return fmt.Errorf("create user usage index: %w", err)
 	}

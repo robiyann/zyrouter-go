@@ -1,5 +1,21 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Server-Side Pagination for Telegram User Governance
+- **Modul**: `Backend / Admin Dashboard / Database / Docs / Tests`
+- **File Diubah / Dibuat**:
+  - `[MOD] backend/internal/db/users.go`
+  - `[MOD] backend/internal/db/schema.go`
+  - `[MOD] backend/internal/handlers/admin/account_types.go`
+  - `[MOD] frontend/app.js`
+  - `[NEW] backend/internal/db/users_pagination_test.go`
+  - `[MOD] docs/API_SPEC.md`
+  - `[MOD] docs/DATABASE.md`
+- **Deskripsi Perubahan**:
+  - Verified Telegram Users sekarang memakai bounded server-side page, search, status filter, dan database-side active-key projection tanpa N+1 query.
+  - Menambahkan index ordering/filtering untuk menjaga latency tetap stabil pada dataset besar.
+  - UI Account Types menampilkan search, filter, page size, dan Prev/Next pagination.
+- **Status Task**: In Progress — pagination high-volume history endpoints masih dilanjutkan.
+
 ### [2026-09-28] - [Antigravity] - Model Labs UI/UX Overhaul & Prompt Bench Redesign
 - **Modul**: `Frontend / Model Labs / Prompt Bench / Design System`
 - **File Diubah**:
