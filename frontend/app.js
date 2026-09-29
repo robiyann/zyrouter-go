@@ -10969,8 +10969,8 @@ function layoutMeshGraph() {
   const hub = document.querySelector('#mesh-center-hub');
   if (!container || !hub) return;
 
-  const nodes = Array.from(container.querySelectorAll('.mesh-clients-col .mesh-node, .mesh-providers-col .mesh-node'));
-  const activeKeys = new Set(nodes.map((node, index) => node.dataset.providerId || node.dataset.clientId || index));
+  const nodes = Array.from(container.querySelectorAll('.mesh-providers-col .mesh-node'));
+  const activeKeys = new Set(nodes.map((node, index) => node.dataset.providerId || index));
   for (const key of meshPositionSeeds.keys()) {
     if (!activeKeys.has(key)) meshPositionSeeds.delete(key);
   }
@@ -10993,7 +10993,7 @@ function layoutMeshGraph() {
   const orbitY = Math.max(compact ? 145 : 125, height * (compact ? 0.37 : 0.34));
   const angleStep = (Math.PI * 2) / Math.max(nodes.length, 1);
   const positions = nodes.map((node, index) => {
-    const seed = meshPositionSeed(node.dataset.providerId || node.dataset.clientId || index);
+    const seed = meshPositionSeed(node.dataset.providerId || index);
     const angle = index * angleStep - Math.PI / 2 + (seed.angle - 0.5) * 0.42;
     const radius = seed.radius;
     const nodeWidth = node.offsetWidth || 110;
@@ -11081,8 +11081,8 @@ function drawMeshLines() {
 
   let pathsHtml = '';
 
-  // Connect every node to the nearest edge of the gateway hub, neuron-style.
-  document.querySelectorAll('.mesh-clients-col .mesh-node, .mesh-providers-col .mesh-node').forEach((node) => {
+  // Connect every upstream provider directly to the gateway hub.
+  document.querySelectorAll('.mesh-providers-col .mesh-node').forEach((node) => {
     const n = getMeshNodeRect(node, container);
     const dx = hubRect.centerX - n.centerX;
     const dy = hubRect.centerY - n.centerY;
@@ -11116,11 +11116,9 @@ function drawMeshLines() {
 function updateMeshRealtimeState(activeRequests = []) {
   const statusBadge = document.querySelector('#mesh-live-status');
   const latencyBadge = document.querySelector('#mesh-core-latency');
-  const clients = Array.from(document.querySelectorAll('.mesh-clients-col .mesh-node'));
   const providers = Array.from(document.querySelectorAll('.mesh-providers-col .mesh-node'));
 
   if (!Array.isArray(activeRequests) || activeRequests.length === 0) {
-    clients.forEach((c) => c.classList.remove('active'));
     providers.forEach((p) => p.classList.remove('active'));
     if (statusBadge) {
       statusBadge.className = 'live-chip';
@@ -11138,29 +11136,19 @@ function updateMeshRealtimeState(activeRequests = []) {
   if (latencyBadge) latencyBadge.textContent = `• ${activeRequests.length} in-flight`;
 
   const activeProvIds = new Set();
-  const activeClientIds = new Set();
+  const activeModelIds = new Set();
 
   activeRequests.forEach((req) => {
     const prov = (req.provider || '').toLowerCase();
     const model = (req.model || '').toLowerCase();
-    const clientHeader = (req.client || '').toLowerCase();
     if (prov) activeProvIds.add(prov);
-
-    // Accurate client resolution based on client identifier, model, or provider
-    if (clientHeader.includes('claude') || model.includes('claude') || prov === 'claude') activeClientIds.add('claude');
-    else if (clientHeader.includes('cursor') || model.includes('cursor') || prov === 'cursor') activeClientIds.add('cursor');
-    else if (clientHeader.includes('cline') || clientHeader.includes('roo') || model.includes('cline') || model.includes('roo') || prov === 'cline') activeClientIds.add('cline');
-    else if (clientHeader.includes('opencode') || model.includes('opencode') || prov === 'opencode' || prov === 'opencode-go' || prov.startsWith('oc')) activeClientIds.add('opencode');
-    else if (clientHeader.includes('copilot') || model.includes('copilot') || prov === 'copilot' || prov === 'github' || prov === 'codex') activeClientIds.add('copilot');
-    // Do not guess a client from the upstream provider/model. ActiveRequest
-    // currently carries no reliable client header, so an unknown request must
-    // leave all client nodes idle instead of falsely lighting OpenCode.
+    if (model) activeModelIds.add(model);
   });
 
-  clients.forEach((c) => c.classList.toggle('active', activeClientIds.has(c.dataset.clientId)));
   providers.forEach((p) => {
     const pid = (p.dataset.providerId || '').toLowerCase();
-    const isActive = activeProvIds.has(pid) || Array.from(activeProvIds).some(ap => pid.includes(ap) || ap.includes(pid));
+    const isActive = Array.from(activeProvIds).some((ap) => pid === ap || pid.includes(ap) || ap.includes(pid))
+      || Array.from(activeModelIds).some((model) => pid.includes(model) || model.includes(pid) || model.split('/')[0] === pid);
     p.classList.toggle('active', isActive);
   });
 

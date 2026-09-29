@@ -2077,10 +2077,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
 }
 
-.mesh-clients-col {
-  display: contents;
-}
-
 .mesh-center-hub {
   position: absolute;
   z-index: 3;

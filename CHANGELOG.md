@@ -1,5 +1,13 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Pure Provider Mesh Topology
+- **Modul**: `Overview Dashboard / Provider Summary / Frontend`
+- **Deskripsi Perubahan**:
+  - Dynamic Mesh Topology sekarang hanya menampilkan provider upstream di sekitar Zyrouter Core; seluruh mock client IDE dihapus.
+  - Laser routing dan active state diarahkan langsung dari core ke provider yang memiliki request aktif.
+  - Provider summary memakai aggregate stats dan seluruh configured provider nodes agar count tidak terpotong pagination.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Overview Mesh Provider Aggregate Counts
 - **Modul**: `Admin Provider Summary / Overview Mesh / Tests`
 - **Deskripsi Perubahan**:

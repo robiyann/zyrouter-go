@@ -80,4 +80,7 @@ assert.match(app, /const\s+timeStr\s*=\s*formatWIBTimestamp\(topReq\.timestamp\)
 assert.match(app, /emptyRow\.remove\(\)/, 'bindLogStream must remove empty row when new live entries arrive');
 assert.match(app, /ensureGlobalStream\(\)/, 'dashboard must start realtime SSE after authentication');
 assert.doesNotMatch(app, /Successfully imported .* models from upstream/, 'provider fetch must not auto-create public/custom model records');
+assert.doesNotMatch(html, /mesh-clients-col|data-client-id/, 'dynamic mesh must not contain hardcoded client nodes');
+assert.match(app, /querySelectorAll\('\.mesh-providers-col \.mesh-node'\)/, 'mesh routing must target provider nodes only');
+assert.match(app, /providerPayload\.stats \|\| providerPayload\.providerStats/, 'overview must consume aggregate provider stats');
 console.log('frontend backend contract checks passed');
