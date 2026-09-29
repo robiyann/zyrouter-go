@@ -24,6 +24,14 @@
   - Client Portal Usage beralih ke cursor stack untuk Next/Previous tanpa memuat seluruh history.
 - **Status Task**: In Progress — audit/provider/alias high-volume surfaces masih diaudit.
 
+### [2026-09-29] - [Codex] - Bounded Provider Catalog Pagination
+- **Modul**: `Backend / Admin Dashboard / Database / Tests`
+- **Deskripsi Perubahan**:
+  - Provider catalog requests are bounded to 25–100 connections per page.
+  - Aggregate provider counts are returned separately so the catalog does not load all connection rows just to render counts.
+  - Admin provider UI now exposes Prev/Next pagination while preserving provider aggregate statistics.
+- **Status Task**: In Progress — model alias catalog and remaining bounded CRUD surfaces are next.
+
 ### [2026-09-29] - [Codex] - Cursor-Driven Admin Security and Portal History
 - **Modul**: `Backend / Admin Dashboard / Client Portal / Tests / Docs`
 - **Deskripsi Perubahan**:

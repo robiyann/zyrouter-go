@@ -241,6 +241,15 @@ func (h *AdminHandler) HandleGetProviders(w http.ResponseWriter, r *http.Request
 	summary := r.URL.Query().Get("summary") == "1" || r.URL.Query().Get("summary") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if limit < 1 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	connections, total, err := h.repo.GetProviderConnectionsPaginated(provider, false, summary, limit, offset)
 	if err != nil {
@@ -250,16 +259,19 @@ func (h *AdminHandler) HandleGetProviders(w http.ResponseWriter, r *http.Request
 	if connections == nil {
 		connections = []*models.ProviderConnection{}
 	}
+	providerStats, _ := h.repo.GetProviderConnectionStats(provider, false)
 
 	res := map[string]any{
-		"connections": connections,
-		"total":       total,
+		"connections":   connections,
+		"total":         total,
+		"providerStats": providerStats,
+		"page":          (offset / limit) + 1,
+		"pageSize":      limit,
+		"totalPages":    (total + limit - 1) / limit,
 	}
-	if limit > 0 {
-		res["limit"] = limit
-		res["offset"] = offset
-		res["hasMore"] = (offset + len(connections)) < total
-	}
+	res["limit"] = limit
+	res["offset"] = offset
+	res["hasMore"] = (offset + len(connections)) < total
 
 	handlerutil.WriteJSON(w, http.StatusOK, res)
 }

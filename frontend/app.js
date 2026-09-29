@@ -1866,12 +1866,16 @@ function getProviderStats(providerId, connections = []) {
   return { total: items.length, active: active.length, items };
 }
 
+let providerCurrentPage = 1;
+const providerPageSize = 25;
+
 // ─────────────────────────────────────────────────────────────
 // 1. MAIN PROVIDERS CATALOG VIEW (#providers)
 // ─────────────────────────────────────────────────────────────
 function renderProviders(payload) {
   const conns = payload.connections || [];
   const nodes = payload.nodes || [];
+  const providerStats = payload.providerStats || {};
   
   const openaiNodes = nodes.filter((n) => n.type === 'openai-compatible');
   const anthropicNodes = nodes.filter((n) => n.type === 'anthropic-compatible');
@@ -1889,7 +1893,7 @@ function renderProviders(payload) {
         </div>
         <div class="category-card-grid">
           ${items.map((cat) => {
-            const stats = getProviderStats(cat.id, conns);
+            const stats = providerStats[cat.id] || getProviderStats(cat.id, conns);
             const hasConns = stats.total > 0;
             return `
               <div class="provider-cat-card" data-open-provider="${escapeHtml(cat.id)}">
@@ -1942,7 +1946,7 @@ function renderProviders(payload) {
             ${allCustomNodes.map((node) => {
               const isAnthropic = node.type === 'anthropic-compatible';
               const prefix = node.prefix || node.name || 'custom';
-              const stats = getProviderStats(node.id, conns);
+              const stats = providerStats[node.id] || getProviderStats(node.id, conns);
               const hasConns = stats.total > 0;
               return `
                 <div class="provider-cat-card" data-open-provider="${escapeHtml(node.id)}">
@@ -1995,6 +1999,13 @@ function renderProviders(payload) {
       ${renderCategoryGrid(freeItems, 'Free & Local Providers')}
       <!-- 4. Standard API Key Providers -->
       ${renderCategoryGrid(apiKeyItems, 'API Key Providers')}
+      <div class="aliases-pagination-bar" style="padding:8px 14px; margin-top:10px;">
+        <span>Provider connections page <strong>${Number(payload.page || providerCurrentPage)}</strong> / <strong>${Math.max(1, Number(payload.totalPages || 1))}</strong> · ${Number(payload.total || 0)} total</span>
+        <div class="aliases-pagination-controls">
+          <button type="button" class="alias-page-btn" data-provider-page="${Math.max(1, Number(payload.page || providerCurrentPage) - 1)}" ${Number(payload.page || providerCurrentPage) <= 1 ? 'disabled' : ''}>&larr; Prev</button>
+          <button type="button" class="alias-page-btn" data-provider-page="${Number(payload.page || providerCurrentPage) + 1}" ${Number(payload.page || providerCurrentPage) >= Number(payload.totalPages || 1) ? 'disabled' : ''}>Next &rarr;</button>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -5207,6 +5218,12 @@ function bindAccountTypeActions(payload) {
       }
     };
   });
+  document.querySelectorAll('[data-provider-page]').forEach((button) => {
+    button.onclick = async () => {
+      providerCurrentPage = Math.max(1, Number(button.dataset.providerPage) || 1);
+      await renderView('providers');
+    };
+  });
 }
 
 
@@ -7248,12 +7265,17 @@ async function renderView(name) {
     payload = await ({
         providers: async () => {
           const [connsRes, nodesRes] = await Promise.all([
-            request('/api/providers?summary=1').catch(() => ({ connections: [] })),
+            request(`/api/providers?summary=1&limit=${providerPageSize}&offset=${(providerCurrentPage - 1) * providerPageSize}`).catch(() => ({ connections: [] })),
             request('/api/provider-nodes').catch(() => ({ nodes: [] }))
           ]);
           return {
             connections: connsRes.connections || [],
-            nodes: nodesRes.nodes || []
+            nodes: nodesRes.nodes || [],
+            providerStats: connsRes.providerStats || {},
+            page: connsRes.page || providerCurrentPage,
+            pageSize: connsRes.pageSize || providerPageSize,
+            total: connsRes.total || 0,
+            totalPages: connsRes.totalPages || 1
           };
         },
         orchestrator: async () => {

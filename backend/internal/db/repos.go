@@ -1025,3 +1025,32 @@ func (r *Repo) GetProviderConnectionsPaginated(provider string, activeOnly bool,
 
 	return connections, total, rows.Err()
 }
+
+// GetProviderConnectionStats returns aggregate counts without materializing
+// every provider connection row in an admin catalog response.
+func (r *Repo) GetProviderConnectionStats(provider string, activeOnly bool) (map[string]map[string]int, error) {
+	where := "1=1"
+	args := make([]any, 0, 2)
+	if provider = strings.TrimSpace(provider); provider != "" {
+		where += " AND provider = ?"
+		args = append(args, provider)
+	}
+	if activeOnly {
+		where += " AND isActive = 1"
+	}
+	rows, err := r.db.Query(`SELECT provider, COUNT(*), COALESCE(SUM(CASE WHEN isActive=1 THEN 1 ELSE 0 END),0) FROM providerConnections WHERE `+where+` GROUP BY provider`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]map[string]int)
+	for rows.Next() {
+		var name string
+		var total, active int
+		if err := rows.Scan(&name, &total, &active); err != nil {
+			return nil, err
+		}
+		result[name] = map[string]int{"total": total, "active": active}
+	}
+	return result, rows.Err()
+}

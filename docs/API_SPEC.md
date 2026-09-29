@@ -51,7 +51,7 @@ Media, Headroom, MITM, CLI tools, search, dan scrape endpoints tidak termasuk ru
 Semua endpoint berikut memerlukan admin session atau API key non-client.
 
 ### 3.1. Provider Connections (`/api/providers`)
-- `GET /api/providers` — List semua koneksi provider terdaftar.
+- `GET /api/providers?limit=25&offset=0` — Bounded server-side provider connection page. The response includes `page`, `pageSize`, `total`, `totalPages`, and aggregate `providerStats`; `limit` is clamped to 100.
 - `POST /api/providers` — Tambah koneksi provider baru (API key / OAuth).
 
 ### 3.1.1. OAuth Account Flows
