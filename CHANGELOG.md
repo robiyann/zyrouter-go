@@ -1,5 +1,12 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Persistent Mesh SVG Animation
+- **Modul**: `Overview Dashboard / SVG Mesh / Realtime Telemetry`
+- **Deskripsi Perubahan**:
+  - SVG provider connection groups and path identities persist across SSE ticks, preventing laser dash and packet animations from resetting.
+  - Realtime updates now toggle existing connection groups and packet slots instead of rebuilding `svg.innerHTML`.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Public OpenCode Mesh Visibility
 - **Modul**: `Overview Provider Mesh / Public Providers`
 - **Deskripsi Perubahan**:

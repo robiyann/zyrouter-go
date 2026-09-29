@@ -93,4 +93,9 @@ assert.match(app, /mesh-packet-in/, 'mesh must render inbound response packets')
 assert.match(app, /function meshRequestMatchesNode/, 'mesh must centralize strict provider matching');
 assert.match(app, /provider\.id === 'opencode' && provider\.authType === 'free'/, 'public OpenCode provider must remain visible without account rows');
 assert.match(app, /Public \/ Free/, 'public providers must have an explicit mesh status');
+assert.match(app, /data-path-provider-id/, 'mesh paths must retain provider identity');
+const realtimeStart = app.indexOf('function updateMeshRealtimeState(');
+const realtimeEnd = app.indexOf('let meshZoom', realtimeStart);
+assert.ok(realtimeStart >= 0 && realtimeEnd > realtimeStart, 'mesh realtime state function must be present');
+assert.doesNotMatch(app.slice(realtimeStart, realtimeEnd), /svg\.innerHTML|drawMeshLines\(\)/, 'SSE ticks must not rebuild SVG topology');
 console.log('frontend backend contract checks passed');

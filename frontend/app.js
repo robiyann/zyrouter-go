@@ -11116,6 +11116,8 @@ function getMeshNodeRect(el, container) {
   };
 }
 
+const MESH_PACKET_SLOTS = 6;
+
 function drawMeshLines() {
   const container = document.querySelector('#cyber-mesh-container');
   const svg = document.querySelector('#mesh-svg-layer');
@@ -11135,8 +11137,11 @@ function drawMeshLines() {
 
   let pathsHtml = '';
 
-  // Connect every upstream provider directly to the gateway hub.
+  // Build persistent provider connection groups. Realtime updates only toggle
+  // classes inside these groups; they must not replace SVG innerHTML.
   document.querySelectorAll('.mesh-providers-col .mesh-node').forEach((node) => {
+    const pid = node.dataset.providerId || '';
+    const escapedPid = escapeHtml(pid);
     const n = getMeshNodeRect(node, container);
     const dx = hubRect.centerX - n.centerX;
     const dy = hubRect.centerY - n.centerY;
@@ -11159,52 +11164,68 @@ function drawMeshLines() {
     const c2X = nodeX + (hubX - nodeX) * 0.58;
     const c2Y = hubY - (hubY - nodeY) * 0.08;
     const d = `M ${nodeX} ${nodeY} C ${c1X} ${c1Y}, ${c2X} ${c2Y}, ${hubX} ${hubY}`;
-    const isActive = node.classList.contains('active');
-    pathsHtml += `<path d="${d}" class="mesh-path-glow ${isActive ? 'active' : ''}" />`;
-    pathsHtml += `<path d="${d}" class="mesh-path-base ${isActive ? 'mesh-path-laser' : ''}" />`;
-
     const reverseD = `M ${hubX} ${hubY} C ${c2X} ${c2Y}, ${c1X} ${c1Y}, ${nodeX} ${nodeY}`;
-    const matchingRequests = meshActiveRequests.filter((request) => meshRequestMatchesNode(node, request));
-    const packetCount = matchingRequests.reduce((sum, request) => sum + meshRequestPacketCount(request), 0);
-    for (let packetIndex = 0; packetIndex < packetCount; packetIndex += 1) {
-      const delay = (packetIndex / Math.max(packetCount, 1)) * 0.8;
-      pathsHtml += `<circle class="mesh-packet mesh-packet-out" r="3.5"><animateMotion dur="1.1s" begin="${delay.toFixed(3)}s" repeatCount="indefinite" path="${reverseD}" /></circle>`;
-      pathsHtml += `<circle class="mesh-packet mesh-packet-in" r="3"><animateMotion dur="1.1s" begin="${(delay + 0.58).toFixed(3)}s" repeatCount="indefinite" path="${d}" /></circle>`;
+    pathsHtml += `<g class="mesh-connection-group" data-group-provider-id="${escapedPid}">`;
+    pathsHtml += `<path data-path-provider-id="${escapedPid}" d="${d}" class="mesh-path-glow" />`;
+    pathsHtml += `<path data-path-provider-id="${escapedPid}" d="${d}" class="mesh-path-base" />`;
+    pathsHtml += `<path data-path-provider-id="${escapedPid}" d="${d}" class="mesh-path-laser-pulse" />`;
+    for (let packetIndex = 0; packetIndex < MESH_PACKET_SLOTS; packetIndex += 1) {
+      const delay = (packetIndex / MESH_PACKET_SLOTS) * 0.8;
+      pathsHtml += `<circle data-packet-index="${packetIndex}" class="mesh-packet mesh-packet-out" r="3.5"><animateMotion dur="1.1s" begin="${delay.toFixed(3)}s" repeatCount="indefinite" path="${reverseD}" /></circle>`;
+      pathsHtml += `<circle data-packet-index="${packetIndex}" class="mesh-packet mesh-packet-in" r="3"><animateMotion dur="1.1s" begin="${(delay + 0.58).toFixed(3)}s" repeatCount="indefinite" path="${d}" /></circle>`;
     }
+    pathsHtml += '</g>';
   });
 
   svg.innerHTML = pathsHtml;
+  syncMeshRealtimeState();
 }
 
-function updateMeshRealtimeState(activeRequests = []) {
+function syncMeshRealtimeState() {
   const statusBadge = document.querySelector('#mesh-live-status');
   const latencyBadge = document.querySelector('#mesh-core-latency');
   const providers = Array.from(document.querySelectorAll('.mesh-providers-col .mesh-node'));
-  meshActiveRequests = Array.isArray(activeRequests) ? activeRequests : [];
+  const groups = Array.from(document.querySelectorAll('.mesh-connection-group'));
 
   if (meshActiveRequests.length === 0) {
     providers.forEach((p) => p.classList.remove('active'));
+    groups.forEach((group) => {
+      group.classList.remove('active');
+      group.querySelectorAll('.mesh-packet').forEach((packet) => packet.classList.remove('packet-visible'));
+    });
     if (statusBadge) {
       statusBadge.className = 'live-chip';
       statusBadge.textContent = 'STANDBY • LISTENING';
     }
     if (latencyBadge) latencyBadge.textContent = '• Idle Gateway';
-    drawMeshLines();
     return;
   }
 
   if (statusBadge) {
     statusBadge.className = 'live-chip active';
-    statusBadge.textContent = `ROUTING ${activeRequests.length} ACTIVE REQUEST(S)`;
+    statusBadge.textContent = `ROUTING ${meshActiveRequests.length} ACTIVE REQUEST(S)`;
   }
-  if (latencyBadge) latencyBadge.textContent = `• ${activeRequests.length} in-flight`;
+  if (latencyBadge) latencyBadge.textContent = `• ${meshActiveRequests.length} in-flight`;
 
   providers.forEach((p) => {
     const isActive = meshActiveRequests.some((request) => meshRequestMatchesNode(p, request));
     p.classList.toggle('active', isActive);
+    const pid = (p.dataset.providerId || '').toLowerCase();
+    const group = groups.find((candidate) => (candidate.dataset.groupProviderId || '').toLowerCase() === pid);
+    if (!group) return;
+    const packetCount = meshActiveRequests
+      .filter((request) => meshRequestMatchesNode(p, request))
+      .reduce((sum, request) => sum + meshRequestPacketCount(request), 0);
+    group.classList.toggle('active', packetCount > 0);
+    group.querySelectorAll('.mesh-packet').forEach((packet) => {
+      packet.classList.toggle('packet-visible', Number(packet.dataset.packetIndex) < packetCount);
+    });
   });
+}
 
-  drawMeshLines();
+function updateMeshRealtimeState(activeRequests = []) {
+  meshActiveRequests = Array.isArray(activeRequests) ? activeRequests : [];
+  syncMeshRealtimeState();
 }
 
 let meshZoom = 1.0;
