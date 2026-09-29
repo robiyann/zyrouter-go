@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"zyrouter/backend/internal/pagination"
 )
 
 // AuthLogEntry contains metadata only; credentials and request bodies must never enter this table.
@@ -98,4 +99,57 @@ func (r *Repo) CountAuthLogs() (int, error) {
 		return 0, fmt.Errorf("count auth logs: %w", err)
 	}
 	return count, nil
+}
+
+// ListAuthLogsCursor returns a bounded keyset page for high-volume admin
+// security logs without COUNT(*) or OFFSET scans.
+func (r *Repo) ListAuthLogsCursor(limit int, rawCursor string) ([]map[string]any, bool, string, error) {
+	if limit < 1 || limit > 100 {
+		limit = 25
+	}
+	cursor, err := pagination.Decode(rawCursor)
+	if err != nil {
+		return nil, false, "", err
+	}
+	where := "1=1"
+	args := make([]any, 0, 3)
+	if cursor.Timestamp != "" {
+		where += ` AND (datetime(timestamp) < datetime(?) OR (datetime(timestamp) = datetime(?) AND id < ?))`
+		args = append(args, cursor.Timestamp, cursor.Timestamp, cursor.ID)
+	}
+	args = append(args, limit+1)
+	rows, err := r.db.Query(`SELECT id,timestamp,event,ip,method,path,status,requestId,userAgent,referer,detail FROM authLogs WHERE `+where+` ORDER BY datetime(timestamp) DESC, id DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, false, "", err
+	}
+	defer rows.Close()
+	type row struct {
+		id, status                                                  int
+		ts, event, ip, method, path, requestID, ua, referer, detail sql.NullString
+	}
+	rowsData := make([]row, 0, limit+1)
+	for rows.Next() {
+		var item row
+		if err := rows.Scan(&item.id, &item.ts, &item.event, &item.ip, &item.method, &item.path, &item.status, &item.requestID, &item.ua, &item.referer, &item.detail); err != nil {
+			return nil, false, "", err
+		}
+		rowsData = append(rowsData, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, "", err
+	}
+	hasMore := len(rowsData) > limit
+	if hasMore {
+		rowsData = rowsData[:limit]
+	}
+	result := make([]map[string]any, 0, len(rowsData))
+	for _, item := range rowsData {
+		result = append(result, map[string]any{"id": item.id, "timestamp": item.ts.String, "event": item.event.String, "ip": item.ip.String, "method": item.method.String, "path": item.path.String, "status": item.status, "requestId": item.requestID.String, "userAgent": item.ua.String, "referer": item.referer.String, "detail": item.detail.String})
+	}
+	nextCursor := ""
+	if hasMore && len(rowsData) > 0 {
+		last := rowsData[len(rowsData)-1]
+		nextCursor = pagination.Encode(last.ts.String, int64(last.id))
+	}
+	return result, hasMore, nextCursor, nil
 }

@@ -371,6 +371,15 @@ func (h *Handler) Usage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
 	user := middleware.GetAuthenticatedUser(r)
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if cursor := strings.TrimSpace(r.URL.Query().Get("cursor")); cursor != "" {
+		logs, err := h.Repo.GetUserUsageLogsCursor(user.ID, limit, cursor)
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid usage cursor")
+			return
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, logs)
+		return
+	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	logs, err := h.Repo.GetUserUsageLogs(user.ID, limit, offset)
 	if err != nil {

@@ -128,6 +128,7 @@ Session-protected dashboard flow:
 - `GET /api/user/profile` — Telegram ID, username, display name, active state, dan account type.
 - `GET /api/user/usage` — Usage agregat user tersebut.
 - `GET /api/user/logs?limit=50&offset=0` — Ledger request milik user, hanya alias publik dan metrik tersanitasi.
+- `GET /api/user/logs?limit=50&cursor=<opaque>` — Recommended keyset pagination for high-volume user history; response includes `hasMore` and `nextCursor`. Offset remains available for backward compatibility.
 - `GET /api/user/logs/stream` — SSE lifecycle request milik user (`snapshot`, `request.started`, `request.completed`, `request.failed`).
 - `GET /api/user/features` — Feature flags yang diizinkan tier.
 - `PUT /api/user/features` — Update feature preferences dalam batas tier.
@@ -154,7 +155,8 @@ Telegram user session, atau upstream provider key. Flow ini terpisah dari user T
 - `POST /api/client/keys` — Generate key baru dengan policy server-side.
 - `DELETE /api/client/keys/{id}` — Revoke key milik client.
 - `GET /api/client/usage` — Usage agregat milik client.
-- `GET /api/client/logs?limit=50&offset=0` — Ledger request milik machine client.
+- `GET /api/client/logs?limit=50&offset=0` — Legacy ledger pagination for machine clients.
+- `GET /api/client/logs?limit=50&cursor=<opaque>` — Recommended keyset pagination for high-volume machine-client history.
 - `GET /api/client/logs/stream` — SSE lifecycle request milik machine client.
 
 Admin provisioning endpoints:
@@ -188,6 +190,10 @@ Contoh request realtime:
 
 `unified-chat` dapat berupa direct alias atau composite alias. Provider/model member
 composite tetap internal dan tidak dikembalikan ke client.
+
+### 3.8.1. Admin Usage History
+
+- `GET /api/usage/history?limit=50&cursor=<opaque>` — Bounded admin usage history using `(timestamp,id)` keyset pagination. It returns `items`, `hasMore`, and `nextCursor`; raw secrets and request/response payloads are excluded.
 
 Production topology:
 

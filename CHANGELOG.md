@@ -16,6 +16,14 @@
   - UI Account Types menampilkan search, filter, page size, dan Prev/Next pagination.
 - **Status Task**: In Progress — pagination high-volume history endpoints masih dilanjutkan.
 
+### [2026-09-29] - [Codex] - Cursor Pagination for Usage and Security History
+- **Modul**: `Backend / Client Portal / Admin API / Database / Tests`
+- **Deskripsi Perubahan**:
+  - Menambahkan opaque keyset cursor berbasis `(timestamp,id)` untuk user logs, machine-client logs, admin usage history, dan auth logs.
+  - Semua cursor endpoint memakai bounded `limit + 1`, `hasMore`, dan `nextCursor` tanpa `COUNT(*)` atau deep `OFFSET` scan.
+  - Client Portal Usage beralih ke cursor stack untuk Next/Previous tanpa memuat seluruh history.
+- **Status Task**: In Progress — audit/provider/alias high-volume surfaces masih diaudit.
+
 ### [2026-09-28] - [Antigravity] - Model Labs UI/UX Overhaul & Prompt Bench Redesign
 - **Modul**: `Frontend / Model Labs / Prompt Bench / Design System`
 - **File Diubah**:

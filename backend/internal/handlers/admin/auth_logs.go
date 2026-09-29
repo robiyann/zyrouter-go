@@ -11,6 +11,15 @@ import (
 // Passwords, cookies, API keys, and request bodies are never stored here.
 func (h *AdminHandler) HandleGetAuthLogs(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+		logs, hasMore, nextCursor, err := h.repo.ListAuthLogsCursor(limit, cursor)
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid auth log cursor")
+			return
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"logs": logs, "limit": limit, "hasMore": hasMore, "nextCursor": nextCursor})
+		return
+	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	logs, err := h.repo.ListAuthLogs(limit, offset)
 	if err != nil {

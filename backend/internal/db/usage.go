@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"zyrouter/backend/internal/pagination"
 )
 
 type UsageLogRow struct {
@@ -133,6 +134,133 @@ func (r *Repo) GetClientUsageLogs(clientID string, limit, offset int) (map[strin
 		return nil, err
 	}
 	return map[string]any{"items": items, "total": total, "limit": limit, "offset": offset}, nil
+}
+
+// GetUserUsageLogsCursor returns a bounded keyset page for a Telegram user's
+// private ledger. The cursor is opaque and never exposes SQL or internal IDs.
+func (r *Repo) GetUserUsageLogsCursor(userID string, limit int, rawCursor string) (map[string]any, error) {
+	return r.getScopedUsageLogsCursor(`userId = ?`, []any{userID}, limit, rawCursor)
+}
+
+// GetClientUsageLogsCursor returns a bounded keyset page for a machine client.
+func (r *Repo) GetClientUsageLogsCursor(clientID string, limit int, rawCursor string) (map[string]any, error) {
+	return r.getScopedUsageLogsCursor(`json_extract(meta, '$.clientId') = ?`, []any{clientID}, limit, rawCursor)
+}
+
+func (r *Repo) getScopedUsageLogsCursor(scope string, args []any, limit int, rawCursor string) (map[string]any, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	cursor, err := pagination.Decode(rawCursor)
+	if err != nil {
+		return nil, err
+	}
+	where := scope
+	queryArgs := append([]any{}, args...)
+	if cursor.Timestamp != "" {
+		where += ` AND (datetime(timestamp) < datetime(?) OR (datetime(timestamp) = datetime(?) AND id < ?))`
+		queryArgs = append(queryArgs, cursor.Timestamp, cursor.Timestamp, cursor.ID)
+	}
+	queryArgs = append(queryArgs, limit+1)
+	rows, err := r.db.Query(`
+		SELECT id, COALESCE(NULLIF(json_extract(meta, '$.requestId'), ''), printf('history-%d', id)), timestamp,
+		       COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), 'unknown'), promptTokens, completionTokens,
+		       status, COALESCE(json_extract(meta, '$.latencyMs'), 0)
+		FROM usageHistory WHERE `+where+` ORDER BY datetime(timestamp) DESC, id DESC LIMIT ?`, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type usageCursorRow struct {
+		dbID, prompt, completion, latency   int
+		requestID, timestamp, model, status string
+	}
+	result := make([]usageCursorRow, 0, limit+1)
+	for rows.Next() {
+		var item usageCursorRow
+		if err := rows.Scan(&item.dbID, &item.requestID, &item.timestamp, &item.model, &item.prompt, &item.completion, &item.status, &item.latency); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	hasMore := len(result) > limit
+	if hasMore {
+		result = result[:limit]
+	}
+	items := make([]map[string]any, 0, len(result))
+	for _, item := range result {
+		items = append(items, map[string]any{
+			"requestId": item.requestID, "timestamp": item.timestamp, "model": item.model, "status": item.status,
+			"promptTokens": item.prompt, "completionTokens": item.completion, "totalTokens": item.prompt + item.completion, "durationMs": item.latency,
+		})
+	}
+	response := map[string]any{"items": items, "limit": limit, "hasMore": hasMore, "nextCursor": ""}
+	if hasMore && len(result) > 0 {
+		last := result[len(result)-1]
+		response["nextCursor"] = pagination.Encode(last.timestamp, int64(last.dbID))
+	}
+	return response, nil
+}
+
+// GetAdminUsageHistoryCursor returns sanitized admin usage history using a
+// timestamp/id keyset. It deliberately omits raw API secrets and payloads.
+func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor string) (map[string]any, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	cursor, err := pagination.Decode(rawCursor)
+	if err != nil {
+		return nil, err
+	}
+	where := "1=1"
+	args := make([]any, 0, 3)
+	if cursor.Timestamp != "" {
+		where += ` AND (datetime(timestamp) < datetime(?) OR (datetime(timestamp) = datetime(?) AND id < ?))`
+		args = append(args, cursor.Timestamp, cursor.Timestamp, cursor.ID)
+	}
+	args = append(args, limit+1)
+	rows, err := r.db.Query(`
+		SELECT id, timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''),
+		       promptTokens, completionTokens, status, COALESCE(json_extract(meta, '$.latencyMs'), 0),
+		       COALESCE(json_extract(meta, '$.clientIdentity'), ''), COALESCE(json_extract(meta, '$.clientIp'), ''),
+		       COALESCE(json_extract(meta, '$.apiKeyId'), '')
+		FROM usageHistory WHERE `+where+` ORDER BY datetime(timestamp) DESC, id DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type adminUsageRow struct {
+		dbID, prompt, completion, latency                                       int
+		timestamp, provider, model, publicModel, status, identity, ip, apiKeyID string
+	}
+	result := make([]adminUsageRow, 0, limit+1)
+	for rows.Next() {
+		var item adminUsageRow
+		if err := rows.Scan(&item.dbID, &item.timestamp, &item.provider, &item.model, &item.publicModel, &item.prompt, &item.completion, &item.status, &item.latency, &item.identity, &item.ip, &item.apiKeyID); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	hasMore := len(result) > limit
+	if hasMore {
+		result = result[:limit]
+	}
+	items := make([]map[string]any, 0, len(result))
+	for _, item := range result {
+		items = append(items, map[string]any{"id": item.dbID, "timestamp": item.timestamp, "provider": item.provider, "model": item.model, "publicModel": item.publicModel, "promptTokens": item.prompt, "completionTokens": item.completion, "totalTokens": item.prompt + item.completion, "status": item.status, "durationMs": item.latency, "clientIdentity": item.identity, "clientIp": item.ip, "apiKeyId": item.apiKeyID})
+	}
+	response := map[string]any{"items": items, "limit": limit, "hasMore": hasMore, "nextCursor": ""}
+	if hasMore && len(result) > 0 {
+		last := result[len(result)-1]
+		response["nextCursor"] = pagination.Encode(last.timestamp, int64(last.dbID))
+	}
+	return response, nil
 }
 
 // GetRecentUsageByAliases avoids the global in-memory ring limit for client

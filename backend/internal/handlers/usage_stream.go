@@ -129,6 +129,19 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 	}
 }
 
+// HandleUsageHistory serves a bounded admin keyset page over the usage ledger.
+func HandleUsageHistory(repo *db.Repo) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		items, err := repo.GetAdminUsageHistoryCursor(limit, r.URL.Query().Get("cursor"))
+		if err != nil {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid usage cursor")
+			return
+		}
+		handlerutil.WriteJSON(w, http.StatusOK, items)
+	}
+}
+
 func recentRequestKey(req usagetracker.RecentRequest) string {
 	if req.ID != "" {
 		return req.ID

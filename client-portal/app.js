@@ -39,7 +39,9 @@
   let activeProfile = null;
   let activePolicy = null;
   let allowedModelsList = [];
-  let usageOffset = 0;
+  let usageCursor = '';
+  let usageNextCursor = '';
+  let usageCursorStack = [];
   const usageLimit = 10;
   const VERIFICATION_POLL_MS = 3000;
 
@@ -825,9 +827,10 @@
     const tableBody = $('usageTableBody');
     if (!tableBody) return;
 
+    const cursorQuery = usageCursor ? `&cursor=${encodeURIComponent(usageCursor)}` : '';
     const endpoint = sessionType === 'machine'
-      ? `/api/client/logs?limit=${usageLimit}&offset=${usageOffset}`
-      : `/api/user/logs?limit=${usageLimit}&offset=${usageOffset}`;
+      ? `/api/client/logs?limit=${usageLimit}${cursorQuery}`
+      : `/api/user/logs?limit=${usageLimit}${cursorQuery}`;
 
     try {
       const res = await api(endpoint);
@@ -857,28 +860,34 @@
       }
 
       // Pagination Controls
-      const pageNum = Math.floor(usageOffset / usageLimit) + 1;
+      usageNextCursor = data.nextCursor || '';
+      const hasMore = data.hasMore === true || (!Object.prototype.hasOwnProperty.call(data, 'hasMore') && items.length >= usageLimit);
+      const pageNum = usageCursorStack.length + 1;
       if ($('usagePaginationInfo')) $('usagePaginationInfo').textContent = `Halaman ${pageNum}`;
-      if ($('prevUsagePageBtn')) $('prevUsagePageBtn').disabled = usageOffset === 0;
-      if ($('nextUsagePageBtn')) $('nextUsagePageBtn').disabled = items.length < usageLimit;
+      if ($('prevUsagePageBtn')) $('prevUsagePageBtn').disabled = usageCursorStack.length === 0;
+      if ($('nextUsagePageBtn')) $('nextUsagePageBtn').disabled = !hasMore || !usageNextCursor;
     } catch {
       tableBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Gagal mengambil log pemakaian.</td></tr>';
     }
   }
 
-  $('prevUsagePageBtn')?.addEventListener('click', () => {
-    if (usageOffset >= usageLimit) {
-      usageOffset -= usageLimit;
-      loadUsageHistory();
-    }
+$('prevUsagePageBtn')?.addEventListener('click', () => {
+    if (usageCursorStack.length === 0) return;
+    usageCursor = usageCursorStack.pop() || '';
+    loadUsageHistory();
   });
 
   $('nextUsagePageBtn')?.addEventListener('click', () => {
-    usageOffset += usageLimit;
+    if (!usageNextCursor) return;
+    usageCursorStack.push(usageCursor);
+    usageCursor = usageNextCursor;
     loadUsageHistory();
   });
 
   $('refreshUsageBtn')?.addEventListener('click', () => {
+    usageCursor = '';
+    usageNextCursor = '';
+    usageCursorStack = [];
     loadUsageHistory();
     showToast('Data pemakaian diperbarui.', 'info');
   });
