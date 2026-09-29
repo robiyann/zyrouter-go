@@ -471,15 +471,15 @@ func ForwardWindsurf(w http.ResponseWriter, req *Request) error {
 			return true
 		}
 		if err := wsReadFrames(ctx, resp.Body, onFrame); err != nil {
-			_ = emit(map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": created, "model": oreq.Model, "error": map[string]any{"message": "windsurf: " + err.Error(), "type": "windsurf_error"}})
+			_ = emit(map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": created, "model": oreq.Model, "error": map[string]any{"message": proxy.SafeUpstreamErrorMessage(), "type": "server_error", "code": "upstream_unavailable"}})
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-			return nil
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
 		}
 
 		if hadError != "" {
-			_ = emit(map[string]any{"error": map[string]any{"message": hadError, "type": "windsurf_error", "code": "upstream_error"}})
+			_ = emit(map[string]any{"error": map[string]any{"message": proxy.SafeUpstreamErrorMessage(), "type": "server_error", "code": "upstream_unavailable"}})
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-			return nil
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
 		}
 		finish := map[string]any{"id": responseID, "object": "chat.completion.chunk", "created": created, "model": oreq.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}}
 		if promptTokens > 0 || completionTokens > 0 {

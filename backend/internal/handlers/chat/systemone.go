@@ -72,7 +72,7 @@ func (h *ChatHandler) HandleSystemOne(w http.ResponseWriter, r *http.Request) {
 
 	forwardErr := h.handleAccountFallback(r.Context(), w, modelInfo.Provider, modelInfo.Model, modelInfo.ConnectionID, body, false, false, "/v1/systemone")
 	if forwardErr != nil {
-		handlerutil.WriteJSONError(w, http.StatusBadGateway, forwardErr.Error())
+		handlerutil.WriteUpstreamError(w)
 		return
 	}
 }

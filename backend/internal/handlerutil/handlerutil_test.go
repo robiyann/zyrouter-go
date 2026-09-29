@@ -94,6 +94,22 @@ func TestWriteJSONError_marshalFallback(t *testing.T) {
 	}
 }
 
+func TestWriteUpstreamErrorDoesNotExposeProviderDetails(t *testing.T) {
+	w := httptest.NewRecorder()
+	WriteUpstreamError(w)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadGateway)
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "provider") || strings.Contains(body, "banned") || strings.Contains(body, "rate") {
+		t.Fatalf("unexpected provider detail in public error: %s", body)
+	}
+	if !strings.Contains(body, `"code":"upstream_unavailable"`) {
+		t.Fatalf("missing safe upstream error code: %s", body)
+	}
+}
+
 func TestUpdateModelInBody(t *testing.T) {
 	tests := []struct {
 		name      string

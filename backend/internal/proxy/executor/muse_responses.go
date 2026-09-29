@@ -222,6 +222,13 @@ func streamMuseResponsesToChatSSE(ctx context.Context, w http.ResponseWriter, up
 		if err := json.Unmarshal([]byte(dataStr), &eventData); err != nil {
 			continue
 		}
+		if proxy.IsErrorPayload([]byte(dataStr)) {
+			_, _ = w.Write(proxy.SafeSSEErrorFrame())
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(dataStr)}
+		}
 
 		eventType, _ := eventData["type"].(string)
 

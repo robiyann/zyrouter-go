@@ -103,7 +103,7 @@ func TestProcessCommandcodeEvent_ToolCall(t *testing.T) {
 func TestProcessCommandcodeEvent_FinishStep(t *testing.T) {
 	state := &executor.CommandcodeStreamState{ResponseID: "test-id", Created: 1000}
 	event := map[string]interface{}{
-		"type":          "finish-step",
+		"type":         "finish-step",
 		"finishReason": "stop",
 	}
 	chunks := executor.ProcessCommandcodeEvent(event, "finish-step", state)
@@ -144,8 +144,8 @@ func TestProcessCommandcodeEvent_Error(t *testing.T) {
 		t.Fatal("expected error output chunks")
 	}
 	combined := strings.Join(chunks, "")
-	if !strings.Contains(combined, "rate limit exceeded") {
-		t.Errorf("expected error message, got %s", combined)
+	if strings.Contains(combined, "rate limit exceeded") || !strings.Contains(combined, "Upstream service unavailable.") {
+		t.Errorf("expected sanitized error message, got %s", combined)
 	}
 	if !state.Finished {
 		t.Error("expected state.Finished=true after error")

@@ -92,6 +92,15 @@ func WriteJSONError(w http.ResponseWriter, status int, message string) {
 	w.Write(jsonBytes)
 }
 
+// WriteUpstreamError writes the only public error shape allowed for provider
+// failures. Provider status codes, bodies, messages, error types, and retry
+// metadata must never cross the gateway boundary.
+func WriteUpstreamError(w http.ResponseWriter) {
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	w.WriteHeader(http.StatusBadGateway)
+	_, _ = w.Write([]byte(`{"error":{"message":"Upstream service unavailable.","type":"server_error","code":"upstream_unavailable"}}`))
+}
+
 // WriteJSON writes a JSON response with the given status code and body.
 func WriteJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)

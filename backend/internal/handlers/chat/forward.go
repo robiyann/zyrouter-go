@@ -3,6 +3,7 @@ package chat
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -105,7 +106,21 @@ func (h *ChatHandler) handleStreamResponse(ctx context.Context, w http.ResponseW
 	sessionKey := fmt.Sprintf("stream-%d", time.Now().UnixNano())
 	defer translator.ClearStreamState(sessionKey)
 	finished := false
+	streamError := false
 	err := internalproxy.ScanStream(upstream, func(chunk []byte) {
+		if streamError {
+			return
+		}
+		if internalproxy.IsErrorPayload(chunk) {
+			streamError = true
+			frame := internalproxy.SafeSSEErrorFrame()
+			metrics.ResponseBuf.Write(frame)
+			_, _ = w.Write(frame)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return
+		}
 		translated, err := translator.TranslateOpenAIToClaudeStreamSession(sessionKey, chunk)
 		if err != nil {
 			log.Error("stream", "translate error", "error", err)
@@ -135,6 +150,9 @@ func (h *ChatHandler) handleStreamResponse(ctx context.Context, w http.ResponseW
 			flusher.Flush()
 		}
 	}
+	if streamError {
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
+	}
 	// Pull actual accumulated usage (incl. cached tokens) out of the session so
 	// the log sees real numbers instead of the fallback estimate.
 	if usage := translator.GetStreamUsage(sessionKey); usage != nil {
@@ -152,6 +170,12 @@ func (h *ChatHandler) handleJSONResponse(ctx context.Context, w http.ResponseWri
 
 	if metrics != nil {
 		metrics.ResponseBuf.Write(body)
+	}
+	if internalproxy.IsErrorPayload(body) {
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
+	}
+	if !json.Valid(body) {
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
 	}
 
 	if !translate {
@@ -177,8 +201,8 @@ func (h *ChatHandler) handleJSONResponse(ctx context.Context, w http.ResponseWri
 			errMsg = errMsg + ": " + err.Error()
 		}
 		log.Error("json", "translate error", "msg", errMsg)
-		handlerutil.WriteJSONError(w, http.StatusBadGateway, errMsg)
-		return fmt.Errorf("%s", errMsg)
+		handlerutil.WriteUpstreamError(w)
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"response translation failed"}}`)}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

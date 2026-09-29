@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"zyrouter/backend/internal/log"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -9,8 +8,10 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"zyrouter/backend/internal/log"
 
 	"zyrouter/backend/internal/providers"
+	"zyrouter/backend/internal/proxy"
 	"zyrouter/backend/internal/translator"
 )
 
@@ -700,16 +701,7 @@ func ProcessCommandcodeEvent(event map[string]any, eventType string, state *Comm
 		out = append(out, chunk)
 
 	case "error":
-		msg, _ := event["error"].(string)
-		if msg == "" {
-			if m, ok := event["message"].(string); ok {
-				msg = m
-			}
-		}
-		if msg == "" {
-			msg = "unknown error"
-		}
-		delta := map[string]any{"content": fmt.Sprintf("\n\n[CommandCode error: %s]", msg)}
+		delta := map[string]any{"content": "\n\n" + proxy.SafeUpstreamErrorMessage()}
 		out = append(out, BuildCommandcodeChunk(state, delta, ""))
 		out = append(out, BuildCommandcodeChunk(state, map[string]any{}, "stop"))
 		state.Finished = true

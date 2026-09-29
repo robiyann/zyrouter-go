@@ -57,16 +57,7 @@ func (h *ChatHandler) HandleResponses(w http.ResponseWriter, r *http.Request) {
 	recorder := httptest.NewRecorder()
 	forwardErr := h.handleAccountFallback(r.Context(), recorder, modelInfo.Provider, modelInfo.Model, modelInfo.ConnectionID, chatBody, false, false, "/v1/responses")
 	if forwardErr != nil {
-		if recorder.Code >= http.StatusBadRequest {
-			if recorder.Code >= http.StatusInternalServerError {
-				handlerutil.WriteJSONError(w, recorder.Code, "upstream service unavailable")
-				return
-			}
-			w.WriteHeader(recorder.Code)
-			_, _ = w.Write(recorder.Body.Bytes())
-			return
-		}
-		handlerutil.WriteJSONError(w, http.StatusBadGateway, forwardErr.Error())
+		handlerutil.WriteUpstreamError(w)
 		return
 	}
 	responseBody, err := chatToResponsesResponse(recorder.Body.Bytes(), input.Model)

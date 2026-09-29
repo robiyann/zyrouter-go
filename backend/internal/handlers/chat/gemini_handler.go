@@ -364,6 +364,7 @@ func (h *ChatHandler) forceRefreshOAuthToken(connectionID string) (string, strin
 func (h *ChatHandler) handleGeminiStream(ctx context.Context, w http.ResponseWriter, upstream io.Reader, translateResponse bool, metrics *streamMetrics) error {
 	flusher := proxy.WriteSSEHeaders(w)
 	geminiState := &translator.GeminiStreamState{}
+	streamError := false
 	start := time.Now()
 	// One session per stream so the OpenAI→Claude translation state cannot
 	// collide across concurrent requests; always cleared on exit.
@@ -371,8 +372,19 @@ func (h *ChatHandler) handleGeminiStream(ctx context.Context, w http.ResponseWri
 	defer translator.ClearStreamState(sessionKey)
 
 	err := proxy.ScanStream(upstream, func(chunk []byte) {
+		if streamError {
+			return
+		}
 		chunkStr := strings.TrimSpace(string(chunk))
 		if chunkStr == "" || chunkStr == "[DONE]" {
+			return
+		}
+		if proxy.IsErrorPayload(chunk) {
+			streamError = true
+			_, _ = w.Write(proxy.SafeSSEErrorFrame())
+			if flusher != nil {
+				flusher.Flush()
+			}
 			return
 		}
 
@@ -428,6 +440,9 @@ func (h *ChatHandler) handleGeminiStream(ctx context.Context, w http.ResponseWri
 	} else if geminiState.Usage != nil {
 		translator.SetUsage(ctx, geminiState.Usage)
 	}
+	if streamError {
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
+	}
 	return err
 }
 
@@ -442,6 +457,12 @@ func (h *ChatHandler) handleGeminiNonStream(ctx context.Context, w http.Response
 	if metrics != nil {
 		metrics.ResponseBuf.Write(body)
 	}
+	if proxy.IsErrorPayload(body) {
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
+	}
+	if !json.Valid(body) {
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
+	}
 
 	// Use the full translator which handles tool calls, thinking, etc.
 	openaiResp, usage, err := translator.TranslateGeminiResponseToOpenAI(body)
@@ -449,11 +470,7 @@ func (h *ChatHandler) handleGeminiNonStream(ctx context.Context, w http.Response
 		translator.SetUsage(ctx, usage)
 	}
 	if err != nil {
-		// Fallback: write raw body
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(body)
-		return nil
+		return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
 	}
 
 	if translateResp {
@@ -463,10 +480,7 @@ func (h *ChatHandler) handleGeminiNonStream(ctx context.Context, w http.Response
 			translator.SetUsage(ctx, claudeUsage)
 		}
 		if tErr != nil || claudeResp == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write(openaiResp)
-			return nil
+			return &upstreamError{StatusCode: http.StatusBadGateway, Body: openaiResp}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

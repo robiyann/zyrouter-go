@@ -7,15 +7,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"zyrouter/backend/internal/log"
-		"math/rand"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
+	"zyrouter/backend/internal/log"
 
 	"zyrouter/backend/internal/constants"
+	internalproxy "zyrouter/backend/internal/proxy"
 )
 
 // MiMo anti-abuse: the free chat endpoint returns 403 "Illegal access"
@@ -117,11 +118,23 @@ func (h *ChatHandler) MimoFreeChat(ctx context.Context, w http.ResponseWriter, b
 	}
 
 	if isStream {
-		h.handleStreamResponse(ctx, w, resp.Body, false, time.Now(), metrics)
+		if streamErr := h.handleStreamResponse(ctx, w, resp.Body, false, time.Now(), metrics); streamErr != nil {
+			return streamErr
+		}
 	} else {
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		if readErr != nil {
+			return fmt.Errorf("mimo response: %w", readErr)
+		}
+		if internalproxy.IsErrorPayload(body) {
+			return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
+		}
+		if !json.Valid(body) {
+			return &upstreamError{StatusCode: http.StatusBadGateway, Body: body}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.Copy(w, resp.Body)
+		_, _ = w.Write(body)
 	}
 
 	return nil

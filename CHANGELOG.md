@@ -1,5 +1,21 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Telemetry Success Status Normalization
+- **Modul**: `Backend / Client Portal / Tests`
+- **Deskripsi Perubahan**:
+  - Completion events pada private client telemetry stream sekarang memakai `status: "200"` secara konsisten.
+  - Renderer Client Portal menormalisasi status legacy `completed`, `success`, dan `ok` menjadi `200`.
+  - Menambahkan regression coverage untuk normalisasi status stream.
+- **Status Task**: Selesai / Terverifikasi
+
+### [2026-09-29] - [Codex] - Upstream Error Response Cloaking
+- **Modul**: `Chat Gateway / Streaming / Provider Executors / Tests`
+- **Deskripsi Perubahan**:
+  - Semua kegagalan provider yang terlihat client sekarang memakai envelope generik `upstream_unavailable` dengan HTTP `502`; status, message, type, code, body, URL, dan retry metadata provider tidak diteruskan.
+  - Error payload yang datang melalui HTTP `200` atau SSE streaming juga dinormalisasi, termasuk jalur Gemini, OpenAI-compatible, Qoder, Muse, Trae, Windsurf, dan CommandCode.
+  - Menambahkan regression tests untuk provider ban/rate-limit sanitization dan SSE error redaction.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Pagination Rollout Completion
 - **Modul**: `Backend / Admin Dashboard / Client Portal / Database / Docs / Tests`
 - **Deskripsi Perubahan**:

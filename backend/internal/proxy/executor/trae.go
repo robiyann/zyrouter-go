@@ -140,16 +140,19 @@ func ForwardTrae(w http.ResponseWriter, req *Request) error {
 			return err
 		}
 		if err := traeStreamUpstream(ctx, req.Client, baseURL, headers, sessionID, messageID, handleEvent(emit)); err != nil {
-			chunk := base(nil)
-			chunk["error"] = map[string]any{"message": "trae: " + err.Error(), "type": "api_error"}
-			_ = emit(chunk)
+			_ = emit(map[string]any{"error": map[string]any{"message": proxy.SafeUpstreamErrorMessage(), "type": "server_error", "code": "upstream_unavailable"}})
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
-			return nil
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
 		}
 		if errEvent != nil {
-			chunk := base(nil)
-			chunk["error"] = map[string]any{"message": "trae " + errEvent.Code + ": " + errEvent.Message, "type": "api_error"}
-			return emit(chunk)
+			if err := emit(map[string]any{"error": map[string]any{"message": proxy.SafeUpstreamErrorMessage(), "type": "server_error", "code": "upstream_unavailable"}}); err != nil {
+				return err
+			}
+			_, err = w.Write([]byte("data: [DONE]\n\n"))
+			if err != nil {
+				return err
+			}
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
 		}
 		if err := emit(base([]map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}})); err != nil {
 			return err

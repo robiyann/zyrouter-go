@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -176,5 +177,19 @@ func TestSSECopy_ReturnsErrorWhenInterruptedBeforeDone(t *testing.T) {
 	err := SSECopy(rec, upstream, rec, nil)
 	if err == nil {
 		t.Fatalf("expected error when stream interrupted before [DONE], got nil")
+	}
+}
+
+func TestSSECopy_SanitizesProviderErrorEvent(t *testing.T) {
+	upstream := strings.NewReader("data: {\"error\":{\"message\":\"account banned\",\"type\":\"auth_error\"}}\n\n")
+	rec := httptest.NewRecorder()
+	if err := SSECopy(rec, upstream, rec, nil); err != nil {
+		t.Fatalf("SSECopy: %v", err)
+	}
+	if strings.Contains(rec.Body.String(), "account banned") || strings.Contains(rec.Body.String(), "auth_error") {
+		t.Fatalf("provider error leaked through SSE: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_unavailable") {
+		t.Fatalf("missing safe SSE error: %s", rec.Body.String())
 	}
 }

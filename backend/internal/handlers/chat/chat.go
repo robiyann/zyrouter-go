@@ -159,21 +159,7 @@ func (h *ChatHandler) handleSingleModel(ctx context.Context, w http.ResponseWrit
 			log.Error("chat", "upstream error after headers committed", "error", result)
 			return
 		}
-		var ue *upstreamError
-		if errors.As(result, &ue) && ue != nil {
-			if ue.StatusCode >= http.StatusInternalServerError {
-				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
-				return
-			}
-			msg := extractErrorText(ue.Body)
-			if msg == "" {
-				msg = "upstream request rejected"
-			}
-			msg = sanitizeClientErrorMessage(msg)
-			handlerutil.WriteJSONError(cw, ue.StatusCode, msg)
-			return
-		}
-		handlerutil.WriteJSONError(cw, http.StatusBadGateway, "upstream service unavailable")
+		handlerutil.WriteUpstreamError(cw)
 	}
 }
 
@@ -392,21 +378,7 @@ func (h *ChatHandler) handleMessagesSingleModel(ctx context.Context, w http.Resp
 			log.Error("chat", "upstream error after headers committed", "error", result)
 			return
 		}
-		var ue *upstreamError
-		if errors.As(result, &ue) && ue != nil {
-			if ue.StatusCode >= http.StatusInternalServerError {
-				handlerutil.WriteJSONError(cw, ue.StatusCode, "upstream service unavailable")
-				return
-			}
-			msg := extractErrorText(ue.Body)
-			if msg == "" {
-				msg = "upstream request rejected"
-			}
-			msg = sanitizeClientErrorMessage(msg)
-			handlerutil.WriteJSONError(cw, ue.StatusCode, msg)
-			return
-		}
-		handlerutil.WriteJSONError(cw, http.StatusBadGateway, "upstream service unavailable")
+		handlerutil.WriteUpstreamError(cw)
 	}
 }
 

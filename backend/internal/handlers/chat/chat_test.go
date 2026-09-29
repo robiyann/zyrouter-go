@@ -462,11 +462,11 @@ func TestHandleChatCompletions_UpstreamError(t *testing.T) {
 		t.Fatalf("failed to deactivate seeded connections: %v", err)
 	}
 
-	// Mock upstream that returns 500 (non-retryable, no account fallback)
+	// Mock upstream that returns a provider ban response.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"server error","type":"server_error"}}`))
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":{"message":"account banned by provider","type":"auth_error"}}`))
 	}))
 	defer upstream.Close()
 
@@ -490,9 +490,12 @@ func TestHandleChatCompletions_UpstreamError(t *testing.T) {
 
 	handler.HandleChatCompletions(rec, req)
 
-	// Non-retryable errors are forwarded directly
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 from upstream, got %d", rec.Code)
+	// Provider errors are normalized to a gateway-safe response.
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected 502 for sanitized upstream error, got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "account banned") || strings.Contains(rec.Body.String(), "auth_error") {
+		t.Errorf("provider error message leaked to client: %s", rec.Body.String())
 	}
 }
 
@@ -609,9 +612,12 @@ func TestHandleChatCompletions_AccountFallback_429(t *testing.T) {
 
 	handler.HandleChatCompletions(rec, req)
 
-	// All accounts exhausted, should return the 429
-	if rec.Code != http.StatusTooManyRequests {
-		t.Errorf("expected 429 after all accounts exhausted, got %d", rec.Code)
+	// All accounts exhausted, should return a sanitized gateway error.
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected 502 after all accounts exhausted, got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "rate limited") {
+		t.Errorf("provider rate-limit message leaked to client: %s", rec.Body.String())
 	}
 
 	// Verify per-connection model lock was created for 429
@@ -1140,9 +1146,9 @@ func TestHandleChatCompletions_ComboAllFail(t *testing.T) {
 
 	handler.HandleChatCompletions(rec, req)
 
-	// Should return the last upstream error status (429 from mock, or 401 if it fetched a real connection without key)
-	if rec.Code != http.StatusTooManyRequests && rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected 429 or 401 from last failed model, got %d, body: %s", rec.Code, rec.Body.String())
+	// Combo failures are normalized regardless of the last provider status.
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected sanitized 502 from failed combo, got %d, body: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1278,8 +1284,8 @@ func TestAccountFallback_NonRetryableError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.HandleChatCompletions(rec, req)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected sanitized 502, got %d", rec.Code)
 	}
 
 	// Verify no lock was created for 500 error
@@ -1333,8 +1339,8 @@ func TestAccountFallback_AllExhaustedRetryable(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.HandleChatCompletions(rec, req)
 
-	if rec.Code != http.StatusTooManyRequests {
-		t.Errorf("expected 429, got %d", rec.Code)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected sanitized 502, got %d", rec.Code)
 	}
 
 	// Both connections should have per-connection locks

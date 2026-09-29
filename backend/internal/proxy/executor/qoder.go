@@ -545,6 +545,9 @@ func handleQoderNonStream(w http.ResponseWriter, body io.Reader, req *Request) e
 		}
 
 		innerBody = strings.ReplaceAll(innerBody, "\r\n", "")
+		if proxy.IsErrorPayload([]byte(innerBody)) {
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(innerBody)}
+		}
 		lastChunk = innerBody
 
 		var chunk struct {
@@ -655,6 +658,8 @@ func handleQoderSSE(w http.ResponseWriter, body io.Reader, req *Request) error {
 				strings.Contains(dataContent, `"code":10605`) ||
 				strings.Contains(dataContent, "pricingUrl") {
 				log.Warn("qoder", "billing block or error detected in SSE envelope", "code", envelope.Code, "status", envelope.StatusCodeValue)
+				_, _ = w.Write(proxy.SafeSSEErrorFrame())
+				flusher.Flush()
 				return &proxy.UpstreamError{
 					StatusCode: http.StatusForbidden,
 					Body:       []byte(fmt.Sprintf(`{"error":{"message":"Qoder Billing Block / Quota Exceeded (403): %s","type":"insufficient_quota","code":"112"}}`, dataContent)),
@@ -669,6 +674,11 @@ func handleQoderSSE(w http.ResponseWriter, body io.Reader, req *Request) error {
 
 		// Clean newlines inside JSON string if any
 		innerBody = strings.ReplaceAll(innerBody, "\r\n", "")
+		if proxy.IsErrorPayload([]byte(innerBody)) {
+			_, _ = w.Write(proxy.SafeSSEErrorFrame())
+			flusher.Flush()
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(innerBody)}
+		}
 
 		// Keepalive / Done drop
 		if strings.TrimSpace(innerBody) == "[DONE]" {

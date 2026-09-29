@@ -942,14 +942,16 @@ $('prevUsagePageBtn')?.addEventListener('click', () => {
       timeZone: 'Asia/Jakarta',
       hour12: false,
     });
-    const isErr = e.status === 'error' || (typeof e.status === 'string' && (e.status.startsWith('4') || e.status.startsWith('5'))) || (typeof e.status === 'number' && e.status >= 400);
+    const normalizedStatus = typeof e.status === 'string' ? e.status.toLowerCase() : e.status;
+    const isErr = normalizedStatus === 'error' || (typeof normalizedStatus === 'string' && (normalizedStatus.startsWith('4') || normalizedStatus.startsWith('5'))) || (typeof normalizedStatus === 'number' && normalizedStatus >= 400);
     const statusClass = isErr ? 'error' : 'success';
+    const displayStatus = normalizedStatus === 'completed' || normalizedStatus === 'success' || normalizedStatus === 'ok' ? '200' : (e.status || '200');
     const totalTokens = e.totalTokens || ((e.promptTokens || 0) + (e.completionTokens || 0));
 
     row.innerHTML = `
       <span class="stream-time">${timeStr} WIB</span>
       <span class="stream-model">${escapeHtml(e.model || 'global-alias')}</span>
-      <span class="status-cell-tag ${statusClass}">${escapeHtml(e.status || '200')}</span>
+      <span class="status-cell-tag ${statusClass}">${escapeHtml(String(displayStatus))}</span>
       <span class="stream-tokens">${fmt(totalTokens)} tok</span>
       <span class="stream-time">${e.durationMs != null ? `${e.durationMs}ms` : ''}</span>
     `;

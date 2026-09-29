@@ -32,8 +32,20 @@ const context = {
 };
 vm.runInNewContext(`${source.slice(start, end)}\nthis.stream = { sortStreamEvents, renderStreamEvent, streamEventId };`, context);
 const { sortStreamEvents, renderStreamEvent, streamEventId } = context.stream;
+const event = (id, seconds, status = '200') => ({ id, timestamp: `2026-09-28T12:${seconds}Z`, model: 'test-model', status, totalTokens: 10 });
 
-const event = (id, seconds) => ({ id, timestamp: `2026-09-28T12:${seconds}Z`, model: 'test-model', status: '200', totalTokens: 10 });
+const statusEvent = (status) => {
+  renderStreamEvent(event(`status-${status}`, '43:00'), false, 'append');
+  const row = list.children.at(-1);
+  assert.match(row.innerHTML, /status-cell-tag success/, `status ${status} should render as success`);
+  assert.match(row.innerHTML, />200<\/span>/, `status ${status} should normalize to 200`);
+};
+
+statusEvent('completed');
+statusEvent('success');
+statusEvent('ok');
+list.children.length = 0;
+
 const snapshot = [event('older', '44:13'), event('newer', '46:40'), event('middle', '45:21')];
 for (const item of sortStreamEvents(snapshot)) renderStreamEvent(item, false, 'append');
 assert.deepEqual(list.children.map((row) => row.dataset.streamTime), [

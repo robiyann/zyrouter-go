@@ -503,29 +503,13 @@ func (h *ChatHandler) handleComboFallback(ctx context.Context, w http.ResponseWr
 			log.Error("combo", "upstream error after headers committed", "error", lastErr)
 			return
 		}
-		if earliestRetryAfter != "" {
-			retryAfterSec := int((time.Until(mustParseTime(earliestRetryAfter)) + time.Second - 1) / time.Second)
-			if retryAfterSec < 1 {
-				retryAfterSec = 1
-			}
-			cw.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSec))
-		}
-		if lastErr.StatusCode >= http.StatusInternalServerError {
-			handlerutil.WriteJSONError(cw, lastErr.StatusCode, "upstream service unavailable")
-			return
-		}
-		msg := extractErrorText(lastErr.Body)
-		if msg == "" {
-			msg = "upstream request rejected"
-		}
-		msg = sanitizeClientErrorMessage(msg)
-		handlerutil.WriteJSONError(cw, lastErr.StatusCode, msg)
+		handlerutil.WriteUpstreamError(cw)
 		return
 	}
 	if cw.IsCommitted() {
 		return
 	}
-	handlerutil.WriteJSONError(cw, http.StatusBadGateway, "all combo models failed: no valid entries")
+	handlerutil.WriteUpstreamError(cw)
 }
 
 // handleMessagesComboFallback iterates through combo models for the Claude endpoint.
@@ -682,29 +666,13 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 			log.Error("combo", "upstream error after headers committed", "error", lastErr)
 			return
 		}
-		if earliestRetryAfter != "" {
-			retryAfterSec := int((time.Until(mustParseTime(earliestRetryAfter)) + time.Second - 1) / time.Second)
-			if retryAfterSec < 1 {
-				retryAfterSec = 1
-			}
-			cw.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSec))
-		}
-		if lastErr.StatusCode >= http.StatusInternalServerError {
-			handlerutil.WriteJSONError(cw, lastErr.StatusCode, "upstream service unavailable")
-			return
-		}
-		msg := extractErrorText(lastErr.Body)
-		if msg == "" {
-			msg = "upstream request rejected"
-		}
-		msg = sanitizeClientErrorMessage(msg)
-		handlerutil.WriteJSONError(cw, lastErr.StatusCode, msg)
+		handlerutil.WriteUpstreamError(cw)
 		return
 	}
 	if cw.IsCommitted() {
 		return
 	}
-	handlerutil.WriteJSONError(cw, http.StatusBadGateway, "all combo models failed: no valid entries")
+	handlerutil.WriteUpstreamError(cw)
 }
 
 // mustParseTime parses an RFC3339 timestamp. Returns zero time on error.
@@ -848,7 +816,7 @@ func (h *ChatHandler) handleFusion(ctx context.Context, w http.ResponseWriter, b
 
 	// Degradation
 	if len(answers) == 0 {
-		handlerutil.WriteJSONError(cw, http.StatusServiceUnavailable, "all fusion panel models failed")
+		handlerutil.WriteUpstreamError(cw)
 		return
 	}
 	if len(answers) == 1 {

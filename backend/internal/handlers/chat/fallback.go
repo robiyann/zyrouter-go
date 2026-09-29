@@ -391,7 +391,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 	// the connection after receiving the final chunk must not mark the request as failed.
 	if fwdErr != nil && isStream && metrics != nil {
 		bufBytes := metrics.ResponseBuf.Bytes()
-		if bytes.Contains(bufBytes, []byte("[DONE]")) || bytes.Contains(bufBytes, []byte("message_stop")) {
+		if (bytes.Contains(bufBytes, []byte("[DONE]")) || bytes.Contains(bufBytes, []byte("message_stop"))) && !bytes.Contains(bufBytes, []byte("upstream_unavailable")) {
 			log.Info("fallback", "treating stream as successful completion (terminal sentinel was delivered)", "provider", provider, "model", model, "trailingError", fwdErr)
 			fwdErr = nil
 		}
@@ -724,19 +724,6 @@ func extractErrorText(body []byte) string {
 		return string(trimmed)
 	}
 	return ""
-}
-
-func sanitizeClientErrorMessage(msg string) string {
-	msg = strings.TrimSpace(msg)
-	if msg == "" {
-		return "upstream request rejected"
-	}
-	for _, word := range strings.Fields(msg) {
-		if strings.HasPrefix(word, "http://") || strings.HasPrefix(word, "https://") {
-			msg = strings.ReplaceAll(msg, word, "[upstream]")
-		}
-	}
-	return msg
 }
 
 // extractRetryAfter extracts a retryAfter ISO timestamp from an upstream error JSON body.

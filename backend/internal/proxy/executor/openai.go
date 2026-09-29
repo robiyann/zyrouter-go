@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,7 +63,23 @@ func sseStream(w http.ResponseWriter, upstream io.Reader, translate bool, startT
 	sessionKey := fmt.Sprintf("stream-%d", time.Now().UnixNano())
 	defer translator.ClearStreamState(sessionKey)
 	finished := false
+	streamError := false
 	err := proxy.ScanStream(upstream, func(chunk []byte) {
+		if streamError {
+			return
+		}
+		if proxy.IsErrorPayload(chunk) {
+			streamError = true
+			frame := proxy.SafeSSEErrorFrame()
+			if buf != nil {
+				buf.Write(frame)
+			}
+			_, _ = w.Write(frame)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return
+		}
 		translated, err := translator.TranslateOpenAIToClaudeStreamSession(sessionKey, chunk)
 		if err != nil {
 			log.Error("executor", "translate error", "error", err)
@@ -92,6 +109,9 @@ func sseStream(w http.ResponseWriter, upstream io.Reader, translate bool, startT
 			flusher.Flush()
 		}
 	}
+	if streamError {
+		return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"upstream stream error"}}`)}
+	}
 	// Pull actual accumulated usage (incl. cached tokens) out of the session so
 	// the log sees real numbers instead of the fallback estimate.
 	if usage := translator.GetStreamUsage(sessionKey); usage != nil {
@@ -110,6 +130,12 @@ func jsonResponse(ctx context.Context, w http.ResponseWriter, upstream io.Reader
 	if buf != nil {
 		buf.Write(body)
 	}
+	if proxy.IsErrorPayload(body) {
+		return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: body}
+	}
+	if !json.Valid(body) {
+		return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: body}
+	}
 
 	if translate {
 		translated, usage, err := translator.TranslateOpenAIToClaude(body)
@@ -122,11 +148,7 @@ func jsonResponse(ctx context.Context, w http.ResponseWriter, upstream io.Reader
 		}
 		if err != nil || translated == nil {
 			log.Error("executor", "json translate error", "error", err)
-			// Fall back to original response
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write(body)
-			return nil
+			return &proxy.UpstreamError{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":{"message":"response translation failed"}}`)}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
