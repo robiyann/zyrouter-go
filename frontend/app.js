@@ -10671,6 +10671,7 @@ async function loadOverview() {
     const providers = providerPayload.connections || [];
     const customNodes = nodesPayload.nodes || [];
     const providerStats = providerPayload.stats || providerPayload.providerStats || {};
+    const openCodeMeta = KNOWN_PROVIDER_CATALOG.find((provider) => provider.id === 'opencode' && provider.authType === 'free');
     const findProviderStat = (providerID) => {
       const rawID = String(providerID || '').trim();
       const lowerID = rawID.toLowerCase();
@@ -10705,6 +10706,7 @@ async function loadOverview() {
       ...meshProviders.map(providerKey).filter(Boolean),
       ...customNodes.map((node) => String(node.id || '').trim().toLowerCase()).filter(Boolean),
       ...Object.keys(providerStats).map((key) => key.toLowerCase()),
+      ...(openCodeMeta ? ['opencode'] : []),
     ]);
     const activeUpstreamProviders = new Set([
       ...meshProviders.filter(isItemActive).map(providerKey).filter(Boolean),
@@ -10906,10 +10908,29 @@ async function loadOverview() {
             hasStats: true,
           });
         });
+        if (openCodeMeta) {
+          const openCodeID = openCodeMeta.id.toLowerCase();
+          if (!provMap.has(openCodeID)) {
+            provMap.set(openCodeID, {
+              provId: openCodeMeta.id,
+              name: openCodeMeta.name,
+              prefix: openCodeMeta.alias || openCodeMeta.id,
+              iconKey: openCodeMeta.id,
+              conns: [],
+              activeCount: 0,
+              hasStats: false,
+              isPublic: true,
+            });
+          } else {
+            const openCodeEntry = provMap.get(openCodeID);
+            openCodeEntry.isPublic = true;
+            openCodeEntry.prefix = openCodeEntry.prefix || openCodeMeta.alias || openCodeMeta.id;
+          }
+        }
         const activeProviders = Array.from(provMap.values()).filter((providerEntry) => {
           const count = providerEntry.hasStats ? providerEntry.activeCount : providerEntry.conns.filter(isItemActive).length;
           providerEntry.renderActiveCount = count;
-          return count > 0;
+          return count > 0 || providerEntry.isPublic;
         });
         if (activeProviders.length === 0) {
           meshProvCol.innerHTML = `
@@ -10924,13 +10945,14 @@ async function loadOverview() {
         } else {
           meshProvCol.innerHTML = activeProviders.map((p) => {
             const activeCount = p.renderActiveCount;
+            const statusText = p.isPublic && activeCount === 0 ? '● Public / Free' : (activeCount > 0 ? `● ${activeCount} Active` : 'Offline');
             return `
               <div class="mesh-node provider-node" data-provider-id="${escapeHtml(p.provId)}" data-provider-name="${escapeHtml((p.name || '').toLowerCase())}" data-provider-prefix="${escapeHtml((p.prefix || '').toLowerCase())}" style="cursor:pointer;">
                 ${renderProviderIcon(p.iconKey || p.provId)}
                 <div class="mesh-node-info">
                   <strong>${escapeHtml(p.name)}</strong>
-                  <small class="mesh-status-txt" style="color:${activeCount > 0 ? 'var(--lime)' : 'var(--red)'};">
-                    ● ${activeCount > 0 ? `${activeCount} Active` : 'Offline'}
+                    <small class="mesh-status-txt" style="color:${p.isPublic && activeCount === 0 ? 'var(--cyan)' : (activeCount > 0 ? 'var(--lime)' : 'var(--red)')};">
+                     ${statusText}
                   </small>
                 </div>
               </div>

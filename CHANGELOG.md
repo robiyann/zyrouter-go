@@ -1,5 +1,12 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Public OpenCode Mesh Visibility
+- **Modul**: `Overview Provider Mesh / Public Providers`
+- **Deskripsi Perubahan**:
+  - OpenCode Zen remains visible in the provider mesh even without provider connection rows or API keys because it is a public no-auth route.
+  - Public OpenCode is labeled `Public / Free` while account-backed providers continue to use active connection counts.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Mesh Packet Flow and Inactive Provider Filtering
 - **Modul**: `Overview Dashboard / Provider Mesh / Realtime Animation`
 - **Deskripsi Perubahan**:

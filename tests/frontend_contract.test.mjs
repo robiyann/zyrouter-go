@@ -91,4 +91,6 @@ assert.match(app, /const activeProviders = Array\.from\(provMap\.values\(\)\)\.f
 assert.match(app, /mesh-packet-out/, 'mesh must render outbound request packets');
 assert.match(app, /mesh-packet-in/, 'mesh must render inbound response packets');
 assert.match(app, /function meshRequestMatchesNode/, 'mesh must centralize strict provider matching');
+assert.match(app, /provider\.id === 'opencode' && provider\.authType === 'free'/, 'public OpenCode provider must remain visible without account rows');
+assert.match(app, /Public \/ Free/, 'public providers must have an explicit mesh status');
 console.log('frontend backend contract checks passed');
