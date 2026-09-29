@@ -1,5 +1,14 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Pagination Rollout Completion
+- **Modul**: `Backend / Admin Dashboard / Client Portal / Database / Docs / Tests`
+- **Deskripsi Perubahan**:
+  - High-volume admin collections (users, API keys, providers, model aliases) are bounded by server-side page limits.
+  - Append-only usage and security history supports opaque keyset cursors; client and admin UIs traverse history without deep offset scans or unbounded refresh payloads.
+  - Realtime SSE remains a bounded in-memory window; settings and small governance snapshots remain non-paginated by design.
+  - Search, filters, stable ordering, active-key joins, cursor contracts, index migrations, and regression tests are in place.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Server-Side Pagination for Telegram User Governance
 - **Modul**: `Backend / Admin Dashboard / Database / Docs / Tests`
 - **File Diubah / Dibuat**:
