@@ -2381,40 +2381,60 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
 
   .mesh-viewport-wrapper {
-    min-height: 390px;
+    min-height: 420px !important;
   }
 
   .cyber-mesh-container {
-    min-height: 390px;
-    padding: 8px;
+    min-height: 420px !important;
+    padding: 4px !important;
   }
 
   .mesh-node {
-    max-width: min(118px, calc(100vw - 34px));
-    padding: 3px 5px;
+    max-width: 96px !important;
+    padding: 3px 6px !important;
+    border-radius: 6px !important;
     gap: 4px;
   }
 
+  .mesh-node .mesh-icon {
+    width: 16px !important;
+    height: 16px !important;
+    border-radius: 3px !important;
+  }
+
   .mesh-node-info strong {
-    font-size: 9px;
+    font-size: 8.5px !important;
+    max-width: 68px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   .mesh-node-info small {
-    font-size: 7px;
+    font-size: 7px !important;
   }
 
   .mesh-center-hub {
-    width: 108px;
-    height: 108px;
+    width: 82px !important;
+    height: 82px !important;
   }
 
   .mesh-hub-core {
-    width: 86px;
-    height: 86px;
+    width: 82px !important;
+    height: 82px !important;
+    padding: 4px !important;
+  }
+
+  .mesh-core-icon {
+    font-size: 18px !important;
   }
 
   .mesh-core-title {
-    font-size: 9px;
+    font-size: 8.5px !important;
+  }
+
+  .mesh-core-latency {
+    font-size: 7px !important;
   }
 }
 .card-note {

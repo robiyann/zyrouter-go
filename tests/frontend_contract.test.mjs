@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const app = await readFile(new URL('../frontend/app.js', import.meta.url), 'utf8');
 const html = await readFile(new URL('../frontend/index.html', import.meta.url), 'utf8');
+const styles = await readFile(new URL('../frontend/styles.css', import.meta.url), 'utf8');
 
 const declaredViews = new Set([...html.matchAll(/data-view="([^"]+)"/g)].map((match) => match[1]));
 for (const view of declaredViews) {
@@ -98,4 +99,8 @@ const realtimeStart = app.indexOf('function updateMeshRealtimeState(');
 const realtimeEnd = app.indexOf('let meshZoom', realtimeStart);
 assert.ok(realtimeStart >= 0 && realtimeEnd > realtimeStart, 'mesh realtime state function must be present');
 assert.doesNotMatch(app.slice(realtimeStart, realtimeEnd), /svg\.innerHTML|drawMeshLines\(\)/, 'SSE ticks must not rebuild SVG topology');
+assert.match(app, /const isMobile = width < 640/, 'mesh layout must have a mobile portrait geometry mode');
+assert.match(app, /Math\.max\(420, 320 \+ Math\.ceil\(nodes\.length \/ 2\) \* 28\)/, 'mobile mesh canvas must reserve vertical space');
+assert.match(app, /friendlyName = friendlyName\.split\('\('\)\[0\]\.trim\(\)/, 'provider labels must strip email suffixes');
+assert.match(styles, /@media \(max-width: 640px\)/, 'mesh must have a mobile responsive media query');
 console.log('frontend backend contract checks passed');

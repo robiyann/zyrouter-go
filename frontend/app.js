@@ -10691,7 +10691,7 @@ async function loadOverview() {
     });
     const nodeNameMap = new Map();
     customNodes.forEach((n) => {
-      const name = n.name || n.prefix || 'Custom Node';
+      const name = String(n.name || n.prefix || 'Custom Node').split('(')[0].trim();
       nodeNameMap.set(n.id.toLowerCase(), name);
       if (n.prefix) nodeNameMap.set(n.prefix.toLowerCase(), name);
     });
@@ -10859,6 +10859,9 @@ async function loadOverview() {
               friendlyName = c.name || rawProv.toUpperCase();
             }
           }
+          if (friendlyName.includes('(')) {
+            friendlyName = friendlyName.split('(')[0].trim();
+          }
           if (!provMap.has(rawProv)) {
             const nodeStat = statForProvider(rawProv);
             provMap.set(rawProv, {
@@ -10880,7 +10883,7 @@ async function loadOverview() {
           if (!provMap.has(rawID)) {
             provMap.set(rawID, {
               provId: node.id,
-              name: node.name || node.prefix || 'Custom Node',
+              name: String(node.name || node.prefix || 'Custom Node').split('(')[0].trim(),
               prefix: node.prefix || '',
               iconKey: 'openai',
               conns: [],
@@ -11032,38 +11035,42 @@ function layoutMeshGraph() {
   // Give dense graphs more vertical breathing room on small screens instead
   // of forcing a virtual 520px canvas that gets clipped by the viewport.
   const compact = width < 700;
-  const height = Math.max(compact ? 390 : 360, compact
-    ? 250 + Math.ceil(nodes.length / 3) * 38
-    : 230 + Math.ceil(nodes.length / 4) * 24);
+  const isMobile = width < 640;
+  const height = isMobile
+    ? Math.max(420, 320 + Math.ceil(nodes.length / 2) * 28)
+    : Math.max(compact ? 390 : 360, compact
+      ? 250 + Math.ceil(nodes.length / 3) * 38
+      : 230 + Math.ceil(nodes.length / 4) * 24);
   container.style.height = `${height}px`;
 
-  const hubWidth = hub.offsetWidth || 120;
-  const hubHeight = hub.offsetHeight || 120;
+  const hubWidth = hub.offsetWidth || (isMobile ? 82 : 120);
+  const hubHeight = hub.offsetHeight || (isMobile ? 82 : 120);
   hub.style.left = `${width / 2 - hubWidth / 2}px`;
   hub.style.top = `${height / 2 - hubHeight / 2}px`;
 
   // Stable pseudo-random orbit positions keep the graph organic without jittering on refresh.
-  const orbitX = Math.max(compact ? 135 : 170, width * (compact ? 0.32 : 0.36));
-  const orbitY = Math.max(compact ? 145 : 125, height * (compact ? 0.37 : 0.34));
+  const orbitX = isMobile ? Math.min(width * 0.35, 112) : Math.max(compact ? 135 : 170, width * (compact ? 0.32 : 0.36));
+  const orbitY = isMobile ? Math.min(height * 0.38, 155) : Math.max(compact ? 145 : 125, height * (compact ? 0.37 : 0.34));
   const angleStep = (Math.PI * 2) / Math.max(nodes.length, 1);
   const positions = nodes.map((node, index) => {
     const seed = meshPositionSeed(node.dataset.providerId || index);
-    const angle = index * angleStep - Math.PI / 2 + (seed.angle - 0.5) * 0.42;
+    const angle = index * angleStep - Math.PI / 2 + (isMobile ? 0 : (seed.angle - 0.5) * 0.42);
     const radius = seed.radius;
-    const nodeWidth = node.offsetWidth || 110;
-    const nodeHeight = node.offsetHeight || 28;
+    const nodeWidth = node.offsetWidth || (isMobile ? 90 : 110);
+    const nodeHeight = node.offsetHeight || (isMobile ? 24 : 28);
     const x = width / 2 + Math.cos(angle) * orbitX * radius - nodeWidth / 2;
     const y = height / 2 + Math.sin(angle) * orbitY * radius - nodeHeight / 2;
     return { node, x, y, width: nodeWidth, height: nodeHeight };
   });
 
   const clamp = (position) => {
-    position.x = Math.max(8, Math.min(width - position.width - 8, position.x));
-    position.y = Math.max(8, Math.min(height - position.height - 8, position.y));
+    const inset = isMobile ? 4 : 8;
+    position.x = Math.max(inset, Math.min(width - position.width - inset, position.x));
+    position.y = Math.max(inset, Math.min(height - position.height - inset, position.y));
   };
 
   // Relax overlapping cards while keeping the stable pseudo-random graph shape.
-  for (let pass = 0; pass < 12; pass += 1) {
+  for (let pass = 0; pass < (isMobile ? 6 : 12); pass += 1) {
     positions.forEach((a, i) => {
       for (let j = i + 1; j < positions.length; j += 1) {
         const b = positions[j];
@@ -11088,8 +11095,9 @@ function layoutMeshGraph() {
   }
 
   positions.forEach(({ node, x, y, width: nodeWidth, height: nodeHeight }) => {
-    node.style.left = `${Math.max(8, Math.min(width - nodeWidth - 8, x))}px`;
-    node.style.top = `${Math.max(8, Math.min(height - nodeHeight - 8, y))}px`;
+    const inset = isMobile ? 4 : 8;
+    node.style.left = `${Math.max(inset, Math.min(width - nodeWidth - inset, x))}px`;
+    node.style.top = `${Math.max(inset, Math.min(height - nodeHeight - inset, y))}px`;
   });
 }
 

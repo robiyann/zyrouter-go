@@ -1,5 +1,13 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Mobile Mesh Topology Layout
+- **Modul**: `Overview Dashboard / Responsive Mesh`
+- **Deskripsi Perubahan**:
+  - Mobile portrait mesh layout now reserves a taller canvas, uses a compact core hub, and applies tighter provider cards with safe text ellipsis.
+  - Mobile orbit geometry uses a vertical ellipse with bounded insets so provider cards and SVG cables stay within the viewport.
+  - Verbose provider connection names strip email suffixes before rendering.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Persistent Mesh SVG Animation
 - **Modul**: `Overview Dashboard / SVG Mesh / Realtime Telemetry`
 - **Deskripsi Perubahan**:
