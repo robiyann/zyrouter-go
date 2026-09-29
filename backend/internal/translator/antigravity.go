@@ -283,11 +283,18 @@ func WrapForAntigravity(geminiBody []byte, projectID, rawModelName string) ([]by
 			cloaked, _ := CloakAntigravityRequest(cleanedReq, "")
 			cleanedReq = cloaked
 		}
+		// Marshal the cleaned/cloaked request first. The thinking-config branch
+		// must build on this body or it can accidentally discard tool renames.
+		cleanedBytes, err := json.Marshal(cleanedReq)
+		if err != nil {
+			return nil, fmt.Errorf("marshal cleaned antigravity request: %w", err)
+		}
+		geminiBody = cleanedBytes
 
 		// Inject thinkingConfig for tiered/thinking models if not already set (100% 9router parity)
 		if backendModel == "gemini-3.6-flash-tiered" || backendModel == "gemini-3.7-flash-tiered" || strings.HasPrefix(backendModel, "gemini-3.8-flash") {
 			var rawMap map[string]any
-			if json.Unmarshal(geminiBody, &rawMap) == nil && rawMap != nil {
+			if json.Unmarshal(cleanedBytes, &rawMap) == nil && rawMap != nil {
 				genConfig, ok := rawMap["generationConfig"].(map[string]any)
 				if !ok || genConfig == nil {
 					genConfig = make(map[string]any)
@@ -304,10 +311,6 @@ func WrapForAntigravity(geminiBody []byte, projectID, rawModelName string) ([]by
 				if updatedBytes, err := json.Marshal(rawMap); err == nil {
 					geminiBody = updatedBytes
 				}
-			}
-		} else {
-			if cloakedBytes, err := json.Marshal(cleanedReq); err == nil {
-				geminiBody = cloakedBytes
 			}
 		}
 	}

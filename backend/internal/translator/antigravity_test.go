@@ -121,6 +121,62 @@ func TestWrapAntigravityImageRequest(t *testing.T) {
 		t.Errorf("expected project proj-123, got %s", req.Project)
 	}
 }
+
+func TestWrapForAntigravityPreservesCloakedToolsWithThinkingConfig(t *testing.T) {
+	input := map[string]any{
+		"model": "gemini-3.7-flash-high",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Use the tool."},
+		},
+		"tools": []any{
+			map[string]any{"type": "function", "function": map[string]any{
+				"name": "execute_code", "description": "Run code", "parameters": map[string]any{"type": "object"},
+			}},
+		},
+	}
+	body, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapped, err := translator.TranslateOpenAIToGemini(body)
+	if err != nil {
+		t.Fatalf("TranslateOpenAIToGemini failed: %v", err)
+	}
+	wrapped, err = translator.WrapForAntigravity(wrapped, "project-test", "gemini-3.7-flash-high")
+	if err != nil {
+		t.Fatalf("WrapForAntigravity failed: %v", err)
+	}
+
+	var envelope translator.AntigravityRequest
+	if err := json.Unmarshal(wrapped, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	var request translator.GeminiRequest
+	if err := json.Unmarshal(envelope.Request, &request); err != nil {
+		t.Fatal(err)
+	}
+	if len(request.Tools) == 0 {
+		t.Fatal("expected cloaked tools")
+	}
+	foundCloaked := false
+	for _, declaration := range request.Tools[0].FunctionDeclarations {
+		if declaration.Name == "execute_code_ide" {
+			foundCloaked = true
+			break
+		}
+	}
+	if !foundCloaked {
+		t.Fatal("thinking-config injection discarded the cloaked execute_code tool")
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(envelope.Request, &raw); err != nil {
+		t.Fatal(err)
+	}
+	generationConfig, ok := raw["generationConfig"].(map[string]any)
+	if !ok || generationConfig["thinkingConfig"] == nil {
+		t.Fatalf("expected thinkingConfig in wrapped request, got %#v", raw["generationConfig"])
+	}
+}
 func TestNormalizeAntigravityModel(t *testing.T) {
 	tests := []struct {
 		input    string
