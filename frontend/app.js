@@ -5668,6 +5668,9 @@ function renderAliases(payload) {
 
 let usageRecentPage = 1;
 const usageRecentPageSize = 10;
+let usageHistoryCursor = '';
+let usageHistoryNextCursor = '';
+let usageHistoryStack = [];
 let cachedUsagePayload = {};
 
 function renderSparkline(points = [], color = '#c8ff63') {
@@ -6544,6 +6547,8 @@ function renderUsage(payload) {
   // different RFC3339 timezone offsets. Sort by parsed instants here as a
   // final UI-side guard instead of trusting raw timestamp string order.
   const recent = sortRecentRequests(Array.isArray(p.recentRequests) ? p.recentRequests : []);
+  const history = p.usageHistory || null;
+  const cursorHistory = Boolean(history);
   // Extract prompt & completion tokens from either Go engine or Next.js engine
   const promptTokens = Number(p.promptTokens ?? p.totalPromptTokens ?? 0);
   const completionTokens = Number(p.completionTokens ?? p.totalCompletionTokens ?? 0);
@@ -6582,13 +6587,13 @@ function renderUsage(payload) {
 
   // Paginate Recent Request History
   const recentList = recent.length ? recent : active;
-  const totalRecentPages = Math.ceil(recentList.length / usageRecentPageSize) || 1;
+  const totalRecentPages = cursorHistory ? 1 : (Math.ceil(recentList.length / usageRecentPageSize) || 1);
   if (usageRecentPage > totalRecentPages) usageRecentPage = totalRecentPages;
   if (usageRecentPage < 1) usageRecentPage = 1;
 
-  const startRecentIdx = (usageRecentPage - 1) * usageRecentPageSize;
-  const endRecentIdx = Math.min(startRecentIdx + usageRecentPageSize, recentList.length);
-  const pageRecentItems = recentList.slice(startRecentIdx, endRecentIdx);
+  const startRecentIdx = cursorHistory ? usageHistoryStack.length * usageRecentPageSize : (usageRecentPage - 1) * usageRecentPageSize;
+  const endRecentIdx = cursorHistory ? startRecentIdx + recentList.length : Math.min(startRecentIdx + usageRecentPageSize, recentList.length);
+  const pageRecentItems = cursorHistory ? recentList : recentList.slice(startRecentIdx, endRecentIdx);
 
   return `
     <form class="filter-bar" id="usage-filters">
@@ -6738,11 +6743,11 @@ function renderUsage(payload) {
         </div>
         <!-- Recent Requests Pagination Footer -->
         <div class="aliases-pagination-bar" style="padding:6px 12px; margin-top:8px;">
-          <span style="font-size:9.5px;">Showing <strong>${recentList.length > 0 ? startRecentIdx + 1 : 0}&ndash;${endRecentIdx}</strong> of <strong>${recentList.length}</strong></span>
+          <span style="font-size:9.5px;">${cursorHistory ? `Page <strong>${usageHistoryStack.length + 1}</strong> · <strong>${recentList.length}</strong> records` : `Showing <strong>${recentList.length > 0 ? startRecentIdx + 1 : 0}&ndash;${endRecentIdx}</strong> of <strong>${recentList.length}</strong>`}</span>
           <div class="aliases-pagination-controls">
-            <button type="button" class="alias-page-btn" id="btn-usage-recent-prev" ${usageRecentPage <= 1 ? 'disabled' : ''} style="padding:2px 6px; font-size:9px;">&larr; Prev</button>
-            <span style="font-size:9.5px; padding:0 3px;">Page <strong>${usageRecentPage}</strong> / ${totalRecentPages}</span>
-            <button type="button" class="alias-page-btn" id="btn-usage-recent-next" ${usageRecentPage >= totalRecentPages ? 'disabled' : ''} style="padding:2px 6px; font-size:9px;">Next &rarr;</button>
+            <button type="button" class="alias-page-btn" id="btn-usage-recent-prev" ${cursorHistory ? (usageHistoryStack.length === 0 ? 'disabled' : '') : (usageRecentPage <= 1 ? 'disabled' : '')} style="padding:2px 6px; font-size:9px;">&larr; Prev</button>
+            <span style="font-size:9.5px; padding:0 3px;">${cursorHistory ? `Cursor page ${usageHistoryStack.length + 1}` : `Page ${usageRecentPage} / ${totalRecentPages}`}</span>
+            <button type="button" class="alias-page-btn" id="btn-usage-recent-next" ${cursorHistory ? (!usageHistoryNextCursor ? 'disabled' : '') : (usageRecentPage >= totalRecentPages ? 'disabled' : '')} style="padding:2px 6px; font-size:9px;">Next &rarr;</button>
           </div>
         </div>
       </div>
@@ -7309,7 +7314,14 @@ async function renderView(name) {
             modelAliases: Object.keys(aliasesRes.aliases || (aliasesRes.records ? aliasesRes.records.reduce((acc, r) => { if (r.alias) acc[r.alias] = true; return acc; }, {}) : {}))
           };
         },
-        usage: () => request('/api/usage/stats?period=all&days=all'),
+        usage: async () => {
+          const [stats, history] = await Promise.all([
+            request('/api/usage/stats?period=all&days=all'),
+            request(`/api/usage/history?limit=${usageRecentPageSize}&cursor=${encodeURIComponent(usageHistoryCursor)}`).catch(() => ({ items: [], hasMore: false, nextCursor: '' }))
+          ]);
+          usageHistoryNextCursor = history.nextCursor || '';
+          return { ...stats, recentRequests: history.items || [], usageHistory: history };
+        },
         labs: async () => {
           const [models, aliases] = await Promise.all([
             request('/models'),
@@ -7391,10 +7403,25 @@ function bindUsageFilters(activeDays = 'all', activeProv = '', activeModel = '')
     const modIn = form.querySelector('input[name="model"]');
     if (modIn) modIn.value = activeModel;
   }
+  const usageHistory = cachedUsagePayload?.usageHistory || null;
+  const loadCursorHistory = async (cursor, provider = activeProv, model = activeModel, statsPayload = cachedUsagePayload) => {
+    const params = new URLSearchParams({ limit: usageRecentPageSize, cursor: cursor || '' });
+    if (provider) params.set('provider', provider);
+    if (model) params.set('model', model);
+    const history = await request(`/api/usage/history?${params.toString()}`);
+    usageHistoryNextCursor = history.nextCursor || '';
+    const payload = { ...(statsPayload || {}), recentRequests: history.items || [], usageHistory: history };
+    content.innerHTML = renderUsage(payload);
+    bindUsageFilters(activeDays, provider, model);
+  };
   const prevRecentBtn = document.querySelector('#btn-usage-recent-prev');
   if (prevRecentBtn) {
-    prevRecentBtn.onclick = () => {
-      if (usageRecentPage > 1) {
+    prevRecentBtn.onclick = async () => {
+      if (usageHistory) {
+        if (usageHistoryStack.length === 0) return;
+        usageHistoryCursor = usageHistoryStack.pop() || '';
+        await loadCursorHistory(usageHistoryCursor);
+      } else if (usageRecentPage > 1) {
         usageRecentPage--;
         content.innerHTML = renderUsage();
         bindUsageFilters(activeDays, activeProv, activeModel);
@@ -7404,7 +7431,14 @@ function bindUsageFilters(activeDays = 'all', activeProv = '', activeModel = '')
 
   const nextRecentBtn = document.querySelector('#btn-usage-recent-next');
   if (nextRecentBtn) {
-    nextRecentBtn.onclick = () => {
+    nextRecentBtn.onclick = async () => {
+      if (usageHistory) {
+        if (!usageHistoryNextCursor) return;
+        usageHistoryStack.push(usageHistoryCursor);
+        usageHistoryCursor = usageHistoryNextCursor;
+        await loadCursorHistory(usageHistoryCursor);
+        return;
+      }
       usageRecentPage++;
       content.innerHTML = renderUsage();
       bindUsageFilters(activeDays, activeProv, activeModel);
@@ -7423,8 +7457,15 @@ function bindUsageFilters(activeDays = 'all', activeProv = '', activeModel = '')
     if (values.model) params.set('model', values.model.trim());
     try {
       usageRecentPage = 1;
-      const payload = await request(`/api/usage/stats?${params.toString()}`);
-      content.innerHTML = renderUsage(payload);
+      usageHistoryCursor = '';
+      usageHistoryNextCursor = '';
+      usageHistoryStack = [];
+      const [payload, history] = await Promise.all([
+        request(`/api/usage/stats?${params.toString()}`),
+        request(`/api/usage/history?${new URLSearchParams({ limit: usageRecentPageSize, cursor: '', provider: values.provider || '', model: values.model || '' })}`)
+      ]);
+      usageHistoryNextCursor = history.nextCursor || '';
+      content.innerHTML = renderUsage({ ...payload, recentRequests: history.items || [], usageHistory: history });
       bindUsageFilters(values.days, values.provider, values.model);
     } catch (error) {
       content.innerHTML = emptySurface(`Usage unavailable: ${error.message}`);

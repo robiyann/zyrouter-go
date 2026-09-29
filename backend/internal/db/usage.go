@@ -207,7 +207,7 @@ func (r *Repo) getScopedUsageLogsCursor(scope string, args []any, limit int, raw
 
 // GetAdminUsageHistoryCursor returns sanitized admin usage history using a
 // timestamp/id keyset. It deliberately omits raw API secrets and payloads.
-func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor string) (map[string]any, error) {
+func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor, providerFilter, modelFilter string) (map[string]any, error) {
 	if limit < 1 || limit > 100 {
 		limit = 50
 	}
@@ -216,7 +216,15 @@ func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor string) (map[stri
 		return nil, err
 	}
 	where := "1=1"
-	args := make([]any, 0, 3)
+	args := make([]any, 0, 5)
+	if providerFilter = strings.TrimSpace(providerFilter); providerFilter != "" {
+		where += " AND provider LIKE ?"
+		args = append(args, "%"+providerFilter+"%")
+	}
+	if modelFilter = strings.TrimSpace(modelFilter); modelFilter != "" {
+		where += " AND (model LIKE ? OR json_extract(meta, '$.publicModel') LIKE ?)"
+		args = append(args, "%"+modelFilter+"%", "%"+modelFilter+"%")
+	}
 	if cursor.Timestamp != "" {
 		where += ` AND (datetime(timestamp) < datetime(?) OR (datetime(timestamp) = datetime(?) AND id < ?))`
 		args = append(args, cursor.Timestamp, cursor.Timestamp, cursor.ID)

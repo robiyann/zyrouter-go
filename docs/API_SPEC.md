@@ -214,7 +214,7 @@ Production topology:
 ### 3.10. Admin Security History
 
 - `GET /api/auth-logs?limit=25&cursor=<opaque>` — Bounded keyset page ordered by `(timestamp,id)` with `hasMore` and `nextCursor`. The legacy `offset` form remains available for compatibility.
-- `GET /api/usage/history?limit=50&cursor=<opaque>` — Bounded admin usage ledger page ordered by `(timestamp,id)`.
+- `GET /api/usage/history?limit=50&cursor=<opaque>&provider=&model=` — Bounded admin usage ledger page ordered by `(timestamp,id)` with optional server-side provider/model filters.
 
 ---
 

@@ -133,7 +133,7 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 func HandleUsageHistory(repo *db.Repo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		items, err := repo.GetAdminUsageHistoryCursor(limit, r.URL.Query().Get("cursor"))
+		items, err := repo.GetAdminUsageHistoryCursor(limit, r.URL.Query().Get("cursor"), r.URL.Query().Get("provider"), r.URL.Query().Get("model"))
 		if err != nil {
 			handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid usage cursor")
 			return

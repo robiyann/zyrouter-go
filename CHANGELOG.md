@@ -39,6 +39,14 @@
   - Existing local page rendering remains compatible with the paged response while avoiding an unbounded alias payload on refresh.
 - **Status Task**: In Progress — final verification and remaining small configuration surfaces are under review.
 
+### [2026-09-29] - [Codex] - Admin Usage Ledger Cursor UI
+- **Modul**: `Admin Dashboard / Usage Ledger / Backend`
+- **Deskripsi Perubahan**:
+  - Usage Ledger now loads history through `/api/usage/history` cursor pages instead of paginating a fixed in-memory 50-row snapshot.
+  - Provider/model filters are applied server-side for history traversal.
+  - Previous/Next navigation maintains an opaque cursor stack.
+- **Status Task**: In Progress — final runtime verification remains.
+
 ### [2026-09-29] - [Codex] - Cursor-Driven Admin Security and Portal History
 - **Modul**: `Backend / Admin Dashboard / Client Portal / Tests / Docs`
 - **Deskripsi Perubahan**:
