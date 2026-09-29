@@ -1,5 +1,12 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Mesh Laser Provider Matching
+- **Modul**: `Overview Dashboard / Provider Mesh / Realtime Routing`
+- **Deskripsi Perubahan**:
+  - Provider mesh nodes now expose provider ID, friendly name, and prefix metadata for realtime matching.
+  - Active request matching covers custom provider IDs, aliases, friendly names, and prefixed model names so B.ai and Coral laser routes activate reliably.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Pure Provider Mesh Topology
 - **Modul**: `Overview Dashboard / Provider Summary / Frontend`
 - **Deskripsi Perubahan**:

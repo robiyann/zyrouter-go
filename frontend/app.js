@@ -10681,6 +10681,7 @@ async function loadOverview() {
     };
     const statForProvider = (providerID) => findProviderStat(providerID) || { active: 0, total: 0 };
     const customNodeIds = new Set(customNodes.map((n) => String(n.id || '').toLowerCase()));
+    const customNodeMap = new Map(customNodes.map((node) => [String(node.id || '').toLowerCase(), node]));
     // Hide stale custom connections whose provider node was already deleted.
     const meshProviders = providers.filter((connection) => {
       const provider = String(connection.provider || '').toLowerCase();
@@ -10833,6 +10834,8 @@ async function loadOverview() {
           try { d = typeof c.data === 'string' ? JSON.parse(c.data) : (c.data || {}); } catch {}
           const psd = d.providerSpecificData || {};
           const explicitNodeName = psd.nodeName || psd.prefix || '';
+          const nodeMeta = customNodeMap.get(rawProv);
+          const providerPrefix = nodeMeta?.prefix || psd.prefix || '';
 
           if (nodeNameMap.has(rawProv)) {
             friendlyName = nodeNameMap.get(rawProv);
@@ -10859,6 +10862,7 @@ async function loadOverview() {
             provMap.set(rawProv, {
               provId: c.provider,
               name: friendlyName,
+              prefix: providerPrefix,
               iconKey: cleanProvKey,
               conns: [],
               activeCount: Number(nodeStat.active) || 0,
@@ -10875,6 +10879,7 @@ async function loadOverview() {
             provMap.set(rawID, {
               provId: node.id,
               name: node.name || node.prefix || 'Custom Node',
+              prefix: node.prefix || '',
               iconKey: 'openai',
               conns: [],
               activeCount: Number(nodeStat?.active) || Number(nodeStat?.total) || 0,
@@ -10894,6 +10899,7 @@ async function loadOverview() {
           provMap.set(rawID, {
             provId: providerID,
             name: nodeName || providerID,
+            prefix: customNodeMap.get(rawID)?.prefix || '',
             iconKey: rawID.startsWith('anthropic') ? 'anthropic' : (rawID.startsWith('openai') ? 'openai' : rawID),
             conns: [],
             activeCount: Number(nodeStat.active) || 0,
@@ -10914,7 +10920,7 @@ async function loadOverview() {
           meshProvCol.innerHTML = Array.from(provMap.values()).map((p) => {
             const activeCount = p.hasStats ? p.activeCount : p.conns.filter(isItemActive).length;
             return `
-              <div class="mesh-node provider-node" data-provider-id="${escapeHtml(p.provId)}" style="cursor:pointer;">
+              <div class="mesh-node provider-node" data-provider-id="${escapeHtml(p.provId)}" data-provider-name="${escapeHtml((p.name || '').toLowerCase())}" data-provider-prefix="${escapeHtml((p.prefix || '').toLowerCase())}" style="cursor:pointer;">
                 ${renderProviderIcon(p.iconKey || p.provId)}
                 <div class="mesh-node-info">
                   <strong>${escapeHtml(p.name)}</strong>
@@ -11135,20 +11141,27 @@ function updateMeshRealtimeState(activeRequests = []) {
   }
   if (latencyBadge) latencyBadge.textContent = `• ${activeRequests.length} in-flight`;
 
-  const activeProvIds = new Set();
-  const activeModelIds = new Set();
+  const activeQueries = [];
 
   activeRequests.forEach((req) => {
-    const prov = (req.provider || '').toLowerCase();
-    const model = (req.model || '').toLowerCase();
-    if (prov) activeProvIds.add(prov);
-    if (model) activeModelIds.add(model);
+    if (req.provider) activeQueries.push(String(req.provider).toLowerCase().trim());
+    if (req.model) {
+      const model = String(req.model).toLowerCase().trim();
+      activeQueries.push(model);
+      if (model.includes('/')) activeQueries.push(model.split('/')[0]);
+    }
   });
 
   providers.forEach((p) => {
     const pid = (p.dataset.providerId || '').toLowerCase();
-    const isActive = Array.from(activeProvIds).some((ap) => pid === ap || pid.includes(ap) || ap.includes(pid))
-      || Array.from(activeModelIds).some((model) => pid.includes(model) || model.includes(pid) || model.split('/')[0] === pid);
+    const pname = (p.dataset.providerName || '').toLowerCase();
+    const pprefix = (p.dataset.providerPrefix || '').toLowerCase();
+    const isActive = activeQueries.some((query) => {
+      if (!query) return false;
+      return pid === query || pid.includes(query) || query.includes(pid)
+        || (pname && (pname === query || pname.includes(query) || query.includes(pname)))
+        || (pprefix && (pprefix === query || pprefix.includes(query) || query.includes(pprefix)));
+    });
     p.classList.toggle('active', isActive);
   });
 

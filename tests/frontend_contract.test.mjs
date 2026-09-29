@@ -83,4 +83,8 @@ assert.doesNotMatch(app, /Successfully imported .* models from upstream/, 'provi
 assert.doesNotMatch(html, /mesh-clients-col|data-client-id/, 'dynamic mesh must not contain hardcoded client nodes');
 assert.match(app, /querySelectorAll\('\.mesh-providers-col \.mesh-node'\)/, 'mesh routing must target provider nodes only');
 assert.match(app, /providerPayload\.stats \|\| providerPayload\.providerStats/, 'overview must consume aggregate provider stats');
+assert.match(app, /data-provider-name/, 'provider mesh nodes must expose friendly matching metadata');
+assert.match(app, /data-provider-prefix/, 'provider mesh nodes must expose prefix matching metadata');
+assert.match(app, /p\.dataset\.providerName/, 'mesh matcher must compare friendly provider names');
+assert.match(app, /p\.dataset\.providerPrefix/, 'mesh matcher must compare provider prefixes');
 console.log('frontend backend contract checks passed');
