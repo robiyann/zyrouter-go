@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"zyrouter/backend/internal/labels"
 	"zyrouter/backend/internal/pagination"
 )
 
@@ -234,20 +235,23 @@ func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor, providerFilter, 
 		SELECT id, timestamp, provider, model, COALESCE(NULLIF(json_extract(meta, '$.publicModel'), ''), ''),
 		       promptTokens, completionTokens, status, COALESCE(json_extract(meta, '$.latencyMs'), 0),
 		       COALESCE(json_extract(meta, '$.clientIdentity'), ''), COALESCE(json_extract(meta, '$.clientIp'), ''),
-		       COALESCE(json_extract(meta, '$.apiKeyId'), '')
+		       COALESCE(json_extract(meta, '$.apiKeyId'), ''),
+		       COALESCE(json_extract(meta, '$.connectionId'), ''),
+		       COALESCE(json_extract(meta, '$.proxy'), ''),
+		       COALESCE(json_extract(meta, '$.strategy'), '')
 		FROM usageHistory WHERE `+where+` ORDER BY datetime(timestamp) DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	type adminUsageRow struct {
-		dbID, prompt, completion, latency                                       int
-		timestamp, provider, model, publicModel, status, identity, ip, apiKeyID string
+		dbID, prompt, completion, latency                                                                      int
+		timestamp, provider, model, publicModel, status, identity, ip, apiKeyID, connectionID, proxy, strategy string
 	}
 	result := make([]adminUsageRow, 0, limit+1)
 	for rows.Next() {
 		var item adminUsageRow
-		if err := rows.Scan(&item.dbID, &item.timestamp, &item.provider, &item.model, &item.publicModel, &item.prompt, &item.completion, &item.status, &item.latency, &item.identity, &item.ip, &item.apiKeyID); err != nil {
+		if err := rows.Scan(&item.dbID, &item.timestamp, &item.provider, &item.model, &item.publicModel, &item.prompt, &item.completion, &item.status, &item.latency, &item.identity, &item.ip, &item.apiKeyID, &item.connectionID, &item.proxy, &item.strategy); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -261,7 +265,20 @@ func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor, providerFilter, 
 	}
 	items := make([]map[string]any, 0, len(result))
 	for _, item := range result {
-		items = append(items, map[string]any{"id": item.dbID, "timestamp": item.timestamp, "provider": item.provider, "model": item.model, "publicModel": item.publicModel, "promptTokens": item.prompt, "completionTokens": item.completion, "totalTokens": item.prompt + item.completion, "status": item.status, "durationMs": item.latency, "clientIdentity": item.identity, "clientIp": item.ip, "apiKeyId": item.apiKeyID})
+		displayProvider := labels.Provider(r, item.provider)
+		displayModel := labels.Model(r, item.provider, item.model)
+		if item.publicModel != "" {
+			displayModel = item.publicModel
+		}
+		items = append(items, map[string]any{
+			"id": item.dbID, "timestamp": item.timestamp,
+			"provider": displayProvider, "rawProvider": item.provider,
+			"model": displayModel, "rawModel": item.model, "publicModel": item.publicModel,
+			"account": item.connectionID, "proxy": item.proxy, "strategy": item.strategy,
+			"promptTokens": item.prompt, "completionTokens": item.completion, "totalTokens": item.prompt + item.completion,
+			"status": item.status, "durationMs": item.latency,
+			"clientIdentity": item.identity, "clientIp": item.ip, "apiKeyId": item.apiKeyID,
+		})
 	}
 	response := map[string]any{"items": items, "limit": limit, "hasMore": hasMore, "nextCursor": ""}
 	if hasMore && len(result) > 0 {

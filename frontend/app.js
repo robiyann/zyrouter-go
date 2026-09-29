@@ -6699,7 +6699,7 @@ function renderUsage(payload) {
                 const toks = Number((item.promptTokens || 0) + (item.completionTokens || 0));
                 const isErr = item.status === 'error' || String(item.status).startsWith('4') || String(item.status).startsWith('5');
                 const displayStatus = (item.status === 'ok' || item.status === 'success') ? '200' : String(item.status || item.count || '200');
-                const pName = (item.provider || 'gateway').toLowerCase();
+                const pName = item.provider || item.rawProvider || 'Gateway';
                 const accName = item.account || item.connectionId || '--';
                 const proxyName = item.proxy || 'Direct';
                 const isRelay = proxyName !== 'Direct' && proxyName !== '--';
@@ -6714,7 +6714,7 @@ function renderUsage(payload) {
                         <small style="display:block; font-size:8px; color:var(--muted);">${escapeHtml(dateStr)}</small>
                       </div>
                     </td>
-                    <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(item.model || '--')}</code></td>
+                    <td><code class="model-id-code" style="font-size:10.5px;">${escapeHtml(item.publicModel || item.model || '--')}</code></td>
                     <td>
                       <div style="line-height:1.25;">
                         <strong style="color:var(--text-bright); font-size:11px;">${escapeHtml(pName)}</strong>

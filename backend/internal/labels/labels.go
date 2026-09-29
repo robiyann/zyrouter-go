@@ -3,20 +3,28 @@ package labels
 import (
 	"strings"
 
-	"zyrouter/backend/internal/db"
 	"zyrouter/backend/internal/providers"
 )
 
+// Resolver is the small repository surface needed to resolve friendly labels.
+// Keeping this interface here avoids a package cycle when the db package uses
+// the same label formatting for its own query results.
+type Resolver interface {
+	ProviderNodeName(string) (string, error)
+	ProviderNodePrefix(string) (string, error)
+	GetProviderPrefixes() (map[string]string, error)
+}
+
 // Provider returns a human-readable provider label while keeping the raw ID
 // available separately for filtering and diagnostics.
-func Provider(repo *db.Repo, provider string) string {
+func Provider(repo Resolver, provider string) string {
 	provider = strings.TrimSpace(provider)
 	if provider == "" {
 		return "Gateway"
 	}
 	if repo != nil {
-		if node, _, err := repo.GetProviderNodeByID(provider); err == nil && node != nil && node.Name != nil && strings.TrimSpace(*node.Name) != "" {
-			return strings.TrimSpace(*node.Name)
+		if name, err := repo.ProviderNodeName(provider); err == nil && strings.TrimSpace(name) != "" {
+			return strings.TrimSpace(name)
 		}
 	}
 	lower := strings.ToLower(provider)
@@ -30,7 +38,7 @@ func Provider(repo *db.Repo, provider string) string {
 }
 
 // Prefix returns the active client-facing model prefix for a provider.
-func Prefix(repo *db.Repo, provider string) string {
+func Prefix(repo Resolver, provider string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if repo != nil {
 		if prefixes, err := repo.GetProviderPrefixes(); err == nil {
@@ -38,15 +46,15 @@ func Prefix(repo *db.Repo, provider string) string {
 				return strings.ToLower(prefix)
 			}
 		}
-		if _, nodeData, err := repo.GetProviderNodeByID(provider); err == nil && nodeData != nil && strings.TrimSpace(nodeData.Prefix) != "" {
-			return strings.ToLower(strings.TrimSpace(nodeData.Prefix))
+		if prefix, err := repo.ProviderNodePrefix(provider); err == nil && strings.TrimSpace(prefix) != "" {
+			return strings.ToLower(strings.TrimSpace(prefix))
 		}
 	}
 	return providers.GetDefaultProviderAlias(provider)
 }
 
 // Model returns the model with its client-facing provider prefix.
-func Model(repo *db.Repo, provider, model string) string {
+func Model(repo Resolver, provider, model string) string {
 	model = strings.TrimSpace(model)
 	prefix := Prefix(repo, provider)
 	if model == "" || prefix == "" || strings.HasPrefix(strings.ToLower(model), strings.ToLower(prefix)+"/") {

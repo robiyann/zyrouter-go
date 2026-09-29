@@ -1,5 +1,13 @@
 # Zyrouter Unified Changelog
 
+### [2026-09-29] - [Codex] - Admin Usage Ledger Label and Metadata Parity
+- **Modul**: `Admin Usage History / Database / Frontend / Tests`
+- **Deskripsi Perubahan**:
+  - Cursor-paginated admin usage history now resolves friendly provider labels and client-facing model prefixes consistently with live telemetry.
+  - Account, proxy, strategy, raw provider/model, and public model metadata are extracted from `meta` and exposed to the usage ledger.
+  - Added regression coverage for `B.ai`, prefixed model labels, and routing metadata.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Telemetry Success Status Normalization
 - **Modul**: `Backend / Client Portal / Tests`
 - **Deskripsi Perubahan**:

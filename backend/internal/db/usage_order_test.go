@@ -61,3 +61,41 @@ func TestUsageHistoryCursorIsBoundedAndStable(t *testing.T) {
 		t.Fatalf("expected oldest item on second page, got %#v", second)
 	}
 }
+
+func TestAdminUsageHistoryCursorUsesFriendlyMetadata(t *testing.T) {
+	database, err := OpenDatabase(filepath.Join(t.TempDir(), "usage-admin-cursor.sqlite"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+
+	if _, err := database.Exec(`INSERT INTO providerNodes (id, type, name, data, createdAt, updatedAt) VALUES ('bai', 'custom', 'B.ai', '{}', '2026-09-29T00:00:00Z', '2026-09-29T00:00:00Z')`); err != nil {
+		t.Fatalf("insert provider node: %v", err)
+	}
+	if _, err := database.Exec(`INSERT OR REPLACE INTO kv (scope, key, value) VALUES ('providerPrefixes', 'bai', '"bai"')`); err != nil {
+		t.Fatalf("insert provider prefix: %v", err)
+	}
+	meta := `{"publicModel":"","latencyMs":42,"clientIdentity":"cli","clientIp":"127.0.0.1","apiKeyId":"key-1","connectionId":"conn-1","proxy":"Proxy A","strategy":"round-robin"}`
+	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, promptTokens, completionTokens, status, meta) VALUES ('2026-09-29T12:00:00Z', 'bai', 'deepseek-v4.1-flash', 3, 5, '200', ?)`, meta); err != nil {
+		t.Fatalf("insert usage row: %v", err)
+	}
+
+	result, err := NewRepo(database).GetAdminUsageHistoryCursor(10, "", "", "")
+	if err != nil {
+		t.Fatalf("get admin usage history: %v", err)
+	}
+	items := result["items"].([]map[string]any)
+	if len(items) != 1 {
+		t.Fatalf("expected one usage item, got %#v", result)
+	}
+	item := items[0]
+	if item["provider"] != "B.ai" || item["rawProvider"] != "bai" {
+		t.Fatalf("unexpected provider labels: %#v", item)
+	}
+	if item["model"] != "bai/deepseek-v4.1-flash" || item["rawModel"] != "deepseek-v4.1-flash" {
+		t.Fatalf("unexpected model labels: %#v", item)
+	}
+	if item["account"] != "conn-1" || item["proxy"] != "Proxy A" || item["strategy"] != "round-robin" {
+		t.Fatalf("metadata was not extracted: %#v", item)
+	}
+}
