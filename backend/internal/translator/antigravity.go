@@ -94,6 +94,8 @@ func CloakAntigravityRequest(req *GeminiRequest, clientTool string) (*GeminiRequ
 
 	isCopilot := clientTool == "github-copilot"
 	var clientDecls []GeminiFunctionDecl
+	hasNativeTool := false
+	hasClientFunction := false
 	decoyNames := make(map[string]bool, len(AntigravityDecoyTools))
 	for _, dt := range AntigravityDecoyTools {
 		decoyNames[dt.Name] = true
@@ -105,8 +107,12 @@ func CloakAntigravityRequest(req *GeminiRequest, clientTool string) (*GeminiRequ
 				continue
 			}
 			if AntigravityNativeToolNames[fn.Name] {
+				hasNativeTool = true
 				clientDecls = append(clientDecls, fn)
 				continue
+			}
+			if !decoyNames[fn.Name] {
+				hasClientFunction = true
 			}
 
 			suffixedName := fn.Name + "_ide"
@@ -153,11 +159,17 @@ func CloakAntigravityRequest(req *GeminiRequest, clientTool string) (*GeminiRequ
 
 	res := *req
 	res.Tools = []GeminiTool{{FunctionDeclarations: allDecls}}
-	res.ToolConfig = map[string]any{
+	toolConfig := map[string]any{
 		"functionCallingConfig": map[string]any{
 			"mode": "VALIDATED",
 		},
 	}
+	if hasNativeTool && hasClientFunction {
+		// Gemini 3 requires this opt-in when server-side built-in tools and
+		// client function declarations are present in the same request.
+		toolConfig["includeServerSideToolInvocations"] = true
+	}
+	res.ToolConfig = toolConfig
 	res.Contents = cloakedContents
 
 	return &res, toolNameMap

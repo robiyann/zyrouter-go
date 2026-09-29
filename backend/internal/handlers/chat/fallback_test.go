@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,18 @@ func TestApplyTokenSavers_AllOff(t *testing.T) {
 	got := h.applyTokenSavers(body)
 	if string(got) != string(body) {
 		t.Errorf("expected unchanged body when all token savers off")
+	}
+}
+
+func TestIsRetryableConnectionError_DoesNotRetryCanceledContext(t *testing.T) {
+	if isRetryableConnectionError(context.Canceled) {
+		t.Fatal("context.Canceled must not be treated as a retryable connection failure")
+	}
+	if isRetryableConnectionError(&url.Error{Op: "POST", URL: "https://example.invalid", Err: context.Canceled}) {
+		t.Fatal("url.Error wrapping context.Canceled must not be retryable")
+	}
+	if !isRetryableConnectionError(context.DeadlineExceeded) {
+		t.Fatal("context.DeadlineExceeded should remain retryable when the request context is still alive")
 	}
 }
 

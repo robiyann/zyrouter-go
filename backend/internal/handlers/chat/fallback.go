@@ -109,6 +109,11 @@ func (h *ChatHandler) handleAccountFallback(
 	}
 
 	for _, c := range orderedConns {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// The caller is already gone. Retrying here only burns other
+			// accounts and incorrectly changes their cooldown state.
+			return ctxErr
+		}
 		if attempts >= maxFallbackAttempts {
 			log.Warn("fallback", "attempt limit reached", "provider", providerLabel, "model", modelLabel, "attempts", attempts, "maxAttempts", maxFallbackAttempts)
 			break
@@ -145,6 +150,9 @@ func (h *ChatHandler) handleAccountFallback(
 			return nil
 		} else {
 			lastErr = err
+		}
+		if errors.Is(lastErr, context.Canceled) || ctx.Err() != nil {
+			return lastErr
 		}
 		var ue *upstreamError
 		transportFailure := isRetryableConnectionError(lastErr)
@@ -184,6 +192,9 @@ func (h *ChatHandler) handleAccountFallback(
 
 func isRetryableConnectionError(err error) bool {
 	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
 		return false
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {

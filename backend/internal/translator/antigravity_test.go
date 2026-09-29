@@ -56,6 +56,10 @@ func TestCloakAntigravityRequest_RenamesAndInjectsDecoys(t *testing.T) {
 	if len(cloaked.Tools) == 0 || len(cloaked.Tools[0].FunctionDeclarations) < 20 {
 		t.Errorf("expected >= 20 function declarations including decoys, got %d", len(cloaked.Tools[0].FunctionDeclarations))
 	}
+	config, ok := cloaked.ToolConfig.(map[string]any)
+	if !ok || config["includeServerSideToolInvocations"] != true {
+		t.Fatalf("expected server-side tool invocation opt-in for mixed native/function tools, got %#v", cloaked.ToolConfig)
+	}
 }
 
 func TestUncloakToolName(t *testing.T) {
