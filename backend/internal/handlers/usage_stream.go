@@ -268,10 +268,13 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		CASE WHEN promptTokens > 0 THEN promptTokens ELSE COALESCE(json_extract(tokens, '$.prompt_tokens'), json_extract(tokens, '$.input_tokens'), 0) END,
 		CASE WHEN completionTokens > 0 THEN completionTokens ELSE COALESCE(json_extract(tokens, '$.completion_tokens'), json_extract(tokens, '$.output_tokens'), 0) END,
 		status, COALESCE(json_extract(meta, '$.clientIdentity'), ''),
-		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), '')
+		COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), ''),
+		COALESCE(json_extract(meta, '$.proxy'), ''), COALESCE(json_extract(meta, '$.strategy'), ''),
+		COALESCE(json_extract(meta, '$.account'), connectionId, '')
 		FROM usageHistory ORDER BY datetime(timestamp) DESC, id DESC LIMIT 50`
 	type rawRecentRow struct {
 		id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
+		proxy, strategy, account                                      string
 		prompt, completion                                            int
 	}
 	rawRows := make([]rawRecentRow, 0, 50)
@@ -279,7 +282,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 	if err == nil {
 		for recentRows.Next() {
 			var row rawRecentRow
-			if err := recentRows.Scan(&row.id, &row.ts, &row.prov, &row.mod, &row.prompt, &row.completion, &row.status, &row.clientIdentity, &row.clientIP, &row.apiKeyID); err == nil {
+			if err := recentRows.Scan(&row.id, &row.ts, &row.prov, &row.mod, &row.prompt, &row.completion, &row.status, &row.clientIdentity, &row.clientIP, &row.apiKeyID, &row.proxy, &row.strategy, &row.account); err == nil {
 				rawRows = append(rawRows, row)
 			}
 		}
@@ -293,6 +296,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		displayModel := labels.Model(repo, row.prov, row.mod)
 		recent = append(recent, usagetracker.RecentRequest{
 			ID: row.id, Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
+			Account: row.account, Proxy: row.proxy, Strategy: row.strategy,
 			PromptTokens: row.prompt, CompletionTokens: row.completion, Status: row.status,
 			ClientIdentity: row.clientIdentity, ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
 		})

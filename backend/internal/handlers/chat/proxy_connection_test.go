@@ -130,9 +130,12 @@ func TestLogUsage_ReportsResolvedProxyPoolForNoAuth(t *testing.T) {
 		ProxyPoolID: poolID, APIKey: "public", Endpoint: "/v1/chat/completions",
 	}, &translator.OpenAIUsage{PromptTokens: 1, CompletionTokens: 1}, 1, []byte(`{"messages":[]}`), nil)
 
-	var data string
+	var data, meta string
 	if err := database.QueryRow(`SELECT data FROM requestDetails WHERE provider = 'opencode' AND model = 'mimo-v2.5-free' ORDER BY timestamp DESC LIMIT 1`).Scan(&data); err != nil {
 		t.Fatalf("query request detail: %v", err)
+	}
+	if err := database.QueryRow(`SELECT meta FROM usageHistory WHERE provider = 'opencode' AND model = 'mimo-v2.5-free' AND connectionId = 'noauth' ORDER BY timestamp DESC LIMIT 1`).Scan(&meta); err != nil {
+		t.Fatalf("query usage metadata: %v", err)
 	}
 	var detail map[string]any
 	if err := json.Unmarshal([]byte(data), &detail); err != nil {
@@ -140,6 +143,19 @@ func TestLogUsage_ReportsResolvedProxyPoolForNoAuth(t *testing.T) {
 	}
 	if got := detail["proxy"]; got != "usage-relay (VERCEL)" {
 		t.Fatalf("expected resolved proxy label, got %v", got)
+	}
+	var metaData map[string]any
+	if err := json.Unmarshal([]byte(meta), &metaData); err != nil {
+		t.Fatalf("decode usage metadata: %v", err)
+	}
+	if got := metaData["proxy"]; got != "usage-relay (VERCEL)" {
+		t.Fatalf("expected proxy in usage metadata, got %v", got)
+	}
+	if got := metaData["strategy"]; got != "fallback" {
+		t.Fatalf("expected strategy in usage metadata, got %v", got)
+	}
+	if got := metaData["account"]; got != "Public" {
+		t.Fatalf("expected account in usage metadata, got %v", got)
 	}
 }
 

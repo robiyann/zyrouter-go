@@ -107,9 +107,17 @@ func TestTracker_HistoryLabelResolutionDoesNotHoldRowsConnection(t *testing.T) {
 	defer database.Close()
 	database.SetMaxOpenConns(1)
 
-	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, promptTokens, completionTokens, status, meta, tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		time.Now().UTC().Format(time.RFC3339), "unknown-provider", "test-model", 1, 1, "200", `{"requestId":"history-1"}`, `{"prompt_tokens":1,"completion_tokens":1}`); err != nil {
+	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, connectionId, promptTokens, completionTokens, status, meta, tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		time.Now().UTC().Format(time.RFC3339), "unknown-provider", "test-model", "conn-history", 1, 1, "200", `{"requestId":"history-1","proxy":"history-relay","strategy":"fallback","account":"History Account"}`, `{"prompt_tokens":1,"completion_tokens":1}`); err != nil {
 		t.Fatalf("insert history row: %v", err)
+	}
+
+	state := NewTracker().GetActiveState(db.NewRepo(database))
+	if len(state.RecentRequests) != 1 {
+		t.Fatalf("expected one history request, got %+v", state.RecentRequests)
+	}
+	if got := state.RecentRequests[0]; got.Proxy != "history-relay" || got.Strategy != "fallback" || got.Account != "History Account" {
+		t.Fatalf("expected persisted history labels, got %+v", got)
 	}
 
 	done := make(chan struct{})

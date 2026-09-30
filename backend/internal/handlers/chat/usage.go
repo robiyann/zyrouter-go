@@ -64,31 +64,6 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 	if clientRequestID == "" {
 		clientRequestID = reqID
 	}
-	metaBytes, _ := json.Marshal(map[string]any{
-		"provider": info.Provider, "model": info.Model, "connectionId": info.ConnectionID,
-		"publicModel": publicModel, "requestId": clientRequestID, "clientId": info.ClientID, "latencyMs": latencyMs,
-		"clientIdentity": info.ClientIdentity, "clientIp": info.ClientIP, "apiKeyId": info.APIKeyID,
-	})
-	metaJSON := string(metaBytes)
-	providerLabel := h.displayProviderLabel(info.Provider)
-	modelLabel := h.displayModelLabel(info.Provider, info.Model)
-
-	cachedTokens := usage.GetCachedTokens()
-	cacheCreationTokens := usage.CacheCreationInputTokens
-
-	log.Debug("router", "success", "provider", providerLabel, "providerId", info.Provider, "model", modelLabel, "modelId", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
-	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
-	var usageErr error
-	if info.UserID != "" {
-		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "200", totalTokens, metaJSON, tokensJSON)
-	} else {
-		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "200", totalTokens, metaJSON, tokensJSON)
-	}
-	if err := usageErr; err != nil {
-		log.Error("usage", "insert failed", "error", err)
-	}
-
-	reqMsgs := extractRequestMessages(requestBody)
 
 	accountLabel := h.displayAccountLabel(info.ConnectionID)
 	proxyLabel := "Direct"
@@ -129,6 +104,33 @@ func (h *ChatHandler) logUsage(info *UsageLogInfo, usage *translator.OpenAIUsage
 			stratLabel = fmt.Sprintf("round-robin (sticky=%d)", strat.StickyRoundRobinLimit)
 		}
 	}
+
+	metaBytes, _ := json.Marshal(map[string]any{
+		"provider": info.Provider, "model": info.Model, "connectionId": info.ConnectionID,
+		"publicModel": publicModel, "requestId": clientRequestID, "clientId": info.ClientID, "latencyMs": latencyMs,
+		"clientIdentity": info.ClientIdentity, "clientIp": info.ClientIP, "apiKeyId": info.APIKeyID,
+		"proxy": proxyLabel, "strategy": stratLabel, "account": accountLabel,
+	})
+	metaJSON := string(metaBytes)
+	providerLabel := h.displayProviderLabel(info.Provider)
+	modelLabel := h.displayModelLabel(info.Provider, info.Model)
+
+	cachedTokens := usage.GetCachedTokens()
+	cacheCreationTokens := usage.CacheCreationInputTokens
+
+	log.Debug("router", "success", "provider", providerLabel, "providerId", info.Provider, "model", modelLabel, "modelId", info.Model, "conn", info.ConnectionID, "latency_ms", latencyMs, "in_tokens", usage.PromptTokens, "out_tokens", usage.CompletionTokens, "cached", cachedTokens, "cost", fmt.Sprintf("$%.4f", cost))
+	tokensJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cached_tokens":%d,"cache_creation_input_tokens":%d}`, usage.PromptTokens, usage.CompletionTokens, totalTokens, cachedTokens, cacheCreationTokens)
+	var usageErr error
+	if info.UserID != "" {
+		usageErr = h.Repo.InsertUserUsageHistory(info.UserID, info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "200", totalTokens, metaJSON, tokensJSON)
+	} else {
+		usageErr = h.Repo.InsertUsageHistory(info.Provider, info.Model, info.ConnectionID, usageKeyValue(info.APIKey), info.Endpoint, usage.PromptTokens, usage.CompletionTokens, cost, "200", totalTokens, metaJSON, tokensJSON)
+	}
+	if err := usageErr; err != nil {
+		log.Error("usage", "insert failed", "error", err)
+	}
+
+	reqMsgs := extractRequestMessages(requestBody)
 
 	reqData, err := json.Marshal(map[string]any{
 		"id": reqID, "provider": providerLabel, "providerId": info.Provider, "model": modelLabel, "modelId": info.Model,

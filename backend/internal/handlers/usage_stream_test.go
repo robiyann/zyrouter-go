@@ -103,8 +103,9 @@ func TestHandleUsageStatsOrdersRecentByTimestamp(t *testing.T) {
 	}
 	defer database.Close()
 	repo := db.NewRepo(database)
-	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, promptTokens, completionTokens, status) VALUES (?, ?, ?, 1, 1, '200'), (?, ?, ?, 1, 1, '200')`,
-		"2026-09-28T23:25:22+07:00", "provider", "older", "2026-09-28T16:32:46Z", "provider", "newer"); err != nil {
+	if _, err := database.Exec(`INSERT INTO usageHistory (timestamp, provider, model, connectionId, promptTokens, completionTokens, status, meta) VALUES (?, ?, ?, ?, 1, 1, '200', ?), (?, ?, ?, ?, 1, 1, '200', ?)`,
+		"2026-09-28T23:25:22+07:00", "provider", "older", "conn-older", `{"proxy":"older-relay","strategy":"fallback"}`,
+		"2026-09-28T16:32:46Z", "provider", "newer", "conn-newer", `{"proxy":"newer-relay","strategy":"round-robin"}`); err != nil {
 		t.Fatalf("insert usage history: %v", err)
 	}
 
@@ -116,7 +117,10 @@ func TestHandleUsageStatsOrdersRecentByTimestamp(t *testing.T) {
 	}
 	var payload struct {
 		RecentRequests []struct {
-			Model string `json:"model"`
+			Model    string `json:"model"`
+			Account  string `json:"account"`
+			Proxy    string `json:"proxy"`
+			Strategy string `json:"strategy"`
 		} `json:"recentRequests"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
@@ -124,5 +128,8 @@ func TestHandleUsageStatsOrdersRecentByTimestamp(t *testing.T) {
 	}
 	if len(payload.RecentRequests) < 2 || payload.RecentRequests[0].Model != "provider/newer" {
 		t.Fatalf("expected newest request first, got %+v", payload.RecentRequests)
+	}
+	if payload.RecentRequests[0].Proxy != "newer-relay" || payload.RecentRequests[0].Strategy != "round-robin" || payload.RecentRequests[0].Account != "conn-newer" {
+		t.Fatalf("expected persisted request labels, got %+v", payload.RecentRequests[0])
 	}
 }
