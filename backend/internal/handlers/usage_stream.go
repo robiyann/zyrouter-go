@@ -298,7 +298,7 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 			ID: row.id, Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
 			Account: row.account, Proxy: row.proxy, Strategy: row.strategy,
 			PromptTokens: row.prompt, CompletionTokens: row.completion, Status: row.status,
-			ClientIdentity: row.clientIdentity, ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
+			ClientIdentity: handlerutil.SanitizeClientIdentity(row.clientIdentity, row.apiKeyID), ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
 		})
 	}
 

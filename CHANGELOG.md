@@ -1,5 +1,16 @@
 # Zyrouter Unified Changelog
 
+### [2026-10-02 16:10 WIB] - [Codex] - Control-Plane Authorization Boundary & Security Hardening
+- **Modul**: `Backend / Authentication / Middleware / Telemetry / Tests`
+- **Deskripsi Perubahan**:
+  - Control-plane middleware now requires a dashboard session or explicit local loopback credential for every mounted admin route, including audit-log catalog, download, deletion, auth-logs, system overview, and proxy-pool deploy endpoints.
+  - Hardened loopback grant (`isLocalRequest`) to strictly require a loopback socket remote address, preventing remote IP spoofing and unauthorized loopback promotion via header manipulation.
+  - Client API keys and legacy ownerless gateway keys can no longer be promoted to administrator access through route-name allowlists or missing ownership metadata.
+  - Client API-key identities are masked before telemetry and usage-history persistence/response, including sanitization of legacy rows and audit records.
+  - Synchronized `CORS_ALLOWED_ORIGINS` into `BrowserOriginAllowed` CSRF verification.
+  - Added regression coverage for audit-log access-control enforcement, identity masking, and loopback request validation.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-09-29] - [Codex] - Mobile Event Activity Row Layout
 - **Modul**: `Overview Dashboard / Mobile Responsive UI`
 - **Deskripsi Perubahan**:

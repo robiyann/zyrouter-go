@@ -36,7 +36,7 @@ func TestAuditMetadataIdentityPriority(t *testing.T) {
 
 	key.TelegramUserID = nil
 	metadata = auditMetadataFromContext(ctx)
-	if metadata.ClientIdentity != key.Key {
-		t.Fatalf("expected full API key fallback, got %q", metadata.ClientIdentity)
+	if metadata.ClientIdentity != "zy_secr...-key" {
+		t.Fatalf("expected masked API key fallback, got %q", metadata.ClientIdentity)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"zyrouter/backend/internal/db"
+	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/labels"
 )
 
@@ -306,7 +307,7 @@ func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPa
 					ID: row.id, Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
 					Account: row.account, Proxy: row.proxy, Strategy: row.strategy,
 					PromptTokens: row.prompt, CompletionTokens: row.completion, Status: row.status,
-					ClientIdentity: row.clientIdentity, ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
+					ClientIdentity: handlerutil.SanitizeClientIdentity(row.clientIdentity, row.apiKeyID), ClientIP: row.clientIP, APIKeyID: row.apiKeyID,
 				})
 			}
 		}

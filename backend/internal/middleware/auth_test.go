@@ -226,12 +226,14 @@ func TestRequireApiKeyRejectsBannedTelegramUser(t *testing.T) {
 
 func TestIsLocalRequest_UsesForwardedClientIP(t *testing.T) {
 	publicViaNginx := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	publicViaNginx.RemoteAddr = "127.0.0.1:8080"
 	publicViaNginx.Header.Set("X-Real-IP", "198.51.100.20")
 	if isLocalRequest(publicViaNginx) {
 		t.Fatal("public request forwarded by Nginx must not receive local loopback access")
 	}
 
 	localViaNginx := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	localViaNginx.RemoteAddr = "127.0.0.1:8080"
 	localViaNginx.Header.Set("X-Real-IP", "127.0.0.1")
 	if !isLocalRequest(localViaNginx) {
 		t.Fatal("loopback client IP should remain local")
@@ -243,6 +245,23 @@ func TestIsLocalRequest_RejectsPublicHostFromLoopbackProxy(t *testing.T) {
 	request.RemoteAddr = "127.0.0.1:8080"
 	if isLocalRequest(request) {
 		t.Fatal("public dashboard host must not receive a loopback grant")
+	}
+}
+
+func TestIsLocalRequest_RejectsExternalRemoteAddrWithLocalhostHost(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	request.RemoteAddr = "203.0.113.50:8080"
+	if isLocalRequest(request) {
+		t.Fatal("external remote address must not receive local loopback access even with Host: localhost")
+	}
+}
+
+func TestIsLocalRequest_RejectsSpoofedLoopbackHeaderFromExternalIP(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	request.RemoteAddr = "203.0.113.50:8080"
+	request.Header.Set("X-Real-IP", "127.0.0.1")
+	if isLocalRequest(request) {
+		t.Fatal("external remote address must not spoof loopback via X-Real-IP")
 	}
 }
 

@@ -165,10 +165,9 @@ func (l *Logger) writeEntry(entry *AuditEntry) {
 	}
 }
 
-// compactAuditRecord is the persisted training-oriented format. Upstream
-// credentials remain masked. The inbound client key is also masked, while the
-// admin-only clientIdentity field follows the configured identity priority and
-// contains the full inbound key only when no Telegram identity exists.
+// compactAuditRecord is the persisted training-oriented format. Upstream and
+// inbound credentials remain masked. Human client identities are preserved,
+// while a clientIdentity that came directly from the inbound key is masked too.
 type compactAuditRecord struct {
 	ID             string `json:"id"`
 	Timestamp      string `json:"timestamp"`
@@ -189,6 +188,10 @@ func compactRecord(entry *AuditEntry) compactAuditRecord {
 	if entry == nil {
 		return compactAuditRecord{}
 	}
+	clientIdentity := entry.ClientIdentity
+	if clientIdentity != "" && clientIdentity == entry.ClientAPIKey {
+		clientIdentity = maskAPIKey(entry.ClientAPIKey)
+	}
 	request := entry.ClientRequest.Body
 	response := entry.ProviderResponse.Body
 	if response == "" {
@@ -200,7 +203,7 @@ func compactRecord(entry *AuditEntry) compactAuditRecord {
 		APIKey:         maskAPIKey(entry.APIKey),
 		ClientAPIKey:   maskAPIKey(entry.ClientAPIKey),
 		APIKeyID:       entry.APIKeyID,
-		ClientIdentity: entry.ClientIdentity,
+		ClientIdentity: clientIdentity,
 		ClientIP:       entry.ClientIP,
 		Provider:       entry.Provider,
 		Model:          entry.Model,

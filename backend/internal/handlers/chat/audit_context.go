@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/middleware"
 )
 
@@ -17,10 +18,10 @@ type auditRequestMetadata struct {
 	ClientIP       string
 }
 
-// auditMetadataFromContext returns the admin-only request identity using the
-// requested priority: Telegram username, Telegram user ID, then the presented
-// API key. The raw key is only carried into admin audit sinks; it is never sent
-// to client-owned telemetry endpoints.
+// auditMetadataFromContext returns the request identity using the requested
+// priority: Telegram username, Telegram user ID, then a masked API key. The
+// raw key is only carried in memory for the audit logger, which masks it before
+// persistence; it is never written to telemetry metadata.
 func auditMetadataFromContext(ctx context.Context) auditRequestMetadata {
 	key := middleware.GetAuthenticatedApiKeyFromContext(ctx)
 	if key == nil {
@@ -41,7 +42,7 @@ func auditMetadataFromContext(ctx context.Context) auditRequestMetadata {
 	} else if key.ID == "local-loopback" {
 		metadata.ClientIdentity = "Local Loopback Client"
 	} else {
-		metadata.ClientIdentity = metadata.ClientAPIKey
+		metadata.ClientIdentity = handlerutil.SanitizeClientIdentity(metadata.ClientAPIKey, metadata.APIKeyID)
 	}
 	return metadata
 }

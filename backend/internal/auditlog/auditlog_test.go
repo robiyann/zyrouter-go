@@ -100,6 +100,17 @@ func TestRedactPayloadRemovesCredentialFields(t *testing.T) {
 	}
 }
 
+func TestCompactRecordMasksClientIdentityFallback(t *testing.T) {
+	const clientKey = "zy-client-1234567890"
+	record := compactRecord(&AuditEntry{ClientAPIKey: clientKey, ClientIdentity: clientKey})
+	if record.ClientIdentity != "zy-clie...7890" {
+		t.Fatalf("expected masked client identity, got %q", record.ClientIdentity)
+	}
+	if strings.Contains(record.ClientIdentity, clientKey) {
+		t.Fatalf("client key leaked through compact record: %q", record.ClientIdentity)
+	}
+}
+
 func TestAuditLogger_DeleteLogFiles(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "auditlog_delete_test_*")
 	if err != nil {

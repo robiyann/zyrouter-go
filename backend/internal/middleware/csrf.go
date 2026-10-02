@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"zyrouter/backend/internal/handlerutil"
@@ -24,6 +25,11 @@ func BrowserOriginAllowed(r *http.Request) bool {
 		"https://client.zyvenox.tech": {},
 		"http://localhost:3000":       {},
 		"http://127.0.0.1:3000":       {},
+	}
+	for _, extra := range strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",") {
+		if extra = strings.TrimSpace(extra); extra != "" {
+			allowed[strings.ToLower(extra)] = struct{}{}
+		}
 	}
 	requestOrigin := strings.ToLower(parsed.Scheme + "://" + parsed.Host)
 	if _, ok := allowed[requestOrigin]; ok {

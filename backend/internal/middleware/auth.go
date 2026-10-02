@@ -47,24 +47,26 @@ func isLocalRequest(r *http.Request) bool {
 	if r.Header.Get("X-9r-Via-Proxy") != "" {
 		return false
 	}
-	// Nginx (the supported public entrypoint) forwards the original client IP
-	// in X-Real-IP. Without honoring it, every proxied public request appears
-	// to come from 127.0.0.1 and receives the local loopback grant.
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		return isLoopbackHost(realIP)
+	// The immediate socket connection MUST originate from a loopback address.
+	// If the connection is from a remote IP, it is NEVER a local request,
+	// regardless of what Host header or spoofed headers were sent.
+	if !isLoopbackHost(r.RemoteAddr) {
+		return false
 	}
-	if realIP := r.Header.Get("X-9r-Real-IP"); realIP != "" {
-		return isLoopbackHost(realIP)
+	// When running behind a local reverse proxy (e.g. Nginx on 127.0.0.1),
+	// the proxy forwards the original client IP in X-Real-IP or X-9r-Real-IP.
+	// If present, the forwarded client IP must also be loopback.
+	if realIP := r.Header.Get("X-Real-IP"); realIP != "" && !isLoopbackHost(realIP) {
+		return false
 	}
-	// A public hostname must never receive a local grant, even when a reverse
-	// proxy forgets to forward the client IP and RemoteAddr is 127.0.0.1.
+	if realIP := r.Header.Get("X-9r-Real-IP"); realIP != "" && !isLoopbackHost(realIP) {
+		return false
+	}
+	// A public hostname must never receive a local grant, even when RemoteAddr is 127.0.0.1.
 	if !isLoopbackHost(r.Host) {
 		return false
 	}
-	if isLoopbackHost(r.RemoteAddr) {
-		return true
-	}
-	return isLoopbackHost(r.Host)
+	return true
 }
 
 // RequireApiKey creates a middleware handler that authenticates requests using either
@@ -150,14 +152,17 @@ func RequireApiKey(repo *db.Repo) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireAdminAccess accepts dashboard sessions, local admin access, and
-// non-client API keys, but explicitly rejects keys owned by a client.
+// RequireAdminAccess protects control-plane routes mounted alongside inference
+// routes. The only credentials accepted for an admin path are a server-issued
+// dashboard session or the explicit local loopback grant. Inference/API keys
+// are deliberately never promoted to administrators, regardless of their
+// owner metadata or legacy database shape.
 func RequireAdminAccess(repo *db.Repo) func(http.Handler) http.Handler {
 	base := RequireApiKey(repo)
 	return func(next http.Handler) http.Handler {
 		protected := base(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := GetAuthenticatedApiKey(r)
-			if key != nil && isAdminRoute(r.URL.Path) && !isAdministratorCredential(key) {
+			if isAdminRoute(r.URL.Path) && !isAdministratorCredential(key) {
 				handlerutil.WriteJSONError(w, http.StatusForbidden, "administrator access required")
 				return
 			}
@@ -180,21 +185,7 @@ func isAdministratorCredential(key *models.APIKey) bool {
 	if key == nil {
 		return false
 	}
-	if key.ID == "session-admin" || key.ID == "local-loopback" {
-		return true
-	}
-	if key.ClientID != nil && strings.TrimSpace(*key.ClientID) != "" {
-		return false
-	}
-	if key.UserID != nil && strings.TrimSpace(*key.UserID) != "" {
-		return false
-	}
-	if key.AccountTypeID != nil {
-		typeID := strings.TrimSpace(*key.AccountTypeID)
-		return typeID == "" || strings.EqualFold(typeID, "administrator")
-	}
-	// Legacy operator keys have no owner/account type and remain valid.
-	return true
+	return key.ID == "session-admin" || key.ID == "local-loopback"
 }
 
 func requestClientIP(r *http.Request) string {
@@ -211,9 +202,10 @@ func requestClientIP(r *http.Request) string {
 func isAdminRoute(path string) bool {
 	for _, prefix := range []string{
 		"/api/keys", "/api/providers", "/api/combos", "/api/settings", "/api/proxy-pools",
-		"/api/model-aliases", "/api/custom-models", "/api/models/custom", "/api/provider-nodes",
-		"/api/provider-prefixes", "/api/oauth", "/api/admin/", "/admin/", "/translator/",
-		"/usage/", "/api/usage/", "/debug/", "/api/version",
+		"/proxy-pools/", "/api/model-aliases", "/api/custom-models", "/api/models/custom",
+		"/api/provider-nodes", "/api/provider-prefixes", "/api/oauth", "/api/admin/",
+		"/api/audit-logs/", "/api/auth-logs", "/admin/", "/translator/",
+		"/usage/", "/api/usage/", "/api/system", "/debug/", "/api/version",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			return true

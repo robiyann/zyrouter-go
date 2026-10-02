@@ -129,12 +129,27 @@ func TestClientApiKeyCannotAccessAdminRoutes(t *testing.T) {
 
 	r := chi.NewRouter()
 	SetupServerRouter(r, repo, nil)
-	req := httptest.NewRequest(http.MethodGet, "http://example.invalid/api/keys", nil)
-	req.Header.Set("Authorization", "Bearer sk-client-boundary")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected client key to be denied admin route, got %d: %s", rec.Code, rec.Body.String())
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/keys"},
+		{http.MethodGet, "/api/usage/stats"},
+		{http.MethodGet, "/api/audit-logs/files"},
+		{http.MethodGet, "/api/audit-logs/files/audit-2026-10-02-0001.jsonl"},
+		{http.MethodDelete, "/api/audit-logs/files"},
+		{http.MethodDelete, "/api/audit-logs/files/audit-2026-10-02-0001.jsonl"},
+		{http.MethodGet, "/api/auth-logs"},
+		{http.MethodGet, "/api/system/overview"},
+		{http.MethodPost, "/proxy-pools/vercel-deploy"},
+	} {
+		req := httptest.NewRequest(route.method, "http://example.invalid"+route.path, nil)
+		req.Header.Set("Authorization", "Bearer sk-client-boundary")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected client key to be denied %s %s, got %d: %s", route.method, route.path, rec.Code, rec.Body.String())
+		}
 	}
 	proxyReq := httptest.NewRequest(http.MethodGet, "http://example.invalid/models", nil)
 	proxyReq.Header.Set("Authorization", "Bearer sk-client-boundary")

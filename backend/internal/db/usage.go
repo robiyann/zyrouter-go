@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"zyrouter/backend/internal/handlerutil"
 	"zyrouter/backend/internal/labels"
 	"zyrouter/backend/internal/pagination"
 )
@@ -277,7 +278,7 @@ func (r *Repo) GetAdminUsageHistoryCursor(limit int, rawCursor, providerFilter, 
 			"account": item.connectionID, "proxy": item.proxy, "strategy": item.strategy,
 			"promptTokens": item.prompt, "completionTokens": item.completion, "totalTokens": item.prompt + item.completion,
 			"status": item.status, "durationMs": item.latency,
-			"clientIdentity": item.identity, "clientIp": item.ip, "apiKeyId": item.apiKeyID,
+			"clientIdentity": handlerutil.SanitizeClientIdentity(item.identity, item.apiKeyID), "clientIp": item.ip, "apiKeyId": item.apiKeyID,
 		})
 	}
 	response := map[string]any{"items": items, "limit": limit, "hasMore": hasMore, "nextCursor": ""}
