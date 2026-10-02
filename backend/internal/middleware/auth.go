@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"zyrouter/backend/internal/auth"
@@ -207,23 +208,103 @@ func isAdministratorCredential(key *models.APIKey) bool {
 	return key.ID == "session-admin" || key.ID == "local-loopback"
 }
 
-func requestClientIP(r *http.Request) string {
-	for _, h := range []string{"CF-Connecting-IP", "True-Client-IP", "X-Real-IP", "X-9r-Real-IP"} {
-		if val := strings.TrimSpace(r.Header.Get(h)); val != "" {
-			return val
+// IsTrustedProxy reports whether the remote socket host is a trusted reverse proxy
+// authorized to supply client identity forwarding headers (e.g. CF-Connecting-IP, X-Real-IP).
+func IsTrustedProxy(remoteHostOrIP string) bool {
+	clean := strings.TrimSpace(remoteHostOrIP)
+	if clean == "" {
+		return false
+	}
+	if h, _, err := net.SplitHostPort(clean); err == nil {
+		clean = h
+	}
+	clean = strings.Trim(clean, "[]")
+	clean = strings.ToLower(strings.TrimSpace(clean))
+
+	// 1. Check explicit TRUSTED_PROXIES configuration
+	if env := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); env != "" {
+		if env == "*" || strings.EqualFold(env, "all") {
+			return true
+		}
+		for _, item := range strings.Split(env, ",") {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			if strings.EqualFold(item, clean) {
+				return true
+			}
+			if _, cidr, err := net.ParseCIDR(item); err == nil {
+				ip := net.ParseIP(clean)
+				if ip != nil && cidr.Contains(ip) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// 2. Default: Loopback and Private IP ranges (Nginx/Caddy/Cloudflare Tunnel on 127.0.0.1, Docker/VPC)
+	if isLoopbackHost(clean) {
+		return true
+	}
+	parsed := net.ParseIP(clean)
+	if parsed != nil && (parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast()) {
+		return true
+	}
+	return false
+}
+
+// RequestClientIP returns the authoritative client IP address for the request.
+// Proxy forwarding headers (CF-Connecting-IP, True-Client-IP, X-Real-IP, X-9r-Real-IP,
+// X-Forwarded-For) are only honored if the socket connection originates from a
+// trusted reverse proxy (loopback, private network, or configured TRUSTED_PROXIES).
+// Direct external connections always resolve to the underlying socket remote address,
+// neutralizing header-spoofing attacks against anti-bruteforce and rate limiting.
+func RequestClientIP(r *http.Request) string {
+	remoteHost, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		remoteHost = strings.TrimSpace(r.RemoteAddr)
+	}
+	remoteHost = strings.Trim(remoteHost, "[]")
+
+	if IsTrustedProxy(remoteHost) {
+		for _, h := range []string{"CF-Connecting-IP", "True-Client-IP", "X-Real-IP", "X-9r-Real-IP"} {
+			if val := strings.TrimSpace(r.Header.Get(h)); val != "" {
+				cand := val
+				if host, _, err := net.SplitHostPort(cand); err == nil {
+					cand = host
+				}
+				cand = strings.Trim(cand, "[]")
+				if net.ParseIP(cand) != nil {
+					return cand
+				}
+			}
+		}
+		if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+			for _, part := range strings.Split(xff, ",") {
+				cand := strings.TrimSpace(part)
+				if cand != "" {
+					if host, _, err := net.SplitHostPort(cand); err == nil {
+						cand = host
+					}
+					cand = strings.Trim(cand, "[]")
+					if net.ParseIP(cand) != nil {
+						return cand
+					}
+				}
+			}
 		}
 	}
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil {
-		return host
+
+	if remoteHost != "" {
+		return remoteHost
 	}
 	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func requestClientIP(r *http.Request) string {
+	return RequestClientIP(r)
 }
 
 func isAdminRoute(path string) bool {

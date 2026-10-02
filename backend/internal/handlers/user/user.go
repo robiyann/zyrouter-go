@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -28,10 +27,22 @@ type Handler struct{ Repo *db.Repo }
 
 const verificationBrowserCookie = "verification_browser"
 
+func isProductionEnv() bool {
+	nodeEnv := strings.ToLower(strings.TrimSpace(os.Getenv("NODE_ENV")))
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+	requireEdge := strings.ToLower(strings.TrimSpace(os.Getenv("REQUIRE_EDGE_SECRET")))
+	return nodeEnv == "production" || env == "production" || requireEdge == "true" || requireEdge == "1"
+}
+
 func edgeSecretAllowed(r *http.Request) bool {
 	expected := strings.TrimSpace(os.Getenv("CF_EDGE_SHARED_SECRET"))
 	if expected == "" {
-		return true
+		if isProductionEnv() {
+			return false // Fail-closed in production
+		}
+		// In development or local testing without an edge gateway configured,
+		// allow trusted local proxy / loopback connections only.
+		return middleware.IsTrustedProxy(r.RemoteAddr)
 	}
 	provided := strings.TrimSpace(r.Header.Get("X-Zyrouter-Edge-Secret"))
 	if provided == "" || len(provided) != len(expected) {
@@ -53,14 +64,7 @@ func verificationClientKey(r *http.Request) string {
 	if cookie, err := r.Cookie(verificationBrowserCookie); err == nil && strings.TrimSpace(cookie.Value) != "" {
 		return "browser:" + db.HashUserSecret(cookie.Value)
 	}
-	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
-		return value
-	}
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil {
-		return host
-	}
-	return strings.TrimSpace(r.RemoteAddr)
+	return middleware.RequestClientIP(r)
 }
 
 func allowVerificationRequest(r *http.Request, limit int, window time.Duration) bool {

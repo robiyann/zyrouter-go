@@ -43,8 +43,13 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 		r.Post("/key/rotate", h.RotateKey)
 	})
 
+	const testEdgeSecret = "cf-edge-secret-test-token-2026"
+	t.Setenv("CF_EDGE_SHARED_SECRET", testEdgeSecret)
+
+	startReq := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	startReq.Header.Set("X-Zyrouter-Edge-Secret", testEdgeSecret)
 	start := httptest.NewRecorder()
-	r.ServeHTTP(start, httptest.NewRequest(http.MethodPost, "/verify/start", nil))
+	r.ServeHTTP(start, startReq)
 	if start.Code != http.StatusCreated {
 		t.Fatalf("start status=%d body=%s", start.Code, start.Body.String())
 	}
@@ -61,6 +66,7 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 
 	status := httptest.NewRecorder()
 	statusReq := httptest.NewRequest(http.MethodGet, "/verify/"+challenge.ID, nil)
+	statusReq.Header.Set("X-Zyrouter-Edge-Secret", testEdgeSecret)
 	statusReq.Header.Set("Cookie", strings.Split(verificationCookie, ";")[0])
 	r.ServeHTTP(status, statusReq)
 	if status.Code != http.StatusOK {
@@ -125,7 +131,9 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 
 	// Test re-login with existing Telegram user
 	reloginStart := httptest.NewRecorder()
-	r.ServeHTTP(reloginStart, httptest.NewRequest(http.MethodPost, "/verify/start", nil))
+	reloginReq := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	reloginReq.Header.Set("X-Zyrouter-Edge-Secret", testEdgeSecret)
+	r.ServeHTTP(reloginStart, reloginReq)
 	var reloginChallenge struct {
 		ID string `json:"challengeId"`
 	}
@@ -136,5 +144,52 @@ func TestTelegramVerificationAndOneActiveHashedKey(t *testing.T) {
 	}
 	if reloginUser.TelegramUsername == nil || *reloginUser.TelegramUsername != "tester_updated" {
 		t.Fatalf("re-login username not updated: %+v", reloginUser)
+	}
+}
+
+func TestEdgeSecretAllowed_FailClosedInProduction(t *testing.T) {
+	t.Setenv("NODE_ENV", "production")
+	t.Setenv("CF_EDGE_SHARED_SECRET", "")
+
+	req := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	req.RemoteAddr = "127.0.0.1:8080"
+	if edgeSecretAllowed(req) {
+		t.Fatal("edgeSecretAllowed must fail-closed in production when CF_EDGE_SHARED_SECRET is unset")
+	}
+}
+
+func TestEdgeSecretAllowed_RejectsInvalidSecret(t *testing.T) {
+	t.Setenv("CF_EDGE_SHARED_SECRET", "correct-secret-token")
+
+	// Missing header
+	req1 := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	if edgeSecretAllowed(req1) {
+		t.Fatal("edgeSecretAllowed must reject when header is missing")
+	}
+
+	// Wrong header
+	req2 := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	req2.Header.Set("X-Zyrouter-Edge-Secret", "wrong-secret-token")
+	if edgeSecretAllowed(req2) {
+		t.Fatal("edgeSecretAllowed must reject when secret does not match")
+	}
+
+	// Correct header
+	req3 := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	req3.Header.Set("X-Zyrouter-Edge-Secret", "correct-secret-token")
+	if !edgeSecretAllowed(req3) {
+		t.Fatal("edgeSecretAllowed must accept when secret matches")
+	}
+}
+
+func TestEdgeSecretAllowed_RejectsExternalClientInDev(t *testing.T) {
+	t.Setenv("NODE_ENV", "development")
+	t.Setenv("CF_EDGE_SHARED_SECRET", "")
+
+	// Direct connection from external internet IP without edge secret configured
+	req := httptest.NewRequest(http.MethodPost, "/verify/start", nil)
+	req.RemoteAddr = "203.0.113.88:45678"
+	if edgeSecretAllowed(req) {
+		t.Fatal("edgeSecretAllowed must reject external socket connection when CF_EDGE_SHARED_SECRET is unset")
 	}
 }

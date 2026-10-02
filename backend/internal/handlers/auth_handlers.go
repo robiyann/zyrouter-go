@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,14 +35,7 @@ var loginLimiter = struct {
 }{entries: make(map[string]loginFailureState)}
 
 func loginClientIP(r *http.Request) string {
-	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
-		return value
-	}
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil {
-		return host
-	}
-	return strings.TrimSpace(r.RemoteAddr)
+	return middleware.RequestClientIP(r)
 }
 
 func loginLocked(ip string, now time.Time) (time.Duration, bool) {

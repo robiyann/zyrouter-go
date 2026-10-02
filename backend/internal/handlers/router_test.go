@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -310,5 +311,100 @@ func TestLoginReportsRemainingAttemptsAndLockout(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("X-Login-Attempts-Remaining") != "0" || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("lockout response missing metadata: status=%d remaining=%q retry=%q", rec.Code, rec.Header().Get("X-Login-Attempts-Remaining"), rec.Header().Get("Retry-After"))
+	}
+}
+
+func TestAuthLogin_ExternalSpoofedHeadersCannotBypassLockout(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	settings, err := repo.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := auth.HashPassword("secure-master-password")
+	settings.Password = &hash
+	if err := repo.UpdateSettingsData(settings); err != nil {
+		t.Fatal(err)
+	}
+	handler := HandleAuthLogin(repo)
+
+	// An external attacker attempting to brute-force while rotating X-Real-IP headers
+	externalIP := "203.0.113.88"
+	for attempt := 1; attempt <= 4; attempt++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"bad-password"}`))
+		req.RemoteAddr = externalIP + ":45678"
+		req.Header.Set("X-Real-IP", fmt.Sprintf("10.0.0.%d", attempt))
+		req.Header.Set("CF-Connecting-IP", fmt.Sprintf("1.1.1.%d", attempt))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		wantRemaining := strconv.Itoa(5 - attempt)
+		if rec.Code != http.StatusUnauthorized || rec.Header().Get("X-Login-Attempts-Remaining") != wantRemaining {
+			t.Fatalf("attempt %d: status=%d remaining=%q (expected %s)", attempt, rec.Code, rec.Header().Get("X-Login-Attempts-Remaining"), wantRemaining)
+		}
+	}
+
+	// 5th attempt from same socket IP with yet another spoofed IP must trigger lockout
+	lockoutReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"bad-password"}`))
+	lockoutReq.RemoteAddr = externalIP + ":45678"
+	lockoutReq.Header.Set("X-Real-IP", "10.0.0.99")
+	lockoutReq.Header.Set("CF-Connecting-IP", "1.1.1.99")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, lockoutReq)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("attacker bypassed lockout via spoofed headers; status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-Login-Attempts-Remaining") != "0" {
+		t.Fatalf("expected 0 attempts remaining, got %q", rec.Header().Get("X-Login-Attempts-Remaining"))
+	}
+}
+
+func TestAuthLogin_ProxyPreservesClientLockoutSeparation(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+	settings, err := repo.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := auth.HashPassword("secure-master-password")
+	settings.Password = &hash
+	if err := repo.UpdateSettingsData(settings); err != nil {
+		t.Fatal(err)
+	}
+	handler := HandleAuthLogin(repo)
+
+	// Legitimate requests arriving through Cloudflare Tunnel (127.0.0.1)
+	proxyAddr := "127.0.0.1:8080"
+	client1 := "198.51.100.91"
+	client2 := "198.51.100.92"
+
+	// Lock out Client 1
+	for attempt := 1; attempt <= 5; attempt++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"wrong"}`))
+		req.RemoteAddr = proxyAddr
+		req.Header.Set("CF-Connecting-IP", client1)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	// Client 1 should now be locked
+	reqBlocked := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"wrong"}`))
+	reqBlocked.RemoteAddr = proxyAddr
+	reqBlocked.Header.Set("CF-Connecting-IP", client1)
+	recBlocked := httptest.NewRecorder()
+	handler.ServeHTTP(recBlocked, reqBlocked)
+	if recBlocked.Code != http.StatusTooManyRequests {
+		t.Fatalf("client1 should be locked out, got status=%d", recBlocked.Code)
+	}
+
+	// Client 2 arriving through the same reverse proxy must NOT be locked out
+	reqClean := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"password":"wrong"}`))
+	reqClean.RemoteAddr = proxyAddr
+	reqClean.Header.Set("CF-Connecting-IP", client2)
+	recClean := httptest.NewRecorder()
+	handler.ServeHTTP(recClean, reqClean)
+	if recClean.Code != http.StatusUnauthorized || recClean.Header().Get("X-Login-Attempts-Remaining") != "4" {
+		t.Fatalf("client2 should have 4 attempts remaining, got code=%d remaining=%q", recClean.Code, recClean.Header().Get("X-Login-Attempts-Remaining"))
 	}
 }

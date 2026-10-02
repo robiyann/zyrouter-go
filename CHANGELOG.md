@@ -1,5 +1,14 @@
 # Zyrouter Unified Changelog
 
+### [2026-10-02 17:45 WIB] - [Antigravity] - Anti-Bruteforce IP Extraction Unification & Edge Secret Fail-Closed Hardening
+- **Modul**: `Backend / Authentication / Handlers / Middleware / User Verification`
+- **Deskripsi Perubahan**:
+  - **Anti-Bruteforce Lockout Spoof Mitigation**: Mengunifikasi ekstraksi client IP di `loginClientIP` (`auth_handlers.go`) dan `verificationClientKey` (`user/user.go`) menggunakan `middleware.RequestClientIP`.
+  - **Reverse Proxy Trust Verification**: Menambahkan fungsi `middleware.IsTrustedProxy` yang memvalidasi socket `RemoteAddr` terhadap loopback (`127.0.0.1`, `::1`), private IP (Docker/VPC), dan konfigurasi `TRUSTED_PROXIES`. Request langsung dari internet publik tidak dapat memalsukan `X-Real-IP`, `CF-Connecting-IP`, atau `X-Forwarded-For` untuk membypass proteksi lockout 5x salah password.
+  - **Cloudflare Edge Gateway Secret Fail-Closed**: Memperbaiki fungsi `edgeSecretAllowed` pada `handlers/user/user.go` agar bersifat fail-closed (`return false`) di lingkungan production jika `CF_EDGE_SHARED_SECRET` tidak dikonfigurasi, menutup celah bypass edge shield gateway.
+  - **Regression & Security Tests**: Menambahkan unit test komprehensif di `middleware/auth_test.go`, `handlers/router_test.go`, dan `handlers/user/user_test.go` untuk memverifikasi pencegahan spoofing header IP dan penegakan secret fail-closed.
+- **Status Task**: Selesai / Terverifikasi 100%
+
 ### [2026-10-02 17:25 WIB] - [Codex] - Control-Plane Authorization Boundary, Cloudflare Tunnel Hardening & Telemetry Key Masking
 - **Modul**: `Backend / Authentication / Middleware / UsageTracker / Tests`
 - **Deskripsi Perubahan**:

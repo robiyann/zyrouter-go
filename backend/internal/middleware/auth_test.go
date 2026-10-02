@@ -382,3 +382,82 @@ func TestExtractApiKey(t *testing.T) {
 		})
 	}
 }
+
+func TestRequestClientIP_UntrustedProxyCannotSpoof(t *testing.T) {
+	externalRemote := "203.0.113.50:45678"
+
+	// 1. Direct external connection with spoofed X-Real-IP
+	req1 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req1.RemoteAddr = externalRemote
+	req1.Header.Set("X-Real-IP", "1.1.1.1")
+	if got := RequestClientIP(req1); got != "203.0.113.50" {
+		t.Fatalf("expected real socket IP 203.0.113.50, got spoofed %q", got)
+	}
+
+	// 2. Direct external connection with spoofed CF-Connecting-IP
+	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req2.RemoteAddr = externalRemote
+	req2.Header.Set("CF-Connecting-IP", "1.1.1.1")
+	if got := RequestClientIP(req2); got != "203.0.113.50" {
+		t.Fatalf("expected real socket IP 203.0.113.50, got spoofed %q", got)
+	}
+
+	// 3. Direct external connection with spoofed X-Forwarded-For
+	req3 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req3.RemoteAddr = externalRemote
+	req3.Header.Set("X-Forwarded-For", "1.1.1.1, 2.2.2.2")
+	if got := RequestClientIP(req3); got != "203.0.113.50" {
+		t.Fatalf("expected real socket IP 203.0.113.50, got spoofed %q", got)
+	}
+
+	// 4. Direct external connection with spoofed True-Client-IP
+	req4 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req4.RemoteAddr = externalRemote
+	req4.Header.Set("True-Client-IP", "1.1.1.1")
+	if got := RequestClientIP(req4); got != "203.0.113.50" {
+		t.Fatalf("expected real socket IP 203.0.113.50, got spoofed %q", got)
+	}
+}
+
+func TestRequestClientIP_TrustedProxyHeaders(t *testing.T) {
+	// 1. Loopback proxy (e.g. Cloudflare Tunnel / cloudflared) with CF-Connecting-IP
+	req1 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req1.RemoteAddr = "127.0.0.1:8080"
+	req1.Header.Set("CF-Connecting-IP", "198.51.100.22")
+	if got := RequestClientIP(req1); got != "198.51.100.22" {
+		t.Fatalf("expected 198.51.100.22 from CF-Connecting-IP, got %q", got)
+	}
+
+	// 2. Loopback proxy (e.g. Nginx/Caddy) with X-Real-IP
+	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req2.RemoteAddr = "127.0.0.1:8080"
+	req2.Header.Set("X-Real-IP", "198.51.100.23")
+	if got := RequestClientIP(req2); got != "198.51.100.23" {
+		t.Fatalf("expected 198.51.100.23 from X-Real-IP, got %q", got)
+	}
+
+	// 3. Loopback proxy with X-Forwarded-For chain
+	req3 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req3.RemoteAddr = "127.0.0.1:8080"
+	req3.Header.Set("X-Forwarded-For", "198.51.100.24, 127.0.0.1")
+	if got := RequestClientIP(req3); got != "198.51.100.24" {
+		t.Fatalf("expected 198.51.100.24 from X-Forwarded-For, got %q", got)
+	}
+
+	// 4. Private network proxy (e.g. Docker / VPC internal proxy)
+	req4 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req4.RemoteAddr = "10.0.0.2:8080"
+	req4.Header.Set("X-Real-IP", "198.51.100.25")
+	if got := RequestClientIP(req4); got != "198.51.100.25" {
+		t.Fatalf("expected 198.51.100.25 from private network proxy, got %q", got)
+	}
+
+	// 5. Explicit TRUSTED_PROXIES configuration
+	t.Setenv("TRUSTED_PROXIES", "203.0.113.99")
+	req5 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req5.RemoteAddr = "203.0.113.99:12345"
+	req5.Header.Set("X-Real-IP", "198.51.100.26")
+	if got := RequestClientIP(req5); got != "198.51.100.26" {
+		t.Fatalf("expected 198.51.100.26 via configured TRUSTED_PROXIES, got %q", got)
+	}
+}
