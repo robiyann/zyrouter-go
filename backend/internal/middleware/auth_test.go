@@ -265,6 +265,40 @@ func TestIsLocalRequest_RejectsSpoofedLoopbackHeaderFromExternalIP(t *testing.T)
 	}
 }
 
+func TestIsLocalRequest_RejectsCloudflareTunnelAndReverseProxies(t *testing.T) {
+	// 1. Cloudflare Tunnel with CF-Connecting-IP
+	cfReq := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	cfReq.RemoteAddr = "127.0.0.1:8080"
+	cfReq.Header.Set("CF-Connecting-IP", "198.51.100.22")
+	if isLocalRequest(cfReq) {
+		t.Fatal("Cloudflare Tunnel request with CF-Connecting-IP must not receive loopback access")
+	}
+
+	// 2. Cloudflare Tunnel with CF-Ray
+	cfRayReq := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	cfRayReq.RemoteAddr = "127.0.0.1:8080"
+	cfRayReq.Header.Set("CF-Ray", "8c91a2b3c4d5-SIN")
+	if isLocalRequest(cfRayReq) {
+		t.Fatal("Cloudflare request with CF-Ray must not receive loopback access")
+	}
+
+	// 3. Reverse proxy with X-Forwarded-For
+	xffReq := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	xffReq.RemoteAddr = "127.0.0.1:8080"
+	xffReq.Header.Set("X-Forwarded-For", "203.0.113.88, 127.0.0.1")
+	if isLocalRequest(xffReq) {
+		t.Fatal("X-Forwarded-For containing public client IP must not receive loopback access")
+	}
+
+	// 4. Reverse proxy with True-Client-IP
+	trueIPReq := httptest.NewRequest(http.MethodGet, "http://localhost/v1/models", nil)
+	trueIPReq.RemoteAddr = "127.0.0.1:8080"
+	trueIPReq.Header.Set("True-Client-IP", "203.0.113.99")
+	if isLocalRequest(trueIPReq) {
+		t.Fatal("True-Client-IP with public client IP must not receive loopback access")
+	}
+}
+
 func TestExtractApiKey(t *testing.T) {
 	tests := []struct {
 		name     string

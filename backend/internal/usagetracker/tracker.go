@@ -49,6 +49,17 @@ type RecentRequest struct {
 	APIKeyID         string  `json:"apiKeyId,omitempty"`
 }
 
+// MarshalJSON ensures any raw API key in ClientIdentity or APIKeyID is masked before SSE/JSON serialization.
+func (r RecentRequest) MarshalJSON() ([]byte, error) {
+	type Alias RecentRequest
+	aux := (Alias)(r)
+	aux.ClientIdentity = handlerutil.SanitizeClientIdentity(aux.ClientIdentity, aux.APIKeyID)
+	if handlerutil.LooksLikeCredential(aux.APIKeyID) {
+		aux.APIKeyID = handlerutil.MaskCredential(aux.APIKeyID)
+	}
+	return json.Marshal(aux)
+}
+
 // StreamPayload represents the payload sent over SSE on /api/usage/stream.
 type StreamPayload struct {
 	ActiveRequests []ActiveRequest `json:"activeRequests"`

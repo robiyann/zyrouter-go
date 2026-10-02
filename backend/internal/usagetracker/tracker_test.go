@@ -1,6 +1,7 @@
 package usagetracker
 
 import (
+	"encoding/json"
 	"os"
 	"sync"
 	"testing"
@@ -155,5 +156,34 @@ func TestTracker_ConcurrentLoad(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("tracker did not drain 1000 concurrent request updates")
+	}
+}
+
+func TestRecentRequest_MarshalJSON_MasksRawApiKey(t *testing.T) {
+	req := RecentRequest{
+		ID:             "req-leak-test",
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+		Model:          "gpt-4o",
+		Provider:       "openai",
+		ClientIdentity: "zy_fe004beb071ff1b5853fe6695b282c06",
+		APIKeyID:       "key-1",
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	ident, ok := out["clientIdentity"].(string)
+	if !ok {
+		t.Fatalf("expected clientIdentity in JSON: %s", string(data))
+	}
+	if ident == "zy_fe004beb071ff1b5853fe6695b282c06" {
+		t.Fatalf("raw API key was not masked in JSON: %s", ident)
+	}
+	if ident != "zy_fe00...2c06" {
+		t.Fatalf("expected zy_fe00...2c06, got %s", ident)
 	}
 }

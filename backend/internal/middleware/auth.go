@@ -53,15 +53,34 @@ func isLocalRequest(r *http.Request) bool {
 	if !isLoopbackHost(r.RemoteAddr) {
 		return false
 	}
-	// When running behind a local reverse proxy (e.g. Nginx on 127.0.0.1),
-	// the proxy forwards the original client IP in X-Real-IP or X-9r-Real-IP.
-	// If present, the forwarded client IP must also be loopback.
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" && !isLoopbackHost(realIP) {
+
+	// Cloudflare edge markers: requests routed through Cloudflare Tunnel (cloudflared)
+	// connect to Zyrouter from 127.0.0.1, but represent external internet traffic.
+	if r.Header.Get("CF-Ray") != "" || r.Header.Get("CF-Connecting-IP") != "" {
 		return false
 	}
-	if realIP := r.Header.Get("X-9r-Real-IP"); realIP != "" && !isLoopbackHost(realIP) {
-		return false
+
+	// Check ALL common reverse-proxy client IP headers (Cloudflare, Nginx, Caddy, AWS, GCP, HAProxy).
+	// If ANY of these headers are present with a non-loopback IP, this request was forwarded
+	// from an external client through a local reverse proxy or tunnel.
+	for _, h := range []string{
+		"CF-Connecting-IP",
+		"True-Client-IP",
+		"X-Real-IP",
+		"X-9r-Real-IP",
+		"X-Forwarded-For",
+		"Forwarded",
+	} {
+		if raw := strings.TrimSpace(r.Header.Get(h)); raw != "" {
+			for _, part := range strings.Split(raw, ",") {
+				part = strings.TrimSpace(part)
+				if part != "" && !isLoopbackHost(part) {
+					return false
+				}
+			}
+		}
 	}
+
 	// A public hostname must never receive a local grant, even when RemoteAddr is 127.0.0.1.
 	if !isLoopbackHost(r.Host) {
 		return false
@@ -189,8 +208,16 @@ func isAdministratorCredential(key *models.APIKey) bool {
 }
 
 func requestClientIP(r *http.Request) string {
-	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
-		return value
+	for _, h := range []string{"CF-Connecting-IP", "True-Client-IP", "X-Real-IP", "X-9r-Real-IP"} {
+		if val := strings.TrimSpace(r.Header.Get(h)); val != "" {
+			return val
+		}
+	}
+	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+			return strings.TrimSpace(parts[0])
+		}
 	}
 	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
 	if err == nil {
@@ -204,7 +231,7 @@ func isAdminRoute(path string) bool {
 		"/api/keys", "/api/providers", "/api/combos", "/api/settings", "/api/proxy-pools",
 		"/proxy-pools/", "/api/model-aliases", "/api/custom-models", "/api/models/custom",
 		"/api/provider-nodes", "/api/provider-prefixes", "/api/oauth", "/api/admin/",
-		"/api/audit-logs/", "/api/auth-logs", "/admin/", "/translator/",
+		"/api/audit-logs", "/api/auth-logs", "/admin/", "/translator/",
 		"/usage/", "/api/usage/", "/api/system", "/debug/", "/api/version",
 	} {
 		if strings.HasPrefix(path, prefix) {

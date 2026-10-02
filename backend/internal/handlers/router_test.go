@@ -196,6 +196,43 @@ func TestUserApiKeyCannotAccessAdminRoutes(t *testing.T) {
 	}
 }
 
+func TestApiKeyWithAdministratorTierCannotAccessAdminOrAuditRoutes(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(database)
+
+	// Create an API key with accountTypeId: "administrator" (e.g. zy_fe004beb...)
+	keyStr := "zy_fe004beb071ff1b5853fe6695b282c06"
+	if _, err := repo.CreateApiKey("key-admin-tier", keyStr, "Admin Tier Test Key", "mac-1", "administrator", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	SetupServerRouter(r, repo, nil)
+
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodDelete, "/api/audit-logs/files"},
+		{http.MethodDelete, "/api/audit-logs/files/audit-2026-10-02-0001.jsonl"},
+		{http.MethodGet, "/api/audit-logs/files"},
+		{http.MethodGet, "/api/keys"},
+		{http.MethodGet, "/api/settings/database"},
+		{http.MethodGet, "/api/auth-logs"},
+		{http.MethodGet, "/api/system/overview"},
+		{http.MethodPost, "/proxy-pools/vercel-deploy"},
+	} {
+		req := httptest.NewRequest(route.method, "http://example.invalid"+route.path, nil)
+		req.Header.Set("Authorization", "Bearer "+keyStr)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected admin-tier API key to be denied %s %s, got %d: %s", route.method, route.path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestExpiredClientKeyCannotAccessModels(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()

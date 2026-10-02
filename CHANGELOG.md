@@ -1,14 +1,13 @@
 # Zyrouter Unified Changelog
 
-### [2026-10-02 16:10 WIB] - [Codex] - Control-Plane Authorization Boundary & Security Hardening
-- **Modul**: `Backend / Authentication / Middleware / Telemetry / Tests`
+### [2026-10-02 17:25 WIB] - [Codex] - Control-Plane Authorization Boundary, Cloudflare Tunnel Hardening & Telemetry Key Masking
+- **Modul**: `Backend / Authentication / Middleware / UsageTracker / Tests`
 - **Deskripsi Perubahan**:
-  - Control-plane middleware now requires a dashboard session or explicit local loopback credential for every mounted admin route, including audit-log catalog, download, deletion, auth-logs, system overview, and proxy-pool deploy endpoints.
-  - Hardened loopback grant (`isLocalRequest`) to strictly require a loopback socket remote address, preventing remote IP spoofing and unauthorized loopback promotion via header manipulation.
-  - Client API keys and legacy ownerless gateway keys can no longer be promoted to administrator access through route-name allowlists or missing ownership metadata.
-  - Client API-key identities are masked before telemetry and usage-history persistence/response, including sanitization of legacy rows and audit records.
-  - Synchronized `CORS_ALLOWED_ORIGINS` into `BrowserOriginAllowed` CSRF verification.
-  - Added regression coverage for audit-log access-control enforcement, identity masking, and loopback request validation.
+  - Hardened loopback grant (`isLocalRequest`) to inspect all upstream reverse-proxy headers (`CF-Connecting-IP`, `CF-Ray`, `True-Client-IP`, `X-Forwarded-For`, `X-Real-IP`, `X-9r-Real-IP`, `Forwarded`). Requests arriving from Cloudflare Tunnel (`cloudflared`) or local reverse proxies with public client addresses can never receive unauthenticated administrator loopback grants.
+  - Enhanced client IP detection in `requestClientIP` to properly resolve real visitor addresses behind Cloudflare Tunnels and reverse proxy chains for audit logging.
+  - Confirmed and verified that API keys (including those assigned the `administrator` account tier such as `zy_fe004beb...`) are strictly denied with `403 Forbidden` on control-plane routes (`DELETE /api/audit-logs/files`, `/api/keys`, `/api/settings/database`, etc.).
+  - Added JSON-level credential masking (`MarshalJSON` on `RecentRequest`) ensuring that `ClientIdentity` and `APIKeyID` are unconditionally masked to `zy_fe00...2c06` or `******` across SSE usage streams (`/api/usage/stream`), statistics endpoints (`/api/usage/stats`), and database history cursors.
+  - Added comprehensive regression tests for Cloudflare Tunnel / reverse-proxy rejection, telemetry JSON key masking, and admin-tier API key rejection on audit routes.
 - **Status Task**: Selesai / Terverifikasi
 
 ### [2026-09-29] - [Codex] - Mobile Event Activity Row Layout

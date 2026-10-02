@@ -3,12 +3,12 @@ package handlerutil
 import "strings"
 
 // MaskCredential returns a stable, non-reversible display value for a secret.
-// Keep enough context for operators to identify a key without exposing a
-// bearer credential to telemetry, HTML, logs, or JSON responses.
+// For short secrets (<= 12 chars), masks completely with "******".
+// For longer keys (e.g. zy_fe004beb071ff1...), preserves 7-character prefix and 4-character suffix.
 func MaskCredential(value string) string {
 	value = strings.TrimSpace(value)
-	if len(value) <= 8 {
-		return "***"
+	if len(value) <= 12 {
+		return "******"
 	}
 	return value[:7] + "..." + value[len(value)-4:]
 }
@@ -21,7 +21,7 @@ func SanitizeClientIdentity(identity, apiKeyID string) string {
 	if identity == "" || identity == "Dashboard Admin" || identity == "Local Loopback Client" || strings.HasPrefix(identity, "@") || isNumericIdentity(identity) {
 		return identity
 	}
-	if apiKeyID != "" || looksLikeCredential(identity) {
+	if apiKeyID != "" || LooksLikeCredential(identity) {
 		return MaskCredential(identity)
 	}
 	return identity
@@ -39,8 +39,16 @@ func isNumericIdentity(value string) bool {
 	return true
 }
 
-func looksLikeCredential(value string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
-	return strings.HasPrefix(value, "zy_") || strings.HasPrefix(value, "sk-") ||
-		strings.HasPrefix(value, "api_") || strings.HasPrefix(value, "key_")
+// LooksLikeCredential checks if a string matches common API key or bearer token formats.
+func LooksLikeCredential(value string) bool {
+	v := strings.ToLower(strings.TrimSpace(value))
+	if strings.HasPrefix(v, "zy_") || strings.HasPrefix(v, "sk-") ||
+		strings.HasPrefix(v, "api_") || strings.HasPrefix(v, "key_") ||
+		strings.HasPrefix(v, "clt_") || strings.HasPrefix(v, "bearer ") {
+		return true
+	}
+	if len(v) >= 16 && !strings.Contains(v, " ") {
+		return true
+	}
+	return false
 }
