@@ -239,13 +239,20 @@ func StripCompetitivePrompts(req *GeminiRequest) *GeminiRequest {
 func NormalizeAntigravityModel(model string) (backendModel string, thinkingLevel string) {
 	m := strings.ToLower(strings.TrimSpace(model))
 
-	// Determine thinking level from suffix or name (default "high" for -high, "medium" for -medium, "low" for -low)
-	thinkingLevel = "high"
-	if strings.Contains(m, "medium") {
-		thinkingLevel = "medium"
-	} else if strings.Contains(m, "low") {
-		thinkingLevel = "low"
+	// Claude 5.5 model IDs encode the thinking tier in the suffix. Accept both
+	// the dotted client spelling (5.5) and Antigravity's wire spelling (5-5),
+	// then always emit the canonical wire ID.
+	if strings.HasPrefix(m, "claude-sonnet-5-5") || strings.HasPrefix(m, "claude-sonnet-5.5") {
+		level := extractThinkingLevel(m, "high")
+		return fmt.Sprintf("claude-sonnet-5-5-%s", level), level
 	}
+	if strings.HasPrefix(m, "claude-opus-5-5") || strings.HasPrefix(m, "claude-opus-5.5") {
+		level := extractThinkingLevel(m, "high")
+		return fmt.Sprintf("claude-opus-5-5-%s", level), level
+	}
+
+	// Determine thinking level from suffix or name for legacy tiered models.
+	thinkingLevel = extractThinkingLevel(m, "high")
 
 	// gemini-3.8-flash models: preserve exact model name without masking to -tiered or older versions
 	if strings.HasPrefix(m, "gemini-3.8-flash") {
@@ -270,6 +277,16 @@ func NormalizeAntigravityModel(model string) (backendModel string, thinkingLevel
 	}
 
 	return model, thinkingLevel
+}
+
+func extractThinkingLevel(model, fallback string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	for _, level := range []string{"medium", "low", "high"} {
+		if strings.HasSuffix(model, "-"+level) || strings.HasSuffix(model, "."+level) || strings.HasSuffix(model, "_"+level) {
+			return level
+		}
+	}
+	return fallback
 }
 
 // WrapForAntigravity wraps a standard Gemini request in Antigravity API envelope (100% 9router parity).

@@ -1,5 +1,13 @@
 # Zyrouter Unified Changelog
 
+### [2026-10-03 13:10 WIB] - [Codex] - Antigravity Claude Sonnet 5.5 Tiers
+- **Modul**: `Backend / Frontend / Provider Catalog / Tests`
+- **Deskripsi Perubahan**:
+  - Added Antigravity Claude Sonnet 5.5 and Opus 5.5 base/tier IDs to the provider catalog, official model registry, and dashboard model selector.
+  - Updated Antigravity hub User-Agent version gating and canonicalized dotted/hyphenated 5.5 model names with tier-aware normalization.
+  - Added capability metadata and normalization regression coverage for all Sonnet/Opus 5.5 thinking tiers.
+- **Status Task**: Selesai / Terverifikasi
+
 ### [2026-10-02 17:45 WIB] - [Antigravity] - Anti-Bruteforce IP Extraction Unification & Edge Secret Fail-Closed Hardening
 - **Modul**: `Backend / Authentication / Handlers / Middleware / User Verification`
 - **Deskripsi Perubahan**:

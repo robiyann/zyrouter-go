@@ -103,6 +103,16 @@ var providerCapabilities = map[string]map[string]Capabilities{
 }
 
 func init() {
+	sonnet55 := Capabilities{Vision: true, Reasoning: true, Search: true, Tools: true}
+	opus55 := Capabilities{Vision: true, Reasoning: true, Search: true, Tools: true}
+	modelCapabilities["claude-sonnet-5-5"] = sonnet55
+	modelCapabilities["claude-sonnet-5-5-medium"] = sonnet55
+	modelCapabilities["claude-sonnet-5-5-low"] = sonnet55
+	modelCapabilities["claude-sonnet-5-5-high"] = sonnet55
+	modelCapabilities["claude-opus-5-5"] = opus55
+	modelCapabilities["claude-opus-5-5-medium"] = opus55
+	modelCapabilities["claude-opus-5-5-low"] = opus55
+	modelCapabilities["claude-opus-5-5-high"] = opus55
 	kiroGpt56 := Capabilities{Vision: true, Reasoning: true, Search: true, Tools: true}
 	providerCapabilities["kiro"] = map[string]Capabilities{
 		"gpt-5.6-sol":                  kiroGpt56,

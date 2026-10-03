@@ -191,6 +191,13 @@ func TestNormalizeAntigravityModel(t *testing.T) {
 		{"gemini-3.7-flash-low", "gemini-3.7-flash-tiered", "low"},
 		{"gemini-3.8-flash-medium", "gemini-3.8-flash-medium", "medium"},
 		{"gemini-3.8-flash-high", "gemini-3.8-flash-high", "high"},
+		{"claude-sonnet-5-5-medium", "claude-sonnet-5-5-medium", "medium"},
+		{"claude-sonnet-5-5-low", "claude-sonnet-5-5-low", "low"},
+		{"claude-sonnet-5-5-high", "claude-sonnet-5-5-high", "high"},
+		{"claude-sonnet-5-5", "claude-sonnet-5-5-high", "high"},
+		{"claude-sonnet-5.5-medium", "claude-sonnet-5-5-medium", "medium"},
+		{"claude-opus-5-5", "claude-opus-5-5-high", "high"},
+		{"claude-opus-5.5-low", "claude-opus-5-5-low", "low"},
 		{"claude-opus-4-6-thinking", "claude-opus-4-6-thinking", "high"},
 	}
 
