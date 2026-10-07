@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"zyrouter/backend/internal/db"
@@ -167,6 +168,65 @@ func recentTimestampAfter(left, right, leftID, rightID string) bool {
 	return leftID > rightID
 }
 
+type fastResolver struct {
+	repo         *db.Repo
+	prefixes     map[string]string
+	nodeNames    map[string]string
+	nodePrefixes map[string]string
+}
+
+func newFastResolver(repo *db.Repo) *fastResolver {
+	fr := &fastResolver{
+		repo:         repo,
+		nodeNames:    make(map[string]string),
+		nodePrefixes: make(map[string]string),
+	}
+	if repo != nil {
+		fr.prefixes, _ = repo.GetProviderPrefixes()
+	}
+	return fr
+}
+
+func (fr *fastResolver) ProviderNodeName(provider string) (string, error) {
+	if name, ok := fr.nodeNames[provider]; ok {
+		return name, nil
+	}
+	if fr.repo == nil {
+		return "", nil
+	}
+	name, err := fr.repo.ProviderNodeName(provider)
+	if err == nil {
+		fr.nodeNames[provider] = name
+	}
+	return name, err
+}
+
+func (fr *fastResolver) ProviderNodePrefix(provider string) (string, error) {
+	if p, ok := fr.nodePrefixes[provider]; ok {
+		return p, nil
+	}
+	if fr.repo == nil {
+		return "", nil
+	}
+	p, err := fr.repo.ProviderNodePrefix(provider)
+	if err == nil {
+		fr.nodePrefixes[provider] = p
+	}
+	return p, err
+}
+
+func (fr *fastResolver) GetProviderPrefixes() (map[string]string, error) {
+	return fr.prefixes, nil
+}
+
+var (
+	allTimeStatsCacheMu   sync.RWMutex
+	allTimeStatsCacheVal  usageStats
+	allTimeStatsCacheTime time.Time
+)
+
+const allTimeStatsTTL = 15 * time.Second
+
 type usageStats struct {
 	TotalRequests    int
 	PromptTokens     int
@@ -251,15 +311,45 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 	}
 
 	var err error
-	result, err = buildQuery(days)
-	if err != nil {
-		return result, recent, err
-	}
+	isUnfilteredAllTime := days == 0 && r.URL.Query().Get("provider") == "" && r.URL.Query().Get("model") == ""
 
-	// If 7/30-day window returned 0 but historical data exists in table, fallback to all-time query
-	if result.TotalRequests == 0 && days > 0 {
-		if allStats, err := buildQuery(0); err == nil && allStats.TotalRequests > 0 {
-			result = allStats
+	if isUnfilteredAllTime {
+		allTimeStatsCacheMu.RLock()
+		if time.Since(allTimeStatsCacheTime) < allTimeStatsTTL && allTimeStatsCacheVal.TotalRequests > 0 {
+			result = allTimeStatsCacheVal
+			allTimeStatsCacheMu.RUnlock()
+		} else {
+			allTimeStatsCacheMu.RUnlock()
+			result, err = buildQuery(0)
+			if err != nil {
+				return result, recent, err
+			}
+			allTimeStatsCacheMu.Lock()
+			allTimeStatsCacheVal = result
+			allTimeStatsCacheTime = time.Now()
+			allTimeStatsCacheMu.Unlock()
+		}
+	} else {
+		result, err = buildQuery(days)
+		if err != nil {
+			return result, recent, err
+		}
+		// If 7/30-day window returned 0 but historical data exists in table, fallback to all-time query
+		if result.TotalRequests == 0 && days > 0 {
+			allTimeStatsCacheMu.RLock()
+			if time.Since(allTimeStatsCacheTime) < allTimeStatsTTL && allTimeStatsCacheVal.TotalRequests > 0 {
+				result = allTimeStatsCacheVal
+				allTimeStatsCacheMu.RUnlock()
+			} else {
+				allTimeStatsCacheMu.RUnlock()
+				if allStats, err := buildQuery(0); err == nil && allStats.TotalRequests > 0 {
+					result = allStats
+					allTimeStatsCacheMu.Lock()
+					allTimeStatsCacheVal = allStats
+					allTimeStatsCacheTime = time.Now()
+					allTimeStatsCacheMu.Unlock()
+				}
+			}
 		}
 	}
 
@@ -288,12 +378,13 @@ func readUsageStats(repo *db.Repo, r *http.Request) (usageStats, []usagetracker.
 		}
 		_ = recentRows.Close()
 	}
+	resolver := newFastResolver(repo)
 	for _, row := range rawRows {
 		if row.status == "success" || row.status == "ok" {
 			row.status = "200"
 		}
-		displayProvider := labels.Provider(repo, row.prov)
-		displayModel := labels.Model(repo, row.prov, row.mod)
+		displayProvider := labels.Provider(resolver, row.prov)
+		displayModel := labels.Model(resolver, row.prov, row.mod)
 		recent = append(recent, usagetracker.RecentRequest{
 			ID: row.id, Timestamp: row.ts, Provider: displayProvider, Model: displayModel,
 			Account: row.account, Proxy: row.proxy, Strategy: row.strategy,

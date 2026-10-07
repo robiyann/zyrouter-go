@@ -290,7 +290,7 @@ func (t *Tracker) buildPayload(repo *db.Repo, snapshot trackerSnapshot) StreamPa
 			COALESCE(json_extract(meta, '$.clientIp'), ''), COALESCE(json_extract(meta, '$.apiKeyId'), ''),
 			COALESCE(json_extract(meta, '$.proxy'), ''), COALESCE(json_extract(meta, '$.strategy'), ''),
 			COALESCE(json_extract(meta, '$.account'), connectionId, '')
-			FROM usageHistory ORDER BY datetime(timestamp) DESC, id DESC LIMIT ?`
+			FROM usageHistory ORDER BY id DESC LIMIT ?`
 		type rawHistoryRow struct {
 			id, ts, prov, mod, status, clientIdentity, clientIP, apiKeyID string
 			proxy, strategy, account                                      string

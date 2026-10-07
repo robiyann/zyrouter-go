@@ -148,7 +148,7 @@ func (r *Repo) CheckAPIKeyRateLimit(key string, limit *models.KeyRateLimit, now 
 	if limit.RequestsPerMinute > 0 {
 		var requests int
 		cutoff := now.UTC().Add(-time.Minute).Format(time.RFC3339)
-		if err := r.db.QueryRow(`SELECT COUNT(*) FROM usageHistory WHERE apiKey = ? AND datetime(timestamp) >= datetime(?)`, key, cutoff).Scan(&requests); err != nil {
+		if err := r.db.QueryRow(`SELECT COUNT(*) FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`, key, cutoff).Scan(&requests); err != nil {
 			return false, err
 		}
 		if requests >= limit.RequestsPerMinute {
@@ -158,7 +158,7 @@ func (r *Repo) CheckAPIKeyRateLimit(key string, limit *models.KeyRateLimit, now 
 	if limit.TokensPerDay > 0 {
 		var tokens sql.NullInt64
 		start := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
-		if err := r.db.QueryRow(`SELECT COALESCE(SUM(promptTokens + completionTokens), 0) FROM usageHistory WHERE apiKey = ? AND datetime(timestamp) >= datetime(?)`, key, start).Scan(&tokens); err != nil {
+		if err := r.db.QueryRow(`SELECT COALESCE(SUM(promptTokens + completionTokens), 0) FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`, key, start).Scan(&tokens); err != nil {
 			return false, err
 		}
 		if tokens.Int64 >= int64(limit.TokensPerDay) {

@@ -243,6 +243,8 @@ func EnsureSchema(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_uh_timestamp ON usageHistory(timestamp);`,
 		`CREATE INDEX IF NOT EXISTS idx_uh_apikey ON usageHistory(apiKey);`,
+		`CREATE INDEX IF NOT EXISTS idx_uh_datetime ON usageHistory(datetime(timestamp) DESC, id DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_uh_date_stats ON usageHistory(substr(timestamp, 1, 10) DESC, provider, model, promptTokens, completionTokens, cost);`,
 
 		`CREATE TABLE IF NOT EXISTS usageDaily (
 			dateKey TEXT PRIMARY KEY,

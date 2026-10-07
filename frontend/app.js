@@ -7281,7 +7281,12 @@ async function renderView(name) {
     return;
   }
 
-  content.innerHTML = '<div class="card generic-empty"><span class="loading-line"></span><p>Reading backend state...</p></div>';
+  if (name === 'usage' && cachedUsagePayload && (cachedUsagePayload.totalRequests || cachedUsagePayload.promptTokens)) {
+    content.innerHTML = renderUsage(cachedUsagePayload);
+    bindUsageFilters();
+  } else {
+    content.innerHTML = '<div class="card generic-empty"><span class="loading-line"></span><p>Reading backend state...</p></div>';
+  }
   try {
     let payload;
     payload = await ({
